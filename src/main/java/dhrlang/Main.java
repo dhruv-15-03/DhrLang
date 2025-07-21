@@ -2,6 +2,7 @@ package dhrlang;
 
 import dhrlang.ast.Program;
 import dhrlang.error.ErrorReporter;
+import dhrlang.error.ErrorMessages;
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.RuntimeError;
 import dhrlang.lexer.Lexer;
@@ -9,7 +10,6 @@ import dhrlang.lexer.Token;
 import dhrlang.parser.Parser;
 import dhrlang.parser.ParseException;
 import dhrlang.typechecker.TypeChecker;
-import dhrlang.typechecker.TypeException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,38 +34,62 @@ public class Main {
         }
 
         if (errorReporter.hasErrors()) {
-            System.out.println("\n=== Compilation Failed ===");
-            System.out.println("Found " + errorReporter.getErrorCount() + " error(s):\n");
+            System.err.println();
+            System.err.println("\u001B[91m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
+            System.err.println("\u001B[91m║                    COMPILATION FAILED                       ║\u001B[0m");
+            System.err.println("\u001B[91m╚══════════════════════════════════════════════════════════════╝\u001B[0m");
+            System.err.println();
+            
+            int errorCount = errorReporter.getErrorCount();
+            int warningCount = errorReporter.getWarningCount();
+            
+            if (errorCount > 0) {
+                System.err.println("\u001B[91m❌ " + errorCount + " error" + (errorCount > 1 ? "s" : "") + " found:\u001B[0m");
+                System.err.println();
+            }
+            
             errorReporter.printAllErrors();
+            
+            if (warningCount > 0) {
+                System.err.println("\u001B[93m⚠️  " + warningCount + " warning" + (warningCount > 1 ? "s" : "") + " found:\u001B[0m");
+                System.err.println();
+                errorReporter.printAllWarnings();
+            }
+            
             System.exit(65);
         }
 
         if (errorReporter.hasWarnings()) {
-            System.out.println("\n=== Warnings ===");
+            System.err.println();
+            System.err.println("\u001B[93m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
+            System.err.println("\u001B[93m║                        WARNINGS                             ║\u001B[0m");
+            System.err.println("\u001B[93m╚══════════════════════════════════════════════════════════════╝\u001B[0m");
+            System.err.println();
             errorReporter.printAllWarnings();
         }
     }
 
     private static void run(String sourceCode) {
-        System.out.println("Starting compilation...");
-
+        
         Lexer lexer = new Lexer(sourceCode, errorReporter);
         List<Token> tokens = lexer.scanTokens();
-        System.out.println("Lexing completed. Token count: " + tokens.size());
 
         if (errorReporter.hasErrors()) return;
 
-        Parser parser = new Parser(tokens);
+        Parser parser = new Parser(tokens, errorReporter);
         Program program = null;
 
         try {
-            System.out.println("Starting parsing...");
             program = parser.parse();
-            System.out.println("Parsing completed successfully!");
         } catch (ParseException e) {
-            System.out.println("Parse error occurred!");
+            String hint = null;
             if (e.getToken() != null) {
-                errorReporter.error(e.getToken().getLocation(), e.getMessage());
+                hint = ErrorMessages.getParseErrorHint("", e.getToken());
+                if (hint != null) {
+                    errorReporter.error(e.getToken().getLocation(), e.getMessage(), hint);
+                } else {
+                    errorReporter.error(e.getToken().getLocation(), e.getMessage());
+                }
             } else {
                 errorReporter.error(e.getLine(), e.getMessage());
             }
@@ -73,29 +97,109 @@ public class Main {
 
         if (errorReporter.hasErrors()) return;
 
-        TypeChecker typeChecker = new TypeChecker();
-        try {
-            typeChecker.check(program);
-        } catch (TypeException e) {
-            errorReporter.error(0, e.getMessage());
-        }
-
+        TypeChecker typeChecker = new TypeChecker(errorReporter);
+        typeChecker.check(program);
+        
         if (errorReporter.hasErrors()) return;
         
         try {
             Interpreter interpreter = new Interpreter();
             interpreter.execute(program);
         } catch (dhrlang.interpreter.DhrRuntimeException e) {
-            System.err.println();
-            System.err.println(e.getDetailedMessage());
-            if (e.getLocation() != null) {
-                errorReporter.error(e.getLocation(), "Uncaught exception: " + (e.getValue() != null ? e.getValue().toString() : "null"));
-                errorReporter.printAllErrors();
-            }
+            printRuntimeError(e, sourceCode);
             System.exit(70);
         } catch (RuntimeError e) {
-            System.err.println("Runtime Error: " + e.getMessage());
+            printSystemError(e);
             System.exit(70);
         }
+    }
+    
+    private static void printRuntimeError(dhrlang.interpreter.DhrRuntimeException e, String sourceCode) {
+        System.err.println();
+        System.err.println("\u001B[91m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
+        System.err.println("\u001B[91m║                     RUNTIME ERROR                            ║\u001B[0m");
+        System.err.println("\u001B[91m╚══════════════════════════════════════════════════════════════╝\u001B[0m");
+        System.err.println();
+        
+        if (e.getLocation() != null) {
+            System.err.println("\u001B[91m❌ Runtime Error:\u001B[0m \u001B[36m" + e.getLocation().toString() + "\u001B[0m - " + 
+                             e.getCategory().getDisplayName() + ": " + (e.getValue() != null ? e.getValue().toString() : "null"));
+            
+            String[] lines = sourceCode.split("\n");
+            int lineNum = e.getLocation().getLine();
+            if (lineNum >= 1 && lineNum <= lines.length) {
+                System.err.println();
+                
+                int startLine = Math.max(1, lineNum - 2);
+                int endLine = Math.min(lines.length, lineNum + 2);
+                
+                int maxLineNumWidth = String.valueOf(endLine).length();
+                
+                for (int i = startLine; i <= endLine; i++) {
+                    String line = lines[i - 1];
+                    String lineNumStr = String.format("%" + maxLineNumWidth + "d", i);
+                    
+                    if (i == lineNum) {
+                        System.err.println("\u001B[91m→ " + lineNumStr + " │ \u001B[0m\u001B[1m" + line + "\u001B[0m");
+                        
+                        if (e.getLocation().getColumn() > 0) {
+                            System.err.print("\u001B[91m");
+                            for (int j = 0; j < maxLineNumWidth + 3; j++) System.err.print(" ");
+                            System.err.print("│ ");
+                            for (int j = 0; j < e.getLocation().getColumn() - 1; j++) {
+                                System.err.print(" ");
+                            }
+                            System.err.println("^\u001B[0m");
+                        }
+                    } else {
+                        System.err.println("  " + lineNumStr + " │ " + line);
+                    }
+                }
+                
+                String hint = getErrorHint(e);
+                if (hint != null) {
+                    System.err.println();
+                    System.err.println("\u001B[93m💡 Hint: " + hint + "\u001B[0m");
+                }
+            }
+            System.err.println();
+            System.err.println("\u001B[91m══════════════════════════════════════════════════════════════\u001B[0m");
+        } else {
+            // Fallback for errors without location
+            System.err.println("\u001B[91m❌ Runtime Error:\u001B[0m " + e.getCategory().getDisplayName());
+            System.err.println("\u001B[91mMessage:\u001B[0m " + (e.getValue() != null ? e.getValue().toString() : "null"));
+            System.err.println();
+            System.err.println("\u001B[91m══════════════════════════════════════════════════════════════\u001B[0m");
+        }
+    }
+    
+    private static String getErrorHint(dhrlang.interpreter.DhrRuntimeException e) {
+        switch (e.getCategory()) {
+            case INDEX_ERROR:
+                return ErrorMessages.getArrayIndexErrorHint();
+            case TYPE_ERROR:
+                return "Check the types of your variables and operations";
+            case NULL_ERROR:
+                return "Make sure the object is properly initialized before use";
+            case ARITHMETIC_ERROR:
+                return ErrorMessages.getDivisionByZeroHint();
+            case ACCESS_ERROR:
+                return "Check if you have proper access permissions to this member";
+            case VALIDATION_ERROR:
+                String message = e.getValue() != null ? e.getValue().toString() : "";
+                return ErrorMessages.getArrayValidationErrorHint(message);
+            default:
+                return "Check your code for potential issues";
+        }
+    }
+    
+    private static void printSystemError(RuntimeError e) {
+        System.err.println();
+        System.err.println("\u001B[91m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
+        System.err.println("\u001B[91m║                     SYSTEM ERROR                             ║\u001B[0m");
+        System.err.println("\u001B[91m╚══════════════════════════════════════════════════════════════╝\u001B[0m");
+        System.err.println();
+        System.err.println("\u001B[91mError:\u001B[0m " + e.getMessage());
+        System.err.println();
     }
 }

@@ -2,7 +2,7 @@ package dhrlang.stdlib;
 
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.NativeFunction;
-import dhrlang.interpreter.RuntimeError;
+import dhrlang.error.ErrorFactory;
 
 import java.util.List;
 
@@ -19,7 +19,10 @@ public class StringFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("length() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "length() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return (long) ((String) arg).length();
             }
@@ -45,10 +48,16 @@ public class StringFunctions {
                 Object end = arguments.get(2);
 
                 if (!(str instanceof String)) {
-                    throw new RuntimeError("substring() first argument must be a string");
+                    throw ErrorFactory.typeError(
+                        "substring() first argument must be a string",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 if (!(start instanceof Long) || !(end instanceof Long)) {
-                    throw new RuntimeError("substring() indices must be numbers");
+                    throw ErrorFactory.typeError(
+                        "substring() indices must be numbers",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String string = (String) str;
@@ -56,7 +65,10 @@ public class StringFunctions {
                 int endIdx = ((Long) end).intValue();
 
                 if (startIdx < 0 || endIdx > string.length() || startIdx > endIdx) {
-                    throw new RuntimeError("substring() indices out of bounds");
+                    throw ErrorFactory.validationError(
+                        "substring() indices out of bounds",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return string.substring(startIdx, endIdx);
@@ -82,17 +94,26 @@ public class StringFunctions {
                 Object index = arguments.get(1);
 
                 if (!(str instanceof String)) {
-                    throw new RuntimeError("charAt() first argument must be a string");
+                    throw ErrorFactory.typeError(
+                        "charAt() first argument must be a string",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 if (!(index instanceof Long)) {
-                    throw new RuntimeError("charAt() index must be a number");
+                    throw ErrorFactory.typeError(
+                        "charAt() index must be a number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String string = (String) str;
                 int idx = ((Long) index).intValue();
 
                 if (idx < 0 || idx >= string.length()) {
-                    throw new RuntimeError("charAt() index out of bounds");
+                    throw ErrorFactory.indexError(
+                        "charAt() index out of bounds",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return String.valueOf(string.charAt(idx));
@@ -116,7 +137,10 @@ public class StringFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("toUpperCase() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "toUpperCase() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return ((String) arg).toUpperCase();
             }
@@ -139,7 +163,10 @@ public class StringFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("toLowerCase() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "toLowerCase() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return ((String) arg).toLowerCase();
             }
@@ -164,7 +191,10 @@ public class StringFunctions {
                 Object searchStr = arguments.get(1);
 
                 if (!(str instanceof String) || !(searchStr instanceof String)) {
-                    throw new RuntimeError("indexOf() requires string arguments");
+                    throw ErrorFactory.typeError(
+                        "indexOf() requires string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return (long) ((String) str).indexOf((String) searchStr);
@@ -191,7 +221,10 @@ public class StringFunctions {
                 Object replacement = arguments.get(2);
 
                 if (!(str instanceof String) || !(target instanceof String) || !(replacement instanceof String)) {
-                    throw new RuntimeError("replace() requires string arguments");
+                    throw ErrorFactory.typeError(
+                        "replace() requires string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return ((String) str).replace((String) target, (String) replacement);
@@ -217,7 +250,10 @@ public class StringFunctions {
                 Object prefix = arguments.get(1);
 
                 if (!(str instanceof String) || !(prefix instanceof String)) {
-                    throw new RuntimeError("startsWith() requires string arguments");
+                    throw ErrorFactory.typeError(
+                        "startsWith() requires string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return ((String) str).startsWith((String) prefix);
@@ -243,7 +279,10 @@ public class StringFunctions {
                 Object suffix = arguments.get(1);
 
                 if (!(str instanceof String) || !(suffix instanceof String)) {
-                    throw new RuntimeError("endsWith() requires string arguments");
+                    throw ErrorFactory.typeError(
+                        "endsWith() requires string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return ((String) str).endsWith((String) suffix);
@@ -267,7 +306,10 @@ public class StringFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("trim() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "trim() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return ((String) arg).trim();
             }
@@ -292,7 +334,10 @@ public class StringFunctions {
                 Object delimiter = arguments.get(1);
 
                 if (!(str instanceof String) || !(delimiter instanceof String)) {
-                    throw new RuntimeError("split() requires string arguments");
+                    throw ErrorFactory.typeError(
+                        "split() requires string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String[] parts = ((String) str).split((String) delimiter);
@@ -321,7 +366,10 @@ public class StringFunctions {
                 Object delimiter = arguments.get(1);
 
                 if (!(arr instanceof Object[]) || !(delimiter instanceof String)) {
-                    throw new RuntimeError("join() requires an array and string delimiter");
+                    throw ErrorFactory.typeError(
+                        "join() requires an array and string delimiter",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 Object[] array = (Object[]) arr;
@@ -353,14 +401,20 @@ public class StringFunctions {
                 Object count = arguments.get(1);
 
                 if (!(str instanceof String) || !(count instanceof Long)) {
-                    throw new RuntimeError("repeat() requires a string and number");
+                    throw ErrorFactory.typeError(
+                        "repeat() requires a string and number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String string = (String) str;
                 int times = ((Long) count).intValue();
                 
                 if (times < 0) {
-                    throw new RuntimeError("repeat() count cannot be negative");
+                    throw ErrorFactory.validationError(
+                        "repeat() count cannot be negative",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 return string.repeat(times);
@@ -384,7 +438,10 @@ public class StringFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object str = arguments.get(0);
                 if (!(str instanceof String)) {
-                    throw new RuntimeError("reverse() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "reverse() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 return new StringBuilder((String) str).reverse().toString();
@@ -411,7 +468,10 @@ public class StringFunctions {
                 Object padChar = arguments.get(2);
 
                 if (!(str instanceof String) || !(length instanceof Long) || !(padChar instanceof String)) {
-                    throw new RuntimeError("padLeft() requires string, number, string arguments");
+                    throw ErrorFactory.typeError(
+                        "padLeft() requires string, number, string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String string = (String) str;
@@ -419,7 +479,10 @@ public class StringFunctions {
                 String pad = (String) padChar;
 
                 if (pad.length() != 1) {
-                    throw new RuntimeError("padLeft() pad character must be a single character");
+                    throw ErrorFactory.validationError(
+                        "padLeft() pad character must be a single character",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 while (string.length() < targetLength) {
@@ -449,7 +512,10 @@ public class StringFunctions {
                 Object padChar = arguments.get(2);
 
                 if (!(str instanceof String) || !(length instanceof Long) || !(padChar instanceof String)) {
-                    throw new RuntimeError("padRight() requires string, number, string arguments");
+                    throw ErrorFactory.typeError(
+                        "padRight() requires string, number, string arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 String string = (String) str;
@@ -457,7 +523,10 @@ public class StringFunctions {
                 String pad = (String) padChar;
 
                 if (pad.length() != 1) {
-                    throw new RuntimeError("padRight() pad character must be a single character");
+                    throw ErrorFactory.validationError(
+                        "padRight() pad character must be a single character",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 while (string.length() < targetLength) {

@@ -1,6 +1,7 @@
 package dhrlang.parser;
 
 import dhrlang.ast.*;
+import dhrlang.error.ErrorReporter;
 import dhrlang.lexer.Token;
 import dhrlang.lexer.TokenType;
 
@@ -13,14 +14,18 @@ public class Parser {
 
     private final List<Token> tokens;
     private int current = 0;
+    private ErrorReporter errorReporter;
 
     public Parser(List<Token> tokens) {
+        this(tokens, null);
+    }
+    
+    public Parser(List<Token> tokens, ErrorReporter errorReporter) {
         this.tokens = tokens;
+        this.errorReporter = errorReporter;
     }
 
     public Program parse() {
-        System.out.println("Parser: Starting to parse program");
-        System.out.println("Parser: Current token: " + peek().getType() + " '" + peek().getLexeme() + "'");
         List<ClassDecl> classes = new ArrayList<>();
 
         try {
@@ -29,14 +34,13 @@ public class Parser {
             }
             return new Program(classes);
         } catch (ParseException e) {
-            System.err.println("Parse error at line " + e.getLine() + ": " + e.getMessage());
-            System.err.println("Current token: " + peek().getType() + " '" + peek().getLexeme() + "'");
             throw e;
         }
-
     }
 
     private ClassDecl parseClassDecl() {
+        Set<Modifier> classModifiers = parseModifiers();
+        
         consume(TokenType.CLASS, "Expected 'class' keyword to start a class declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected class name after 'class'.");
         VariableExpr superclass = null;
@@ -63,7 +67,9 @@ public class Parser {
             }
         }
         consume(TokenType.RBRACE, "Expected '}' after class body.");
-        return new ClassDecl(name.getLexeme(), superclass, functions, variables);
+        ClassDecl classDecl = new ClassDecl(name.getLexeme(), superclass, functions, variables, classModifiers);
+        classDecl.setSourceLocation(name.getLocation());
+        return classDecl;
     }
 
     private Expression parseCallDot() {
@@ -75,15 +81,22 @@ public class Parser {
                 Token name = consume(TokenType.IDENTIFIER, "Expect property name after '.'.");
                 
                 if (expr instanceof VariableExpr && isClassName(((VariableExpr) expr).getName().getLexeme())) {
-                    expr = new StaticAccessExpr((VariableExpr) expr, name);
+                    StaticAccessExpr staticExpr = new StaticAccessExpr((VariableExpr) expr, name);
+                    staticExpr.setSourceLocation(name.getLocation());
+                    expr = staticExpr;
                 } else {
-                    expr = new GetExpr(expr, name);
+                    GetExpr getExpr = new GetExpr(expr, name);
+                    getExpr.setSourceLocation(name.getLocation());
+                    expr = getExpr;
                 }
             }
             else if (match(TokenType.LBRACKET)) {
+                Token lBracket = previous(); 
                 Expression index = parseExpression();
                 consume(TokenType.RBRACKET, "Expected ']' after array index.");
-                expr = new IndexExpr(expr, index);
+                IndexExpr indexExpr = new IndexExpr(expr, index);
+                indexExpr.setSourceLocation(lBracket.getLocation());
+                expr = indexExpr;
             }
             else {
                 break;
@@ -107,14 +120,25 @@ public class Parser {
             } while (match(TokenType.COMMA));
         }
         consume(TokenType.RPAREN, "Expected ')' after function parameters.");
-        Block body = parseBlock();
-        return new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers);
+        
+        Block body = null;
+        if (modifiers.contains(Modifier.ABSTRACT)) {
+            consume(TokenType.SEMICOLON, "Expected ';' after abstract method declaration.");
+        } else {
+            body = parseBlock();
+        }
+        
+        FunctionDecl functionDecl = new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers);
+        functionDecl.setSourceLocation(returnType.getLocation());
+        return functionDecl;
     }
 
     private VarDecl parseParameter() {
         Token type = consumeType("Expected type in parameter declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected parameter name.");
-        return new VarDecl(type.getLexeme(), name.getLexeme(), null);
+        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), null);
+        varDecl.setSourceLocation(type.getLocation());
+        return varDecl;
     }
 
     private VarDecl parseVarDecl(Token type, Token name) {
@@ -123,7 +147,9 @@ public class Parser {
             initializer = parseExpression();
         }
         consume(TokenType.SEMICOLON, "Expected ';' after variable declaration.");
-        return new VarDecl(type.getLexeme(), name.getLexeme(), initializer);
+        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer);
+        varDecl.setSourceLocation(name.getLocation());
+        return varDecl;
     }
     
     private VarDecl parseVarDecl(Token type, Token name, Set<Modifier> modifiers) {
@@ -132,20 +158,25 @@ public class Parser {
             initializer = parseExpression();
         }
         consume(TokenType.SEMICOLON, "Expected ';' after variable declaration.");
-        return new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers);
+        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers);
+        varDecl.setSourceLocation(name.getLocation());
+        return varDecl;
     }
 
     private Block parseBlock() {
-        consume(TokenType.LBRACE, "Expected '{' to start block.");
+        Token lbrace = consume(TokenType.LBRACE, "Expected '{' to start block.");
         List<Statement> statements = new ArrayList<>();
         while (!check(TokenType.RBRACE) && !isAtEnd()) {
             statements.add(parseStatement());
         }
         consume(TokenType.RBRACE, "Expected '}' after block.");
-        return new Block(statements);
+        Block block = new Block(statements);
+        block.setSourceLocation(lbrace.getLocation());
+        return block;
     }
 
     private Expression parseCallArguments(Expression callee) {
+        Token lParen = previous(); 
         List<Expression> arguments = new ArrayList<>();
         if (!check(TokenType.RPAREN)) {
             do {
@@ -153,17 +184,25 @@ public class Parser {
             } while (match(TokenType.COMMA));
         }
         consume(TokenType.RPAREN, "Expect ')' after arguments.");
-        return new CallExpr(callee, arguments);
+        CallExpr callExpr = new CallExpr(callee, arguments);
+        callExpr.setSourceLocation(lParen.getLocation());
+        return callExpr;
     }
 
     private Statement parseStatement() {
         if (match(TokenType.BREAK)) {
+            Token breakToken = previous();
             consume(TokenType.SEMICOLON, "Expected ';' after 'break'.");
-            return new BreakStmt();
+            BreakStmt breakStmt = new BreakStmt();
+            breakStmt.setSourceLocation(breakToken.getLocation());
+            return breakStmt;
         }
         if (match(TokenType.CONTINUE)) {
+            Token continueToken = previous();
             consume(TokenType.SEMICOLON, "Expected ';' after 'continue'.");
-            return new ContinueStmt();
+            ContinueStmt continueStmt = new ContinueStmt();
+            continueStmt.setSourceLocation(continueToken.getLocation());
+            return continueStmt;
         }
         if (match(TokenType.RETURN)) {
             return parseReturnStmt();
@@ -178,7 +217,8 @@ public class Parser {
             return parseWhile();
         }
         if (match(TokenType.FOR)) {
-            return parseFor();
+            Token forToken = previous();
+            return parseFor(forToken);
         }
         if (match(TokenType.TRY)) {
             return parseTryStmt();
@@ -223,12 +263,15 @@ public class Parser {
     }
 
     private ReturnStmt parseReturnStmt() {
+        Token returnToken = previous();
         Expression value = null;
         if (!check(TokenType.SEMICOLON)) {
             value = parseExpression();
         }
         consume(TokenType.SEMICOLON, "Expected ';' after return statement.");
-        return new ReturnStmt(value);
+        ReturnStmt returnStmt = new ReturnStmt(value);
+        returnStmt.setSourceLocation(returnToken.getLocation());
+        return returnStmt;
     }
 
 
@@ -236,7 +279,9 @@ public class Parser {
     private Statement parseExpressionStmt() {
         Expression expr = parseExpression();
         consume(TokenType.SEMICOLON, "Expected ';' after expression.");
-        return new ExpressionStmt(expr);
+        ExpressionStmt stmt = new ExpressionStmt(expr);
+        stmt.setSourceLocation(expr.getSourceLocation());
+        return stmt;
     }
 
     private Expression parseExpression() {
@@ -250,13 +295,21 @@ public class Parser {
             Expression value = parseAssignment();
             if (expr instanceof VariableExpr varExpr) {
                 Token name = varExpr.getName();
-                return new AssignmentExpr(name, value);
+                AssignmentExpr assignExpr = new AssignmentExpr(name, value);
+                assignExpr.setSourceLocation(varExpr.getSourceLocation());
+                return assignExpr;
             } else if (expr instanceof GetExpr getExpr) {
-                return new SetExpr(getExpr.getObject(), getExpr.getName(), value);
+                SetExpr setExpr = new SetExpr(getExpr.getObject(), getExpr.getName(), value);
+                setExpr.setSourceLocation(getExpr.getSourceLocation());
+                return setExpr;
             } else if (expr instanceof IndexExpr indexExpr) {
-                return new IndexAssignExpr(indexExpr.getObject(), indexExpr.getIndex(), value);
+                IndexAssignExpr indexAssignExpr = new IndexAssignExpr(indexExpr.getObject(), indexExpr.getIndex(), value);
+                indexAssignExpr.setSourceLocation(indexExpr.getSourceLocation());
+                return indexAssignExpr;
             } else if (expr instanceof StaticAccessExpr staticExpr) {
-                return new StaticAssignExpr(staticExpr.className, staticExpr.memberName, value);
+                StaticAssignExpr staticAssignExpr = new StaticAssignExpr(staticExpr.className, staticExpr.memberName, value);
+                staticAssignExpr.setSourceLocation(staticExpr.getSourceLocation());
+                return staticAssignExpr;
             }
 
             throw error(equals, "Invalid assignment target.");
@@ -269,7 +322,9 @@ public class Parser {
         while (match(TokenType.OR)) {
             Token operator = previous();
             Expression right = parseLogicalAnd();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -279,7 +334,9 @@ public class Parser {
         while (match(TokenType.AND)) {
             Token operator = previous();
             Expression right = parseEquality();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -289,7 +346,9 @@ public class Parser {
         while (match(TokenType.EQUALITY, TokenType.NEQ)) {
             Token operator = previous();
             Expression right = parseComparison();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -299,7 +358,9 @@ public class Parser {
         while (match(TokenType.LESS, TokenType.LEQ, TokenType.GREATER, TokenType.GEQ)) {
             Token operator = previous();
             Expression right = parseTerm();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -309,7 +370,9 @@ public class Parser {
         while (match(TokenType.PLUS, TokenType.MINUS)) {
             Token operator = previous();
             Expression right = parseFactor();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -319,7 +382,9 @@ public class Parser {
         while (match(TokenType.STAR, TokenType.SLASH, TokenType.MOD)) {
             Token operator = previous();
             Expression right = parseUnary();
-            expr = new BinaryExpr(expr, operator, right);
+            BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
+            binaryExpr.setSourceLocation(operator.getLocation());
+            expr = binaryExpr;
         }
         return expr;
     }
@@ -333,13 +398,17 @@ public class Parser {
                 throw error(operator, "Invalid prefix " + (operator.getType() == TokenType.INCREMENT ? "increment" : "decrement") + " target.");
             }
 
-            return new PrefixIncrementExpr(operator, target);
+            PrefixIncrementExpr prefixExpr = new PrefixIncrementExpr(operator, target);
+            prefixExpr.setSourceLocation(operator.getLocation());
+            return prefixExpr;
         }
 
         if (match(TokenType.MINUS, TokenType.NOT)) {
             Token operator = previous();
             Expression right = parseUnary();
-            return new UnaryExpr(operator, right);
+            UnaryExpr unaryExpr = new UnaryExpr(operator, right);
+            unaryExpr.setSourceLocation(operator.getLocation());
+            return unaryExpr;
         }
 
         return parsePostfix();
@@ -356,13 +425,16 @@ public class Parser {
                 throw error(operator, "Invalid " + (operator.getType() == TokenType.INCREMENT ? "increment" : "decrement") + " target.");
             }
 
-            return new PostfixIncrementExpr(expr, operator);
+            PostfixIncrementExpr postfixExpr = new PostfixIncrementExpr(expr, operator);
+            postfixExpr.setSourceLocation(operator.getLocation());
+            return postfixExpr;
         }
 
         return expr;
 
     }
     private Expression arrayLiteral() {
+        Token lBracket = previous(); // Capture the '[' token for location
         List<Expression> elements = new ArrayList<>();
 
         if (!check(TokenType.RBRACKET)) {
@@ -372,40 +444,54 @@ public class Parser {
         }
 
         consume(TokenType.RBRACKET, "Expected ']' after array elements.");
-        return new ArrayExpr(elements);
+        ArrayExpr arrayExpr = new ArrayExpr(elements);
+        arrayExpr.setSourceLocation(lBracket.getLocation());
+        return arrayExpr;
     }
 
 
     private Expression parsePrimary() {
         if (match(TokenType.NUMBER)) {
             String numberString = previous().getLexeme();
+            LiteralExpr expr;
             if (numberString.contains(".")) {
-                return new LiteralExpr(Double.parseDouble(numberString));
+                expr = new LiteralExpr(Double.parseDouble(numberString));
             } else {
-                return new LiteralExpr(Long.parseLong(numberString));
+                expr = new LiteralExpr(Long.parseLong(numberString));
             }
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
         }
         if (match(TokenType.STRING)) {
-            return new LiteralExpr(previous().getLexeme());
+            LiteralExpr expr = new LiteralExpr(previous().getLexeme());
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
         }
         if (match(TokenType.CHAR)) {
-            return new LiteralExpr(previous().getLexeme().charAt(0));
+            LiteralExpr expr = new LiteralExpr(previous().getLexeme().charAt(0));
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
         }
         if (match(TokenType.BOOLEAN)) {
-            return new LiteralExpr(Boolean.parseBoolean(previous().getLexeme()));
+            LiteralExpr expr = new LiteralExpr(Boolean.parseBoolean(previous().getLexeme()));
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
         }
         if (match(TokenType.LBRACKET)) {
             return arrayLiteral();
         }
 
         if (match(TokenType.NEW)) {
+            Token newToken = previous();
             if (check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) || 
                 check(TokenType.SAB) || check(TokenType.KYA)) {
                 Token typeToken = advance(); 
                 consume(TokenType.LBRACKET, "Expected '[' after type for array creation.");
                 Expression size = parseExpression();
                 consume(TokenType.RBRACKET, "Expected ']' after array size.");
-                return new NewArrayExpr(typeToken.getLexeme(), size);
+                NewArrayExpr expr = new NewArrayExpr(typeToken.getLexeme(), size);
+                expr.setSourceLocation(newToken.getLocation());
+                return expr;
             } else {
                 Token classNameToken = consume(TokenType.IDENTIFIER, "Expect class name after 'new'.");
                 consume(TokenType.LPAREN, "Expect '(' after class name.");
@@ -416,20 +502,30 @@ public class Parser {
                     } while (match(TokenType.COMMA));
                 }
                 consume(TokenType.RPAREN, "Expect ')' after arguments.");
-                return new NewExpr(classNameToken.getLexeme(), arguments);
+                NewExpr expr = new NewExpr(classNameToken.getLexeme(), arguments);
+                expr.setSourceLocation(newToken.getLocation());
+                return expr;
             }
         }
         if (match(TokenType.IDENTIFIER)) {
-            return new VariableExpr(previous());
+            Token identifierToken = previous();
+            VariableExpr expr = new VariableExpr(identifierToken);
+            expr.setSourceLocation(identifierToken.getLocation());
+            return expr;
         }
         if (match(TokenType.SUPER)) {
             Token keyword = previous();
             consume(TokenType.DOT, "Expect '.' after 'super'.");
             Token method = consume(TokenType.IDENTIFIER, "Expect superclass method name.");
-            return new SuperExpr(keyword, method);
+            SuperExpr superExpr = new SuperExpr(keyword, method);
+            superExpr.setSourceLocation(keyword.getLocation());
+            return superExpr;
         }
         if (match(TokenType.THIS)) {
-            return new ThisExpr(previous());
+            Token thisToken = previous();
+            ThisExpr thisExpr = new ThisExpr(thisToken);
+            thisExpr.setSourceLocation(thisToken.getLocation());
+            return thisExpr;
         }
         if (match(TokenType.LPAREN)) {
             Expression expr = parseExpression();
@@ -441,6 +537,7 @@ public class Parser {
     }
 
     private Statement parseIf() {
+        Token ifToken = previous();
         consume(TokenType.LPAREN, "Expect '(' after 'if'.");
         Expression condition = parseExpression();
         consume(TokenType.RPAREN, "Expect ')' after if condition.");
@@ -453,18 +550,23 @@ public class Parser {
                 elseBranch = parseStatement();
             }
         }
-        return new IfStmt(condition, thenBranch, elseBranch);
+        IfStmt ifStmt = new IfStmt(condition, thenBranch, elseBranch);
+        ifStmt.setSourceLocation(ifToken.getLocation());
+        return ifStmt;
     }
 
     private Statement parseWhile() {
+        Token whileToken = previous();
         consume(TokenType.LPAREN, "Expect '(' after 'while'.");
         Expression condition = parseExpression();
         consume(TokenType.RPAREN, "Expect ')' after while condition.");
         Statement body = parseStatement();
-        return new WhileStmt(condition, body);
+        WhileStmt whileStmt = new WhileStmt(condition, body);
+        whileStmt.setSourceLocation(whileToken.getLocation());
+        return whileStmt;
     }
 
-    private Statement parseFor() {
+    private Statement parseFor(Token forToken) {
         consume(TokenType.LPAREN, "Expect '(' after 'for'.");
         
         Statement initializer = null;
@@ -492,24 +594,33 @@ public class Parser {
         Statement body = parseStatement();
         if (condition == null) {
             condition = new LiteralExpr(true);
+            condition.setSourceLocation(forToken.getLocation());
         }
         
         if (increment != null) {
             List<Statement> loopStatements = new ArrayList<>();
             loopStatements.add(body);
-            loopStatements.add(new ExpressionStmt(increment));
+            ExpressionStmt incrementStmt = new ExpressionStmt(increment);
+            incrementStmt.setSourceLocation(increment.getSourceLocation());
+            loopStatements.add(incrementStmt);
             Block loopBlock = new Block(loopStatements);
+            loopBlock.setSourceLocation(body.getSourceLocation()); // Use body location for synthetic block
             
             Statement whileStmt = new WhileStmt(condition, loopBlock);
+            whileStmt.setSourceLocation(forToken.getLocation());
             if (initializer != null) {
-                return new Block(List.of(initializer, whileStmt));
+                Block outerBlock = new Block(List.of(initializer, whileStmt));
+                outerBlock.setSourceLocation(forToken.getLocation());
+                return outerBlock;
             }
             return whileStmt;
         } else {
-            // Simple while loop without increment
             Statement whileStmt = new WhileStmt(condition, body);
+            whileStmt.setSourceLocation(forToken.getLocation());
             if (initializer != null) {
-                return new Block(List.of(initializer, whileStmt));
+                Block outerBlock = new Block(List.of(initializer, whileStmt));
+                outerBlock.setSourceLocation(forToken.getLocation());
+                return outerBlock;
             }
             return whileStmt;
         }
@@ -517,6 +628,7 @@ public class Parser {
 
     
     private TryStmt parseTryStmt() {
+        Token tryToken = previous();
         Block tryBlock = parseBlock();
         
         List<CatchClause> catchClauses = new ArrayList<>();
@@ -537,11 +649,13 @@ public class Parser {
             throw error(previous(), "A try statement must have at least one catch or finally clause.");
         }
         
-        return new TryStmt(tryBlock, catchClauses, finallyBlock);
+        TryStmt tryStmt = new TryStmt(tryBlock, catchClauses, finallyBlock);
+        tryStmt.setSourceLocation(tryToken.getLocation());
+        return tryStmt;
     }
     
     private ThrowStmt parseThrowStmt() {
-        Token throwToken = previous(); // Capture the 'throw' token for location
+        Token throwToken = previous(); 
         Expression value = parseExpression();
         consume(TokenType.SEMICOLON, "Expected ';' after throw statement.");
         return new ThrowStmt(value, throwToken);
@@ -618,7 +732,7 @@ public class Parser {
     
     private Set<Modifier> parseModifiers() {
         Set<Modifier> modifiers = new HashSet<>();
-        while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC)) {
+        while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC, TokenType.ABSTRACT)) {
             TokenType tokenType = previous().getType();
             Modifier modifier = Modifier.fromTokenType(tokenType);
             if (modifiers.contains(modifier)) {
@@ -626,10 +740,23 @@ public class Parser {
             }
             modifiers.add(modifier);
         }
+        
+        if (!modifiers.contains(Modifier.PUBLIC) && !modifiers.contains(Modifier.PRIVATE) && !modifiers.contains(Modifier.PROTECTED)) {
+            modifiers.add(Modifier.PUBLIC);
+        }
+        
         return modifiers;
     }
 
     private ParseException error(Token token, String message) {
+        if (errorReporter != null) {
+            String hint = dhrlang.error.ErrorMessages.getParseErrorHint(message, token);
+            if (hint != null) {
+                errorReporter.error(token.getLocation(), message, hint);
+            } else {
+                errorReporter.error(token.getLocation(), message);
+            }
+        }
         return new ParseException(message, token);
     }
 }

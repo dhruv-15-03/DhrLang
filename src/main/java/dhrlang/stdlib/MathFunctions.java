@@ -2,7 +2,7 @@ package dhrlang.stdlib;
 
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.NativeFunction;
-import dhrlang.interpreter.RuntimeError;
+import dhrlang.error.ErrorFactory;
 
 import java.util.List;
 
@@ -23,7 +23,10 @@ public class MathFunctions {
                 } else if (arg instanceof Double) {
                     return Math.abs((Double) arg);
                 } else {
-                    throw new RuntimeError("abs() requires a number argument");
+                    throw ErrorFactory.typeError(
+                        "abs() requires a number argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
             }
 
@@ -50,11 +53,17 @@ public class MathFunctions {
                 } else if (arg instanceof Double) {
                     value = (Double) arg;
                 } else {
-                    throw new RuntimeError("sqrt() requires a number argument");
+                    throw ErrorFactory.typeError(
+                        "sqrt() requires a number argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 if (value < 0) {
-                    throw new RuntimeError("sqrt() cannot be called with negative number");
+                    throw ErrorFactory.validationError(
+                        "sqrt() cannot be called with negative number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 return Math.sqrt(value);
@@ -79,8 +88,8 @@ public class MathFunctions {
                 Object base = arguments.get(0);
                 Object exponent = arguments.get(1);
                 
-                double baseValue = toDouble(base);
-                double expValue = toDouble(exponent);
+                double baseValue = toDouble(base, interpreter);
+                double expValue = toDouble(exponent, interpreter);
                 
                 return Math.pow(baseValue, expValue);
             }
@@ -107,7 +116,7 @@ public class MathFunctions {
                 if (a instanceof Long && b instanceof Long) {
                     return Math.min((Long) a, (Long) b);
                 } else {
-                    return Math.min(toDouble(a), toDouble(b));
+                    return Math.min(toDouble(a, interpreter), toDouble(b, interpreter));
                 }
             }
 
@@ -133,7 +142,7 @@ public class MathFunctions {
                 if (a instanceof Long && b instanceof Long) {
                     return Math.max((Long) a, (Long) b);
                 } else {
-                    return Math.max(toDouble(a), toDouble(b));
+                    return Math.max(toDouble(a, interpreter), toDouble(b, interpreter));
                 }
             }
 
@@ -154,7 +163,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return (long) Math.floor(toDouble(arg));
+                return (long) Math.floor(toDouble(arg, interpreter));
             }
 
             @Override
@@ -174,7 +183,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return (long) Math.ceil(toDouble(arg));
+                return (long) Math.ceil(toDouble(arg, interpreter));
             }
 
             @Override
@@ -194,7 +203,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return Math.round(toDouble(arg));
+                return Math.round(toDouble(arg, interpreter));
             }
 
             @Override
@@ -233,7 +242,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return Math.sin(toDouble(arg));
+                return Math.sin(toDouble(arg, interpreter));
             }
 
             @Override
@@ -253,7 +262,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return Math.cos(toDouble(arg));
+                return Math.cos(toDouble(arg, interpreter));
             }
 
             @Override
@@ -273,7 +282,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return Math.tan(toDouble(arg));
+                return Math.tan(toDouble(arg, interpreter));
             }
 
             @Override
@@ -293,9 +302,12 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                double value = toDouble(arg);
+                double value = toDouble(arg, interpreter);
                 if (value <= 0) {
-                    throw new RuntimeError("log() requires a positive number");
+                    throw ErrorFactory.validationError(
+                        "log() requires a positive number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return Math.log(value);
             }
@@ -317,9 +329,12 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                double value = toDouble(arg);
+                double value = toDouble(arg, interpreter);
                 if (value <= 0) {
-                    throw new RuntimeError("log10() requires a positive number");
+                    throw ErrorFactory.validationError(
+                        "log10() requires a positive number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return Math.log10(value);
             }
@@ -341,7 +356,7 @@ public class MathFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
-                return Math.exp(toDouble(arg));
+                return Math.exp(toDouble(arg, interpreter));
             }
 
             @Override
@@ -367,7 +382,10 @@ public class MathFunctions {
                 long maxVal = ((Long) max);
                 
                 if (minVal >= maxVal) {
-                    throw new RuntimeError("randomRange() min must be less than max");
+                    throw ErrorFactory.validationError(
+                        "randomRange() min must be less than max",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 return (long) (Math.random() * (maxVal - minVal) + minVal);
@@ -399,9 +417,9 @@ public class MathFunctions {
                     long maxVal = (Long) max;
                     return Math.max(minVal, Math.min(maxVal, val));
                 } else {
-                    double val = toDouble(value);
-                    double minVal = toDouble(min);
-                    double maxVal = toDouble(max);
+                    double val = toDouble(value, interpreter);
+                    double minVal = toDouble(min, interpreter);
+                    double maxVal = toDouble(max, interpreter);
                     return Math.max(minVal, Math.min(maxVal, val));
                 }
             }
@@ -413,13 +431,16 @@ public class MathFunctions {
         };
     }
 
-    private static double toDouble(Object obj) {
+    private static double toDouble(Object obj, Interpreter interpreter) {
         if (obj instanceof Long) {
             return ((Long) obj).doubleValue();
         } else if (obj instanceof Double) {
             return (Double) obj;
         } else {
-            throw new RuntimeError("Expected number, got " + obj.getClass().getSimpleName());
+            throw ErrorFactory.typeError(
+                "Expected number, got " + obj.getClass().getSimpleName(), 
+                interpreter.getCurrentCallLocation()
+            );
         }
     }
 }

@@ -2,7 +2,7 @@ package dhrlang.stdlib;
 
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.NativeFunction;
-import dhrlang.interpreter.RuntimeError;
+import dhrlang.error.ErrorFactory;
 
 import java.util.List;
 
@@ -147,7 +147,10 @@ public class UtilityFunctions {
                 Object end = arguments.get(1);
 
                 if (!(start instanceof Long) || !(end instanceof Long)) {
-                    throw new RuntimeError("range() requires two number arguments");
+                    throw ErrorFactory.typeError(
+                        "range() requires two number arguments",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 long startVal = (Long) start;
@@ -182,14 +185,20 @@ public class UtilityFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object ms = arguments.get(0);
                 if (!(ms instanceof Long)) {
-                    throw new RuntimeError("sleep() requires a number argument (milliseconds)");
+                    throw ErrorFactory.typeError(
+                        "sleep() requires a number argument (milliseconds)",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
 
                 try {
                     Thread.sleep((Long) ms);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new RuntimeError("Sleep was interrupted");
+                    throw ErrorFactory.runtimeError(
+                        "Sleep was interrupted",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 return null;
             }

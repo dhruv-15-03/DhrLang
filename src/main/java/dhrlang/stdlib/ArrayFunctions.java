@@ -2,7 +2,8 @@ package dhrlang.stdlib;
 
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.NativeFunction;
-import dhrlang.interpreter.RuntimeError;
+import dhrlang.error.ErrorFactory;
+import dhrlang.error.SourceLocation;
 
 import java.util.List;
 
@@ -19,7 +20,7 @@ public class ArrayFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof Object[])) {
-                    throw new RuntimeError("arrayLength() requires an array argument");
+                    throw ErrorFactory.typeError("arrayLength() requires an array argument", interpreter.getCurrentCallLocation());
                 }
                 return (long) ((Object[]) arg).length;
             }
@@ -44,7 +45,7 @@ public class ArrayFunctions {
                 Object value = arguments.get(1);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayContains() first argument must be an array");
+                    throw ErrorFactory.typeError("arrayContains() first argument must be an array", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
@@ -76,7 +77,7 @@ public class ArrayFunctions {
                 Object value = arguments.get(1);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayIndexOf() first argument must be an array");
+                    throw ErrorFactory.typeError("arrayIndexOf() first argument must be an array", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
@@ -107,7 +108,7 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayCopy() requires an array argument");
+                    throw ErrorFactory.typeError("arrayCopy() requires an array argument", (SourceLocation) null);
                 }
 
                 Object[] original = (Object[]) arr;
@@ -135,7 +136,7 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayReverse() requires an array argument");
+                    throw ErrorFactory.typeError("arrayReverse() requires an array argument", (SourceLocation) null);
                 }
 
                 Object[] original = (Object[]) arr;
@@ -167,7 +168,7 @@ public class ArrayFunctions {
                 Object end = arguments.get(2);
 
                 if (!(arr instanceof Object[]) || !(start instanceof Long) || !(end instanceof Long)) {
-                    throw new RuntimeError("arraySlice() requires array, number, number arguments");
+                    throw ErrorFactory.typeError("arraySlice() requires array, number, number arguments", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
@@ -175,7 +176,7 @@ public class ArrayFunctions {
                 int endIdx = ((Long) end).intValue();
 
                 if (startIdx < 0 || endIdx > array.length || startIdx > endIdx) {
-                    throw new RuntimeError("arraySlice() indices out of bounds");
+                    throw ErrorFactory.validationError("arraySlice() indices out of bounds", interpreter.getCurrentCallLocation());
                 }
 
                 Object[] slice = new Object[endIdx - startIdx];
@@ -202,7 +203,7 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arraySort() requires an array argument");
+                    throw ErrorFactory.typeError("arraySort() requires an array argument", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
@@ -233,7 +234,7 @@ public class ArrayFunctions {
                 Object arr2 = arguments.get(1);
 
                 if (!(arr1 instanceof Object[]) || !(arr2 instanceof Object[])) {
-                    throw new RuntimeError("arrayConcat() requires two array arguments");
+                    throw ErrorFactory.typeError("arrayConcat() requires two array arguments", (SourceLocation) null);
                 }
 
                 Object[] array1 = (Object[]) arr1;
@@ -266,12 +267,12 @@ public class ArrayFunctions {
                 Object value = arguments.get(1);
 
                 if (!(size instanceof Long)) {
-                    throw new RuntimeError("arrayFill() first argument must be a number");
+                    throw ErrorFactory.typeError("arrayFill() first argument must be a number", (SourceLocation) null);
                 }
 
                 int arraySize = ((Long) size).intValue();
                 if (arraySize < 0) {
-                    throw new RuntimeError("arrayFill() size cannot be negative");
+                    throw ErrorFactory.validationError("arrayFill() size cannot be negative", (SourceLocation) null);
                 }
 
                 Object[] array = new Object[arraySize];
@@ -300,7 +301,7 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arraySum() requires an array argument");
+                    throw ErrorFactory.typeError("arraySum() requires an array argument", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
@@ -314,7 +315,7 @@ public class ArrayFunctions {
                         sum += (Double) item;
                         hasDouble = true;
                     } else {
-                        throw new RuntimeError("arraySum() requires an array of numbers");
+                        throw ErrorFactory.typeError("arraySum() requires an array of numbers", (SourceLocation) null);
                     }
                 }
 
@@ -340,12 +341,12 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayAverage() requires an array argument");
+                    throw ErrorFactory.typeError("arrayAverage() requires an array argument", (SourceLocation) null);
                 }
 
                 Object[] array = (Object[]) arr;
                 if (array.length == 0) {
-                    throw new RuntimeError("arrayAverage() cannot calculate average of empty array");
+                    throw ErrorFactory.validationError("arrayAverage() cannot calculate average of empty array", (SourceLocation) null);
                 }
 
                 double sum = 0.0;
@@ -355,7 +356,7 @@ public class ArrayFunctions {
                     } else if (item instanceof Double) {
                         sum += (Double) item;
                     } else {
-                        throw new RuntimeError("arrayAverage() requires an array of numbers");
+                        throw ErrorFactory.typeError("arrayAverage() requires an array of numbers", (SourceLocation) null);
                     }
                 }
 
@@ -426,7 +427,7 @@ public class ArrayFunctions {
                 Object newElement = arguments.get(1);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayPush() first argument must be an array");
+                    throw ErrorFactory.typeError("arrayPush() first argument must be an array", (SourceLocation) null);
                 }
 
                 Object[] original = (Object[]) arr;
@@ -457,12 +458,12 @@ public class ArrayFunctions {
                 Object arr = arguments.get(0);
 
                 if (!(arr instanceof Object[])) {
-                    throw new RuntimeError("arrayPop() requires an array argument");
+                    throw ErrorFactory.typeError("arrayPop() requires an array argument", interpreter.getCurrentCallLocation());
                 }
 
                 Object[] original = (Object[]) arr;
                 if (original.length == 0) {
-                    throw new RuntimeError("arrayPop() cannot pop from empty array");
+                    throw ErrorFactory.validationError("arrayPop() cannot pop from empty array", interpreter.getCurrentCallLocation());
                 }
 
                 Object[] newArray = new Object[original.length - 1];
@@ -492,14 +493,14 @@ public class ArrayFunctions {
                 Object element = arguments.get(2);
 
                 if (!(arr instanceof Object[]) || !(index instanceof Long)) {
-                    throw new RuntimeError("arrayInsert() requires array, number, value arguments");
+                    throw ErrorFactory.typeError("arrayInsert() requires array, number, value arguments", (SourceLocation) null);
                 }
 
                 Object[] original = (Object[]) arr;
                 int insertIndex = ((Long) index).intValue();
                 
                 if (insertIndex < 0 || insertIndex > original.length) {
-                    throw new RuntimeError("arrayInsert() index out of bounds");
+                    throw ErrorFactory.validationError("arrayInsert() index out of bounds", interpreter.getCurrentCallLocation());
                 }
 
                 Object[] newArray = new Object[original.length + 1];

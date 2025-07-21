@@ -5,11 +5,14 @@ import dhrlang.lexer.TokenType;
 import dhrlang.stdlib.*;
 import dhrlang.typechecker.TypeChecker;
 import dhrlang.typechecker.TypeException;
+import dhrlang.error.ErrorFactory;
+import dhrlang.error.SourceLocation;
 
 import java.util.*;
 
 public class Interpreter {
     private final ExecutionStack executionStack = new ExecutionStack();
+    private SourceLocation currentCallLocation = null; // Track current call location for error reporting
     
     public Interpreter() {
         initGlobals();
@@ -18,6 +21,11 @@ public class Interpreter {
 
     private final TypeChecker typeChecker = new TypeChecker();
     private final Environment globals = new Environment();
+    
+    public SourceLocation getCurrentCallLocation() {
+        return currentCallLocation;
+    }
+    
     public void execute(Program program) {
         try {
             typeChecker.check(program);
@@ -32,7 +40,7 @@ public class Interpreter {
             if (classDecl.getSuperclass() != null) {
                 Object sc = globals.get(classDecl.getSuperclass().getName().getLexeme());
                 if (!(sc instanceof DhrClass)) {
-                    throw new RuntimeError("Superclass must be a class.");
+                    throw ErrorFactory.typeError("Superclass must be a class.", classDecl.getSuperclass().getSourceLocation());
                 }
                 superclass = (DhrClass) sc;
             }
@@ -41,7 +49,6 @@ public class Interpreter {
             Map<String, Function> staticMethods = new HashMap<>(); 
             Map<String, Object> staticFields = new HashMap<>();
             
-            // Separate static and instance members
             for (FunctionDecl method : classDecl.getFunctions()) {
                 Function function = new Function(method, globals);
                 if (method.hasModifier(Modifier.STATIC)) {
@@ -62,21 +69,30 @@ public class Interpreter {
                 }
             }
             
-            DhrClass klass = new DhrClass(classDecl.getName(), superclass, methods, staticMethods, staticFields);
+            DhrClass klass = new DhrClass(classDecl.getName(), superclass, methods, staticMethods, staticFields, classDecl.isAbstract());
             globals.assign(classDecl.getName(), klass);
         }
-        Object mainClassObj = globals.get("exp");
-        if (!(mainClassObj instanceof DhrClass mainClass)) {
-            throw new RuntimeError("Entry point error: Class 'exp' not found.");
-        }
-        Instance mainInstance = new Instance(mainClass);
-        Function mainMethod = mainClass.findMethod("main");
-        if (mainMethod != null) {
-            if (mainMethod.arity() == 0) {
-                mainMethod.bind(mainInstance).call(this, List.of());
-            } else {
-                throw new RuntimeError("Entry point 'main' should not have parameters.");
+        
+        Function staticMainMethod = null;
+        for (ClassDecl classDecl : program.getClasses()) {
+            FunctionDecl method = classDecl.findMethod("main");
+            if (method != null && method.hasModifier(Modifier.STATIC)) {
+                DhrClass klass = (DhrClass) globals.get(classDecl.getName());
+                staticMainMethod = klass.findStaticMethod("main");
+                break;
             }
+        }
+        
+        if (staticMainMethod == null) {
+            throw ErrorFactory.accessError("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", 
+                                           (SourceLocation) null);
+        }
+        
+        if (staticMainMethod.arity() == 0) {
+            staticMainMethod.call(this, List.of());
+        } else {
+            throw ErrorFactory.typeError("Entry point 'main' should not have parameters.", 
+                                        (SourceLocation) null);
         }
     }
 
@@ -123,12 +139,12 @@ public class Interpreter {
             }
         } else if (stmt instanceof BreakStmt) {
             if (!inLoop) {
-                throw new DhrRuntimeException("'break' statement not within a loop", null);
+                throw ErrorFactory.validationError("'break' statement not within a loop", ErrorFactory.getLocation(stmt));
             }
             throw new BreakException();
         } else if (stmt instanceof ContinueStmt) {
             if (!inLoop) {
-                throw new DhrRuntimeException("'continue' statement not within a loop", null);
+                throw ErrorFactory.validationError("'continue' statement not within a loop", ErrorFactory.getLocation(stmt));
             }
             throw new ContinueException();
         }
@@ -171,7 +187,7 @@ public class Interpreter {
             Function function = new Function(funcDecl, env);
             env.define(funcDecl.getName(), function);
         } else {
-            throw new DhrRuntimeException("Unsupported statement type: " + stmt.getClass(), null);
+            throw ErrorFactory.systemError("Unsupported statement type: " + stmt.getClass(), ErrorFactory.getLocation(stmt));
         }
     }
     
@@ -237,7 +253,7 @@ public class Interpreter {
         } else if (target instanceof GetExpr getExpr) {
             Object object = evaluate(getExpr.getObject(), env);
             if (!(object instanceof Instance instance)) {
-                throw new DhrRuntimeException("Can only increment/decrement object properties.", null);
+                throw ErrorFactory.typeError("Can only increment/decrement object properties", ErrorFactory.getLocation(getExpr));
             }
 
             Object currentValue = instance.get(getExpr.getName());
@@ -255,17 +271,17 @@ public class Interpreter {
             Object index = evaluate(indexExpr.getIndex(), env);
 
             if (!(array instanceof Object[])) {
-                throw new DhrRuntimeException("Can only increment/decrement array elements.", null);
+                throw ErrorFactory.typeError("Can only increment/decrement array elements", ErrorFactory.getLocation(indexExpr));
             }
             if (!(index instanceof Long)) {
-                throw new DhrRuntimeException("Array index must be a number.", null);
+                throw ErrorFactory.typeError("Array index must be a number", ErrorFactory.getLocation(indexExpr));
             }
 
             Object[] arr = (Object[]) array;
             int i = ((Long) index).intValue();
 
             if (i < 0 || i >= arr.length) {
-                throw new DhrRuntimeException("Array index out of bounds.", null);
+                throw ErrorFactory.indexError("Array index out of bounds", ErrorFactory.getLocation(indexExpr));
             }
 
             Object currentValue = arr[i];
@@ -278,7 +294,7 @@ public class Interpreter {
             return numValue;
         }
 
-        throw new DhrRuntimeException("Invalid postfix increment/decrement target.", null);
+        throw ErrorFactory.validationError("Invalid postfix increment/decrement target", ErrorFactory.getLocation(expr));
     }
 
     private Object evaluatePrefixIncrement(PrefixIncrementExpr expr, Environment env) {
@@ -300,7 +316,7 @@ public class Interpreter {
         } else if (target instanceof GetExpr getExpr) {
             Object object = evaluate(getExpr.getObject(), env);
             if (!(object instanceof Instance instance)) {
-                throw new DhrRuntimeException("Can only increment/decrement object properties.", null);
+                throw ErrorFactory.typeError("Can only increment/decrement object properties", ErrorFactory.getLocation(getExpr));
             }
 
             Object currentValue = instance.get(getExpr.getName());
@@ -318,17 +334,17 @@ public class Interpreter {
             Object index = evaluate(indexExpr.getIndex(), env);
 
             if (!(array instanceof Object[])) {
-                throw new DhrRuntimeException("Can only increment/decrement array elements.", null);
+                throw ErrorFactory.typeError("Can only increment/decrement array elements", ErrorFactory.getLocation(indexExpr));
             }
             if (!(index instanceof Long)) {
-                throw new DhrRuntimeException("Array index must be a number.", null);
+                throw ErrorFactory.typeError("Array index must be a number", ErrorFactory.getLocation(indexExpr));
             }
 
             Object[] arr = (Object[]) array;
             int i = ((Long) index).intValue();
 
             if (i < 0 || i >= arr.length) {
-                throw new DhrRuntimeException("Array index out of bounds.", null);
+                throw ErrorFactory.indexError("Array index out of bounds", ErrorFactory.getLocation(indexExpr));
             }
 
             Object currentValue = arr[i];
@@ -341,13 +357,13 @@ public class Interpreter {
             return newValue;
         }
 
-        throw new DhrRuntimeException("Invalid prefix increment/decrement target.", null);
+        throw ErrorFactory.validationError("Invalid prefix increment/decrement target", ErrorFactory.getLocation(expr));
     }
 
     private void validateNumberForIncrement(Object value, Token operator) {
         if (!(value instanceof Long)) {
-            throw new DhrRuntimeException("Can only increment/decrement numbers, got: " +
-                    (value == null ? "null" : value.getClass().getSimpleName()), null);
+            throw ErrorFactory.typeError("Can only increment/decrement numbers, got: " +
+                    (value == null ? "null" : value.getClass().getSimpleName()), operator);
         }
     }
     public Object evaluate(Expression expr, Environment env) {
@@ -365,26 +381,24 @@ public class Interpreter {
             String className = newExpr.getClassName();
             Object klassObj = globals.get(className);
             if (!(klassObj instanceof DhrClass)) {
-                throw new DhrRuntimeException("Can only instantiate classes, not '" + className + "'.", null);
+                throw ErrorFactory.typeError("Can only instantiate classes, not '" + className + "'.", ErrorFactory.getLocation(newExpr));
             }
             DhrClass klass = (DhrClass) klassObj;
-            Instance instance = new Instance(klass);
             List<Object> arguments = new ArrayList<>();
             for (Expression arg : newExpr.getArguments()) {
-                arguments.add(evaluate(arg, env)); // Use the current environment
+                arguments.add(evaluate(arg, env)); 
             }
-
-            Function initializer = klass.findMethod("init");
-            if (initializer != null) {
-                if (initializer.arity() != arguments.size()) {
-                    throw new DhrRuntimeException("Expected " + initializer.arity() + " arguments for " + className + " constructor but got " + arguments.size(), null);
-                }
-                initializer.bind(instance).call(this, arguments);
-            } else if (!arguments.isEmpty()){
-                throw new DhrRuntimeException("Class '" + className + "' does not have an 'init' constructor and cannot be called with arguments.", null);
+            
+            try {
+                // Set current call location for error reporting
+                SourceLocation previousLocation = currentCallLocation;
+                currentCallLocation = ErrorFactory.getLocation(newExpr);
+                Object result = klass.call(this, arguments);
+                currentCallLocation = previousLocation; // Restore previous location
+                return result;
+            } catch (RuntimeError e) {
+                throw ErrorFactory.runtimeError(e.getMessage(), ErrorFactory.getLocation(newExpr));
             }
-
-            return instance;
         }
         if (expr instanceof SuperExpr superExpr) {
             String methodName = superExpr.method.getLexeme();
@@ -393,12 +407,12 @@ public class Interpreter {
             DhrClass superclass = instance.getKlass().superclass;
 
             if (superclass == null) {
-                throw new DhrRuntimeException("Cannot use 'super' in a class with no superclass.", null);
+                throw ErrorFactory.accessError("Cannot use 'super' in a class with no superclass", ErrorFactory.getLocation(superExpr));
             }
 
             Function method = superclass.findMethod(methodName);
             if (method == null) {
-                throw new DhrRuntimeException("Undefined method '" + methodName + "' in superclass.", null);
+                throw ErrorFactory.accessError("Undefined method '" + methodName + "' in superclass", ErrorFactory.getLocation(superExpr));
             }
             return method.bind(instance);
         }
@@ -418,7 +432,7 @@ public class Interpreter {
             if (object instanceof Instance) {
                 return ((Instance) object).get(getExpr.getName());
             }
-            throw new DhrRuntimeException("Only instances have properties.", null);
+            throw ErrorFactory.typeError("Only instances have properties", ErrorFactory.getLocation(getExpr));
         }
         
         if (expr instanceof StaticAccessExpr staticExpr) {
@@ -427,21 +441,21 @@ public class Interpreter {
             
             Object classObj = globals.get(className);
             if (!(classObj instanceof DhrClass)) {
-                throw new DhrRuntimeException("'" + className + "' is not a class.", null);
+                throw ErrorFactory.typeError("'" + className + "' is not a class", ErrorFactory.getLocation(staticExpr));
             }
             
             DhrClass dhrClass = (DhrClass) classObj;
             
             // Try to get static field first
             try {
-                return dhrClass.getStaticField(memberName);
-            } catch (RuntimeError e) {
+                return dhrClass.getStaticField(memberName, ErrorFactory.getLocation(staticExpr));
+            } catch (DhrRuntimeException e) {
                 // If not a field, try static method
                 Function staticMethod = dhrClass.findStaticMethod(memberName);
                 if (staticMethod != null) {
                     return staticMethod;
                 }
-                throw new DhrRuntimeException("Static member '" + memberName + "' not found in class '" + className + "'.", null);
+                throw ErrorFactory.accessError("Static member '" + memberName + "' not found in class '" + className + "'", ErrorFactory.getLocation(staticExpr));
             }
         }
         
@@ -452,7 +466,7 @@ public class Interpreter {
             
             Object classObj = globals.get(className);
             if (!(classObj instanceof DhrClass)) {
-                throw new DhrRuntimeException("'" + className + "' is not a class.", null);
+                throw ErrorFactory.typeError("'" + className + "' is not a class", ErrorFactory.getLocation(staticAssignExpr));
             }
             
             DhrClass dhrClass = (DhrClass) classObj;
@@ -466,7 +480,7 @@ public class Interpreter {
                 instance.set(setExpr.getName(), value);
                 return value;
             } else {
-                throw new DhrRuntimeException("Only objects have fields.", null);
+                throw ErrorFactory.typeError("Only objects have fields", ErrorFactory.getLocation(setExpr));
             }
         }
 
@@ -487,20 +501,18 @@ public class Interpreter {
         if (expr instanceof CallExpr call) {
             Object callee = evaluate(call.getCallee(), env);
 
-            if (!(callee instanceof Callable function)) {
-                throw new DhrRuntimeException("Can only call functions and classes", null);
-            }
+        if (!(callee instanceof Callable function)) {
+            throw ErrorFactory.typeError("Can only call functions and classes", ErrorFactory.getLocation(call));
+        }
 
-            List<Object> arguments = new ArrayList<>();
-            for (Expression argument : call.getArguments()) {
-                arguments.add(evaluate(argument, env));
-            }
+        List<Object> arguments = new ArrayList<>();
+        for (Expression argument : call.getArguments()) {
+            arguments.add(evaluate(argument, env));
+        }
 
-            if (arguments.size() != function.arity()) {
-                throw new DhrRuntimeException("Expected " + function.arity() + " arguments but got " + arguments.size(), null);
-            }
-
-            // Push to execution stack for user-defined functions
+        if (arguments.size() != function.arity()) {
+            throw ErrorFactory.validationError("Expected " + function.arity() + " arguments but got " + arguments.size(), ErrorFactory.getLocation(call));
+        }            
             String functionName = "unknown";
             if (function instanceof Function func) {
                 functionName = func.getDeclaration().getName();
@@ -508,7 +520,12 @@ public class Interpreter {
             }
 
             try {
-                return function.call(this, arguments);
+                // Set current call location for error reporting
+                SourceLocation previousLocation = currentCallLocation;
+                currentCallLocation = ErrorFactory.getLocation(call);
+                Object result = function.call(this, arguments);
+                currentCallLocation = previousLocation; // Restore previous location
+                return result;
             } finally {
                 // Pop from execution stack for user-defined functions
                 if (function instanceof Function) {
@@ -554,7 +571,7 @@ public class Interpreter {
         }
 
 
-        throw new DhrRuntimeException("Unsupported expression type: " + expr.getClass(), null);
+        throw ErrorFactory.systemError("Unsupported expression type: " + expr.getClass(), ErrorFactory.getLocation(expr));
     }
     private Object evaluateArray(ArrayExpr expr, Environment env) {
         Object[] array = new Object[expr.getElements().size()];
@@ -604,18 +621,18 @@ public class Interpreter {
         Object index = evaluate(expr.getIndex(), env);
 
         if (!(object instanceof Object[])) {
-            throw new DhrRuntimeException("Can only index arrays.", null);
+            throw ErrorFactory.typeError("Can only index arrays.", ErrorFactory.getLocation(expr));
         }
 
         if (!(index instanceof Long)) {
-            throw new DhrRuntimeException("Array index must be a number.", null);
+            throw ErrorFactory.typeError("Array index must be a number.", ErrorFactory.getLocation(expr));
         }
 
         Object[] array = (Object[]) object;
         int i = ((Long) index).intValue();
 
         if (i < 0 || i >= array.length) {
-            throw new DhrRuntimeException("Array index " + i + " out of bounds for array of length " + array.length + ".", null);
+            throw ErrorFactory.indexError("Array index " + i + " out of bounds for array of length " + array.length + ".", ErrorFactory.getLocation(expr));
         }
 
         return array[i];
@@ -627,18 +644,18 @@ public class Interpreter {
         Object value = evaluate(expr.getValue(), env);
 
         if (!(object instanceof Object[])) {
-            throw new DhrRuntimeException("Can only assign to array elements.", null);
+            throw ErrorFactory.typeError("Can only assign to array elements.", ErrorFactory.getLocation(expr));
         }
 
         if (!(index instanceof Long)) {
-            throw new DhrRuntimeException("Array index must be a number.", null);
+            throw ErrorFactory.typeError("Array index must be a number.", ErrorFactory.getLocation(expr));
         }
 
         Object[] array = (Object[]) object;
         int i = ((Long) index).intValue();
 
         if (i < 0 || i >= array.length) {
-            throw new DhrRuntimeException("Array index " + i + " out of bounds for array of length " + array.length + ".", null);
+            throw ErrorFactory.indexError("Array index " + i + " out of bounds for array of length " + array.length + ".", ErrorFactory.getLocation(expr));
         }
 
         array[i] = value;
@@ -688,7 +705,7 @@ public class Interpreter {
 
             case SLASH:
                 double divisor = toDouble(right);
-                if (divisor == 0.0) throw new DhrRuntimeException("Division by zero.", null);
+                if (divisor == 0.0) throw ErrorFactory.arithmeticError("Division by zero.", operator);
                 return toDouble(left) / divisor;
             case MOD:
                 if (left instanceof Double || right instanceof Double) {

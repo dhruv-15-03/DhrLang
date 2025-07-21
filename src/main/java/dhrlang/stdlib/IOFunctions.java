@@ -2,7 +2,7 @@ package dhrlang.stdlib;
 
 import dhrlang.interpreter.Interpreter;
 import dhrlang.interpreter.NativeFunction;
-import dhrlang.interpreter.RuntimeError;
+import dhrlang.error.ErrorFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -26,7 +26,10 @@ public class IOFunctions {
                     String line = reader.readLine();
                     return line != null ? line : "";
                 } catch (IOException e) {
-                    throw new RuntimeError("Error reading input: " + e.getMessage());
+                    throw ErrorFactory.runtimeError(
+                        "Error reading input: " + e.getMessage(),
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
             }
 
@@ -48,7 +51,10 @@ public class IOFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object prompt = arguments.get(0);
                 if (!(prompt instanceof String)) {
-                    throw new RuntimeError("readLineWithPrompt() requires a string prompt");
+                    throw ErrorFactory.typeError(
+                        "readLineWithPrompt() requires a string prompt",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 System.out.print(prompt);
@@ -56,7 +62,10 @@ public class IOFunctions {
                     String line = reader.readLine();
                     return line != null ? line : "";
                 } catch (IOException e) {
-                    throw new RuntimeError("Error reading input: " + e.getMessage());
+                    throw ErrorFactory.runtimeError(
+                        "Error reading input: " + e.getMessage(),
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
             }
 
@@ -78,13 +87,19 @@ public class IOFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("toNum() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "toNum() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 try {
                     return Long.parseLong(((String) arg).trim());
                 } catch (NumberFormatException e) {
-                    throw new RuntimeError("toNum() could not parse '" + arg + "' as an integer");
+                    throw ErrorFactory.validationError(
+                        "toNum() could not parse '" + arg + "' as an integer",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
             }
 
@@ -106,13 +121,19 @@ public class IOFunctions {
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
                 if (!(arg instanceof String)) {
-                    throw new RuntimeError("parseDouble() requires a string argument");
+                    throw ErrorFactory.typeError(
+                        "toDuo() requires a string argument",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
                 
                 try {
                     return Double.parseDouble(((String) arg).trim());
                 } catch (NumberFormatException e) {
-                    throw new RuntimeError("toDuo() could not parse '" + arg + "' as a number");
+                    throw ErrorFactory.validationError(
+                        "toDuo() could not parse '" + arg + "' as a number",
+                        interpreter.getCurrentCallLocation()
+                    );
                 }
             }
 

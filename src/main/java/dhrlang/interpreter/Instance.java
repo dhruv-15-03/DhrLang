@@ -1,6 +1,7 @@
 package dhrlang.interpreter;
 
 import dhrlang.lexer.Token;
+import dhrlang.error.ErrorFactory;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,7 +31,7 @@ public class Instance {
             return method.bind(this);
         }
 
-        throw new RuntimeError("Undefined property '" + name.getLexeme() + "'.");
+        throw ErrorFactory.accessError("Undefined property '" + name.getLexeme() + "'.", name.getLocation());
     }
 
     @Override

@@ -33,6 +33,7 @@ public enum TokenType {
     PROTECTED,      // protected - Protected access modifier  
     PUBLIC,         // public - Public access modifier
     STATIC,         // static - Static modifier
+    ABSTRACT,       // abstract - Abstract modifier
 
     // Exception handling keywords
     TRY,            // try     - Try block for exception handling

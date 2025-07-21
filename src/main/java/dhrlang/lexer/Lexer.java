@@ -1,6 +1,8 @@
 package dhrlang.lexer;
 
 import dhrlang.error.ErrorReporter;
+import dhrlang.error.SourceLocation;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,6 +51,7 @@ public class Lexer {
         keywords.put("protected", TokenType.PROTECTED);
         keywords.put("public", TokenType.PUBLIC);
         keywords.put("static", TokenType.STATIC);
+        keywords.put("abstract", TokenType.ABSTRACT);
     }
 
     public Lexer(String source) {
@@ -62,6 +65,10 @@ public class Lexer {
 
     public void setErrorReporter(ErrorReporter errorReporter) {
         this.errorReporter = errorReporter;
+    }
+    
+    private SourceLocation getCurrentLocation() {
+        return new SourceLocation(null, line, column, current, current);
     }
 
     public List<Token> scanTokens() {
@@ -106,6 +113,15 @@ public class Lexer {
             case '/':
                 if (match('/')) {
                     while (peek() != '\n' && !isAtEnd()) advance();
+                } else if (match('*')) {
+                    while (!isAtEnd()) {
+                        if (peek() == '*' && peekNext() == '/') {
+                            advance(); // consume *
+                            advance(); // consume /
+                            break;
+                        }
+                        advance();
+                    }
                 } else {
                     addToken(TokenType.SLASH);
                 }
@@ -120,7 +136,8 @@ public class Lexer {
                     addToken(TokenType.AND);
                 } else {
                     if (errorReporter != null) {
-                        errorReporter.error(line, "Unexpected character: '&'. Did you mean '&&'?");
+                        errorReporter.error(getCurrentLocation(), "Unexpected character: '&'. Did you mean '&&'?", 
+                                          "Use '&&' for logical AND operations in DhrLang");
                     } else {
                         System.err.println("[Line " + line + "] Unexpected character: '&'. Did you mean '&&'?");
                     }
@@ -131,7 +148,8 @@ public class Lexer {
                     addToken(TokenType.OR);
                 } else {
                     if (errorReporter != null) {
-                        errorReporter.error(line, "Unexpected character: '|'. Did you mean '||'?");
+                        errorReporter.error(getCurrentLocation(), "Unexpected character: '|'. Did you mean '||'?",
+                                          "Use '||' for logical OR operations in DhrLang");
                     } else {
                         System.err.println("[Line " + line + "] Unexpected character: '|'. Did you mean '||'?");
                     }
@@ -157,7 +175,8 @@ public class Lexer {
                     identifier();
                 } else {
                     if (errorReporter != null) {
-                        errorReporter.error(line, "Unexpected character: '" + c + "'");
+                        errorReporter.error(getCurrentLocation(), "Unexpected character: '" + c + "'",
+                                          "Check for typos or unsupported characters. DhrLang supports letters, numbers, and standard operators");
                     } else {
                         System.err.println("[Line " + line + "] Unexpected character: '" + c + "'");
                     }
@@ -184,14 +203,20 @@ public class Lexer {
         return source.charAt(current + 1);
     }
     private void string() {
+        int stringStartLine = line;
+        int stringStartLineStart = lineStart;
+        
         while (peek() != '"' && !isAtEnd()) {
-            advance(); // advance() handles newlines properly
+            advance();
         }
         if (isAtEnd()) {
             if (errorReporter != null) {
-                errorReporter.error(line, "Unterminated string.");
+                int stringStartColumn = start - stringStartLineStart + 1;
+                SourceLocation stringStart = new SourceLocation(null, stringStartLine, stringStartColumn, start, current);
+                errorReporter.error(stringStart, "Unterminated string.",
+                                  "Add a closing quote \" to complete the string literal");
             } else {
-                System.err.println("[Line " + line + "] Unterminated string.");
+                System.err.println("[Line " + stringStartLine + "] Unterminated string.");
             }
             return;
         }
@@ -212,7 +237,8 @@ public class Lexer {
 
         if (peek() != '\'') {
             if (errorReporter != null) {
-                errorReporter.error(line, "Invalid char literal.");
+                errorReporter.error(getCurrentLocation(), "Invalid char literal.",
+                                  "Character literals must be enclosed in single quotes: 'a' or '\\n'");
             } else {
                 System.err.println("[Line " + line + "] Invalid char literal.");
             }
