@@ -1,0 +1,15 @@
+// Test Case: arraySort function with quicksort algorithm
+class exp {
+    kaam main() {
+        for(num i=0;i<3;i++){
+            try {
+                i++;
+                print(i+ " ");
+            }
+            catch( e) {
+                print(e);
+            }
+        }
+        return;
+    }
+}
