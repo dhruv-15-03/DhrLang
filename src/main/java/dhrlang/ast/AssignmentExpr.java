@@ -12,6 +12,9 @@ public class AssignmentExpr extends Expression {
     public AssignmentExpr(Token name, Expression value) {
         this.name = name;
         this.value = value;
+        if (name != null) {
+            this.setSourceLocation(name.getLocation());
+        }
     }
 
     public Token getName() {

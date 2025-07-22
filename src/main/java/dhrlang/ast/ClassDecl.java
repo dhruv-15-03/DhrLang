@@ -4,11 +4,13 @@ import dhrlang.error.SourceLocation;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
 
 
 public class ClassDecl implements ASTNode {
     private final String name;
     private final VariableExpr superclass;
+    private final List<VariableExpr> interfaces;
     private final List<FunctionDecl> functions;
     private final List<VarDecl> variables;
     private final Set<Modifier> modifiers;
@@ -17,18 +19,27 @@ public class ClassDecl implements ASTNode {
     private SourceLocation sourceLocation;
 
     public ClassDecl(String name, VariableExpr superclass, List<FunctionDecl> functions, List<VarDecl> variables) {
-        this(name, superclass, functions, variables, new HashSet<>());
+        this(name, superclass, new ArrayList<>(), functions, variables, new HashSet<>());
     }
     
     public ClassDecl(String name, VariableExpr superclass, List<FunctionDecl> functions, List<VarDecl> variables, Set<Modifier> modifiers) {
+        this(name, superclass, new ArrayList<>(), functions, variables, modifiers);
+    }
+    
+    public ClassDecl(String name, VariableExpr superclass, List<VariableExpr> interfaces, List<FunctionDecl> functions, List<VarDecl> variables, Set<Modifier> modifiers) {
         this.name = name;
         this.functions = functions;
         this.variables = variables;
         this.superclass = superclass;
+        this.interfaces = interfaces != null ? interfaces : new ArrayList<>();
         this.modifiers = modifiers != null ? modifiers : new HashSet<>();
     }
     public VariableExpr getSuperclass() {
         return superclass;
+    }
+    
+    public List<VariableExpr> getInterfaces() {
+        return interfaces;
     }
     public FunctionDecl findMethod(String name) {
         for (FunctionDecl function : this.functions) {

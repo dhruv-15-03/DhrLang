@@ -3,6 +3,7 @@ package dhrlang.ast;
 public interface ASTVisitor<R> {
     R visitProgram(Program program);
     R visitClassDecl(ClassDecl classDecl);
+    R visitInterfaceDecl(InterfaceDecl interfaceDecl);
     R visitFunctionDecl(FunctionDecl functionDecl);
     R visitVarDecl(VarDecl varDecl);
 

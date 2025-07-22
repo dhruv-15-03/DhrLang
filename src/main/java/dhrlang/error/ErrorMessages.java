@@ -24,6 +24,30 @@ public class ErrorMessages {
             hint = "All code must be inside classes. Start with 'class ClassName { ... }'";
         } else if (message.contains("Expected type")) {
             hint = "Specify a type like 'num', 'sab', 'kya', 'duo' before the variable name";
+        } else if (message.contains("Expected expression")) {
+            hint = "Provide a valid expression like a variable, literal, or function call";
+        } else if (message.contains("Invalid assignment target")) {
+            hint = "You can only assign to variables, object properties, or array elements";
+        } else if (message.contains("try statement must have")) {
+            hint = "Add either 'catch (e) { ... }' or 'finally { ... }' after the try block";
+        } else if (message.contains("Duplicate modifier")) {
+            hint = "Remove the duplicate modifier. Each modifier (public, private, static, etc.) can only appear once";
+        } else if (message.contains("prefix") || message.contains("increment") || message.contains("decrement")) {
+            hint = "Prefix/postfix operators (++ and --) can only be used with variables, not literals or expressions";
+        } else if (message.contains("field or method declaration")) {
+            hint = "Inside a class, you can only declare fields (variables) or methods (functions)";
+        } else if (message.contains("Expected 'interface'")) {
+            hint = "Use 'interface InterfaceName { ... }' to declare an interface";
+        } else if (message.contains("Interface can only contain method declarations")) {
+            hint = "Interfaces cannot have fields, only method signatures like 'num methodName();'";
+        } else if (message.contains("method declaration in interface")) {
+            hint = "Declare methods in interfaces like: 'returnType methodName(parameters);' without implementation";
+        } else if (message.contains("implements")) {
+            hint = "Use 'class ClassName implements InterfaceName { ... }' to implement an interface";
+        } else if (message.contains("must implement")) {
+            hint = "Provide implementations for all methods declared in the implemented interface(s)";
+        } else if (message.contains("@Override")) {
+            hint = "Use '@Override' annotation before methods that override parent class or interface methods";
         }
         
         return hint;
@@ -117,5 +141,30 @@ public class ErrorMessages {
             return "Use '||' for logical OR operations in DhrLang";
         }
         return "Check the syntax and ensure all characters are valid in DhrLang";
+    }
+    
+    public static String getInterfaceErrorHint(String errorType) {
+        switch (errorType) {
+            case "DUPLICATE_INTERFACE":
+                return "Each interface name must be unique. Choose a different name for your interface";
+            case "NAME_CONFLICT":
+                return "Classes and interfaces cannot share the same name. Use different names to avoid conflicts";
+            case "INTERFACE_METHOD_BODY":
+                return "Interface methods should only declare signatures. Remove the method body and end with a semicolon";
+            case "INTERFACE_PRIVATE_METHOD":
+                return "Interface methods are implicitly public. Remove the 'private' modifier";
+            case "INTERFACE_STATIC_METHOD":
+                return "Interface methods define contracts for instances. Static methods are not allowed";
+            case "INTERFACE_FINAL_METHOD":
+                return "Interface methods are meant to be implemented by classes. Final methods cannot be overridden";
+            case "MISSING_IMPLEMENTATION":
+                return "Implementing classes must provide concrete implementations for all interface methods";
+            case "SIGNATURE_MISMATCH":
+                return "Method signatures must match exactly: same return type, method name, and parameter types";
+            case "UNDEFINED_INTERFACE":
+                return "Make sure the interface is declared before implementing it, and check for typos";
+            default:
+                return "Follow proper interface syntax and implementation rules";
+        }
     }
 }

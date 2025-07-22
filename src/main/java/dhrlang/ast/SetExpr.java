@@ -11,6 +11,9 @@ public  class SetExpr extends Expression {
         this.object = object;
         this.name = name;
         this.value = value;
+        if (name != null) {
+            this.setSourceLocation(name.getLocation());
+        }
     }
 
     public Expression getObject() {

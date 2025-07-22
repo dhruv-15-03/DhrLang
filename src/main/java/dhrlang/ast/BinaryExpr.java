@@ -14,6 +14,9 @@ public class BinaryExpr extends Expression {
         this.left = left;
         this.operator = operator;
         this.right = right;
+        if (operator != null) {
+            this.setSourceLocation(operator.getLocation());
+        }
     }
 
     public Expression getLeft() {

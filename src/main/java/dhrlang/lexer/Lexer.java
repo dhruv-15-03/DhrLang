@@ -43,6 +43,9 @@ public class Lexer {
         keywords.put("this", TokenType.THIS);
         keywords.put("extends", TokenType.EXTENDS);
         keywords.put("super", TokenType.SUPER);
+        keywords.put("interface", TokenType.INTERFACE);
+        keywords.put("implements", TokenType.IMPLEMENTS);
+        keywords.put("Override", TokenType.OVERRIDE);
         keywords.put("try", TokenType.TRY);
         keywords.put("catch", TokenType.CATCH);
         keywords.put("finally", TokenType.FINALLY);
@@ -52,6 +55,7 @@ public class Lexer {
         keywords.put("public", TokenType.PUBLIC);
         keywords.put("static", TokenType.STATIC);
         keywords.put("abstract", TokenType.ABSTRACT);
+        keywords.put("final", TokenType.FINAL);
     }
 
     public Lexer(String source) {
@@ -156,17 +160,27 @@ public class Lexer {
                 }
                 break;
 
-            // Whitespace
             case ' ':
             case '\r':
             case '\t':
                 break;
             case '\n':
-                // Newline is handled in advance() method
                 break;
 
             case '"': string(); break;
             case '\'': character(); break;
+            case '@': 
+                if (isAlpha(peek())) {
+                    identifier(); 
+                } else {
+                    if (errorReporter != null) {
+                        errorReporter.error(getCurrentLocation(), "Unexpected character: '@'",
+                                          "Use '@Override' for method override annotations");
+                    } else {
+                        System.err.println("[Line " + line + "] Unexpected character: '@'");
+                    }
+                }
+                break;
 
             default:
                 if (isDigit(c)) {
@@ -187,8 +201,13 @@ public class Lexer {
         while (isAlphaNumeric(peek())) advance();
 
         String text = source.substring(start, current);
-        TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
-        addToken(type, text);
+        
+        if (text.equals("@Override")) {
+            addToken(TokenType.OVERRIDE, text);
+        } else {
+            TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
+            addToken(type, text);
+        }
     }
     private void number() {
         while (isDigit(peek())) advance();
@@ -295,7 +314,7 @@ public class Lexer {
     private boolean isAlpha(char c) {
         return (c >= 'a' && c <= 'z') ||
                 (c >= 'A' && c <= 'Z') ||
-                c == '_';
+                c == '_' || c == '@';
     }
     private boolean isAlphaNumeric(char c) {
         return isAlpha(c) || isDigit(c);

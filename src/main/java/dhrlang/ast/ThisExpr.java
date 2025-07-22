@@ -7,6 +7,9 @@ public class ThisExpr extends Expression {
 
     public ThisExpr(Token keyword) {
         this.keyword = keyword;
+        if (keyword != null) {
+            this.setSourceLocation(keyword.getLocation());
+        }
     }
 
     @Override

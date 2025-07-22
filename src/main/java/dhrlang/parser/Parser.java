@@ -27,12 +27,17 @@ public class Parser {
 
     public Program parse() {
         List<ClassDecl> classes = new ArrayList<>();
+        List<InterfaceDecl> interfaces = new ArrayList<>();
 
         try {
             while (!isAtEnd()) {
-                classes.add(parseClassDecl());
+                if (check(TokenType.INTERFACE)) {
+                    interfaces.add(parseInterfaceDecl());
+                } else {
+                    classes.add(parseClassDecl());
+                }
             }
-            return new Program(classes);
+            return new Program(classes, interfaces);
         } catch (ParseException e) {
             throw e;
         }
@@ -48,6 +53,15 @@ public class Parser {
             consume(TokenType.IDENTIFIER, "Expected superclass name.");
             superclass = new VariableExpr(previous());
         }
+        
+        List<VariableExpr> interfaces = new ArrayList<>();
+        if (match(TokenType.IMPLEMENTS)) {
+            do {
+                consume(TokenType.IDENTIFIER, "Expected interface name.");
+                interfaces.add(new VariableExpr(previous()));
+            } while (match(TokenType.COMMA));
+        }
+        
         consume(TokenType.LBRACE, "Expected '{' before class body.");
         List<FunctionDecl> functions = new ArrayList<>();
         List<VarDecl> variables = new ArrayList<>();
@@ -67,9 +81,52 @@ public class Parser {
             }
         }
         consume(TokenType.RBRACE, "Expected '}' after class body.");
-        ClassDecl classDecl = new ClassDecl(name.getLexeme(), superclass, functions, variables, classModifiers);
+        ClassDecl classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers);
         classDecl.setSourceLocation(name.getLocation());
         return classDecl;
+    }
+    
+    private InterfaceDecl parseInterfaceDecl() {
+        Set<Modifier> interfaceModifiers = parseModifiers();
+        
+        consume(TokenType.INTERFACE, "Expected 'interface' keyword to start an interface declaration.");
+        Token name = consume(TokenType.IDENTIFIER, "Expected interface name after 'interface'.");
+        
+        consume(TokenType.LBRACE, "Expected '{' before interface body.");
+        
+        List<FunctionDecl> methods = new ArrayList<>();
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            Set<Modifier> methodModifiers = parseModifiers();
+            
+            if (checkType()) {
+                Token typeToken = consumeType("Expected return type for interface method.");
+                Token nameToken = consume(TokenType.IDENTIFIER, "Expected method name after return type.");
+                
+                if (!check(TokenType.LPAREN)) {
+                    throw error(peek(), "Interface can only contain method declarations, not fields.");
+                }
+                consume(TokenType.LPAREN, "Expected '(' after method name.");
+                List<VarDecl> parameters = new ArrayList<>();
+                if (!check(TokenType.RPAREN)) {
+                    do {
+                        parameters.add(parseParameter());
+                    } while (match(TokenType.COMMA));
+                }
+                consume(TokenType.RPAREN, "Expected ')' after method parameters.");
+                consume(TokenType.SEMICOLON, "Expected ';' after interface method declaration.");
+
+                FunctionDecl method = new FunctionDecl(typeToken.getLexeme(), nameToken.getLexeme(), parameters, null, methodModifiers);
+                method.setSourceLocation(nameToken.getLocation());
+                methods.add(method);
+            } else {
+                throw error(peek(), "Expected method declaration in interface.");
+            }
+        }
+        
+        consume(TokenType.RBRACE, "Expected '}' after interface body.");
+        InterfaceDecl interfaceDecl = new InterfaceDecl(name.getLexeme(), methods, interfaceModifiers);
+        interfaceDecl.setSourceLocation(name.getLocation());
+        return interfaceDecl;
     }
 
     private Expression parseCallDot() {
@@ -434,7 +491,7 @@ public class Parser {
 
     }
     private Expression arrayLiteral() {
-        Token lBracket = previous(); // Capture the '[' token for location
+        Token lBracket = previous(); 
         List<Expression> elements = new ArrayList<>();
 
         if (!check(TokenType.RBRACKET)) {
@@ -732,7 +789,12 @@ public class Parser {
     
     private Set<Modifier> parseModifiers() {
         Set<Modifier> modifiers = new HashSet<>();
-        while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC, TokenType.ABSTRACT)) {
+        
+        if (match(TokenType.OVERRIDE)) {
+            modifiers.add(Modifier.OVERRIDE);
+        }
+        
+        while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC, TokenType.ABSTRACT, TokenType.FINAL)) {
             TokenType tokenType = previous().getType();
             Modifier modifier = Modifier.fromTokenType(tokenType);
             if (modifiers.contains(modifier)) {

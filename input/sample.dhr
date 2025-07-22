@@ -1,15 +1,18 @@
-// Test Case: arraySort function with quicksort algorithm
-class exp {
-    kaam main() {
-        for(num i=0;i<3;i++){
-            try {
-                i++;
-                print(i+ " ");
-            }
-            catch( e) {
-                print(e);
-            }
+// Test Case: Hello World with DhrLang
+class Main {
+    static kaam main() {
+        num x = 42;
+        sab message = "Hello from DhrLang!";
+        kya isTrue = true;
+        
+        printLine("Number: " + x);
+        printLine("Message: " + message);
+        printLine("Boolean: " + isTrue);
+        
+        for(num i = 1; i <= 5; i++) {
+            printLine("Count: " + i);
         }
+        
         return;
     }
 }

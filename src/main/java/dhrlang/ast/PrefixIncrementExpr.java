@@ -9,6 +9,9 @@ public class PrefixIncrementExpr extends Expression {
     public PrefixIncrementExpr(Token operator, Expression target) {
         this.operator = operator;
         this.target = target;
+        if (operator != null) {
+            this.setSourceLocation(operator.getLocation());
+        }
     }
 
     public Token getOperator() {

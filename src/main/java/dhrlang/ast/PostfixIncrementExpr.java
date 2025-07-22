@@ -9,6 +9,9 @@ public class PostfixIncrementExpr extends Expression {
     public PostfixIncrementExpr(Expression target, Token operator) {
         this.target = target;
         this.operator = operator;
+        if (operator != null) {
+            this.setSourceLocation(operator.getLocation());
+        }
     }
 
     public Expression getTarget() {

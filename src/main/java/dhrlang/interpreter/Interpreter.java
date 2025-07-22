@@ -520,14 +520,12 @@ public class Interpreter {
             }
 
             try {
-                // Set current call location for error reporting
                 SourceLocation previousLocation = currentCallLocation;
                 currentCallLocation = ErrorFactory.getLocation(call);
                 Object result = function.call(this, arguments);
-                currentCallLocation = previousLocation; // Restore previous location
+                currentCallLocation = previousLocation;
                 return result;
             } finally {
-                // Pop from execution stack for user-defined functions
                 if (function instanceof Function) {
                     executionStack.pop();
                 }
@@ -933,5 +931,4 @@ public class Interpreter {
         
         return obj.toString();
     }
-
 }

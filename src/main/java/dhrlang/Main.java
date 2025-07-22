@@ -82,17 +82,6 @@ public class Main {
         try {
             program = parser.parse();
         } catch (ParseException e) {
-            String hint = null;
-            if (e.getToken() != null) {
-                hint = ErrorMessages.getParseErrorHint("", e.getToken());
-                if (hint != null) {
-                    errorReporter.error(e.getToken().getLocation(), e.getMessage(), hint);
-                } else {
-                    errorReporter.error(e.getToken().getLocation(), e.getMessage());
-                }
-            } else {
-                errorReporter.error(e.getLine(), e.getMessage());
-            }
         }
 
         if (errorReporter.hasErrors()) return;

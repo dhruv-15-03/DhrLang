@@ -12,6 +12,9 @@ public class UnaryExpr extends Expression {
     public UnaryExpr(Token operator, Expression right) {
         this.operator = operator;
         this.right = right;
+        if (operator != null) {
+            this.setSourceLocation(operator.getLocation());
+        }
     }
 
     public Token getOperator() {

@@ -11,6 +11,9 @@ public class StaticAssignExpr extends Expression {
         this.className = className;
         this.memberName = memberName;
         this.value = value;
+        if (memberName != null) {
+            this.setSourceLocation(memberName.getLocation());
+        }
     }
 
     @Override

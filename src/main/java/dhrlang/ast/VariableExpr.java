@@ -10,6 +10,9 @@ public class VariableExpr extends Expression {
 
     public VariableExpr(Token name) {
         this.name = name;
+        if (name != null) {
+            this.setSourceLocation(name.getLocation());
+        }
     }
 
     public Token getName() {

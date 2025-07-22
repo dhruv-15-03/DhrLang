@@ -165,8 +165,14 @@ public class ErrorReporter {
         String[] lines = sourceCode.split("\n");
         int lineNum = location.getLine();
         
-        if (lineNum < 1 || lineNum > lines.length) {
+        // Handle EOF errors by showing context from the last available lines
+        if (lineNum < 1) {
             return "";
+        }
+        
+        // If error is beyond last line, show context from the end of file
+        if (lineNum > lines.length) {
+            lineNum = lines.length;
         }
 
         StringBuilder context = new StringBuilder();

@@ -9,6 +9,9 @@ public class StaticAccessExpr extends Expression {
     public StaticAccessExpr(VariableExpr className, Token memberName) {
         this.className = className;
         this.memberName = memberName;
+        if (memberName != null) {
+            this.setSourceLocation(memberName.getLocation());
+        }
     }
 
     @Override

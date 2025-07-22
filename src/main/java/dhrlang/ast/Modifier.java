@@ -5,7 +5,9 @@ public enum Modifier {
     PRIVATE, 
     PROTECTED,
     STATIC,
-    ABSTRACT;
+    ABSTRACT,
+    FINAL,
+    OVERRIDE;
     
     public static Modifier fromTokenType(dhrlang.lexer.TokenType tokenType) {
         switch (tokenType) {
@@ -14,6 +16,8 @@ public enum Modifier {
             case PROTECTED: return PROTECTED;
             case STATIC: return STATIC;
             case ABSTRACT: return ABSTRACT;
+            case FINAL: return FINAL;
+            case OVERRIDE: return OVERRIDE;
             default: throw new IllegalArgumentException("Invalid modifier token: " + tokenType);
         }
     }

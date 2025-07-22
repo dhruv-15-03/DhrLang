@@ -14,9 +14,12 @@ import java.util.stream.Collectors;
 
 public class TypeChecker {
     private final Map<String, ClassDecl> classRegistry = new HashMap<>();
+    private final Map<String, InterfaceDecl> interfaceRegistry = new HashMap<>();
     private final Map<String, TypeEnvironment> classEnvironments = new HashMap<>();
+    private final Map<String, TypeEnvironment> interfaceEnvironments = new HashMap<>();
     private final TypeEnvironment globals = new TypeEnvironment();
     private ClassDecl currentClass = null;
+    private InterfaceDecl currentInterface = null;
     private String currentFunctionReturnType = null;
     private boolean inLoop = false;
     private ErrorReporter errorReporter;
@@ -30,17 +33,38 @@ public class TypeChecker {
     }
 
     public void check(Program program) {
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceRegistry.containsKey(interfaceDecl.getName())) {
+                errorWithHint("Interface '" + interfaceDecl.getName() + "' is already defined.", interfaceDecl.getSourceLocation(),
+                             "Each interface name must be unique. Rename one of the interfaces or check for duplicates");
+            }
+            interfaceRegistry.put(interfaceDecl.getName(), interfaceDecl);
+            globals.define(interfaceDecl.getName(), interfaceDecl.getName());
+        }
+        
         for (ClassDecl classDecl : program.getClasses()) {
             if (classRegistry.containsKey(classDecl.getName())) {
                 errorWithHint("Class '" + classDecl.getName() + "' is already defined.", classDecl.getSourceLocation(),
                              "Each class name must be unique. Rename one of the classes or check for duplicates");
             }
+            if (interfaceRegistry.containsKey(classDecl.getName())) {
+                errorWithHint("Name '" + classDecl.getName() + "' is already used by an interface.", classDecl.getSourceLocation(),
+                             "Classes and interfaces cannot have the same name. Choose a different name");
+            }
             classRegistry.put(classDecl.getName(), classDecl);
             globals.define(classDecl.getName(), classDecl.getName());
         }
 
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            resolveInterface(interfaceDecl);
+        }
+
         for (ClassDecl classDecl : program.getClasses()) {
             resolveClass(classDecl);
+        }
+
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            checkInterfaceBody(interfaceDecl);
         }
 
         for (ClassDecl classDecl : program.getClasses()) {
@@ -60,9 +84,19 @@ public class TypeChecker {
         }
         
         if (mainMethod == null) {
-            SourceLocation loc = !program.getClasses().isEmpty() ? program.getClasses().get(0).getSourceLocation() : new SourceLocation("unknown", 1, 1);
-            errorWithHint("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", loc,
-                         "Add a main method: 'static kaam main() { ... }' in any class to serve as the program entry point");
+            if (program.getClasses().isEmpty()) {
+                // No classes at all - show first non-interface declaration or start of file
+                SourceLocation loc = !program.getInterfaces().isEmpty() ? 
+                    program.getInterfaces().get(0).getSourceLocation() : 
+                    new SourceLocation("file", 1, 1);
+                errorWithHint("Entry point error: No classes found. Please define at least one class with 'static kaam main()' method.", loc,
+                             "Add a class with main method: class Main { static kaam main() { ... } }");
+            } else {
+                // Classes exist but no main method - point to first class
+                SourceLocation loc = program.getClasses().get(0).getSourceLocation();
+                errorWithHint("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", loc,
+                             "Add a main method: 'static kaam main() { ... }' in any class to serve as the program entry point");
+            }
         } else if (!mainMethod.getParameters().isEmpty()) {
             errorWithHint("Entry point 'main' should not have parameters.", mainMethod.getSourceLocation(),
                          "The main method should be defined as: 'static kaam main()' without any parameters");
@@ -86,8 +120,9 @@ public class TypeChecker {
             if (!classRegistry.containsKey(superclassName)) {
                 errorWithHint("Undefined superclass '" + superclassName + "'.", klass.getSuperclass().getSourceLocation(),
                              "Make sure the superclass is defined before this class, or check for typos in the class name");
+            } else {
+                parentEnv = resolveClass(classRegistry.get(superclassName));
             }
-            parentEnv = resolveClass(classRegistry.get(superclassName));
         }
 
         TypeEnvironment classEnv = new TypeEnvironment(parentEnv);
@@ -118,6 +153,70 @@ public class TypeChecker {
         klass.setBeingResolved(false);
         return classEnv;
     }
+    
+    private TypeEnvironment resolveInterface(InterfaceDecl interfaceDecl) {
+        if (interfaceEnvironments.containsKey(interfaceDecl.getName())) {
+            return interfaceEnvironments.get(interfaceDecl.getName());
+        }
+        if (interfaceDecl.isBeingResolved()) {
+            errorWithHint("Cyclic interface dependency involving interface " + interfaceDecl.getName(), interfaceDecl.getSourceLocation(),
+                         "Remove circular dependencies - interfaces cannot depend on each other in a cycle");
+        }
+
+        interfaceDecl.setBeingResolved(true);
+
+        TypeEnvironment interfaceEnv = new TypeEnvironment(globals);
+        
+        for (FunctionDecl method : interfaceDecl.getMethods()) {
+            List<String> paramTypes = method.getParameters().stream()
+                    .map(VarDecl::getType)
+                    .collect(Collectors.toList());
+            
+            String methodName = method.getName();
+            if (interfaceEnv.getLocalFunctions().containsKey(methodName)) {
+                errorWithHint("Method '" + methodName + "' is already defined in interface '" + interfaceDecl.getName() + "'.", method.getSourceLocation(),
+                             "Rename the method or remove the duplicate - each method signature must be unique within an interface");
+            }
+            
+            interfaceEnv.defineFunction(methodName, new FunctionSignature(paramTypes, method.getReturnType()));
+        }
+
+        interfaceEnvironments.put(interfaceDecl.getName(), interfaceEnv);
+        interfaceDecl.setBeingResolved(false);
+        return interfaceEnv;
+    }
+    
+    private void checkInterfaceBody(InterfaceDecl interfaceDecl) {
+        this.currentInterface = interfaceDecl;
+        
+        for (FunctionDecl method : interfaceDecl.getMethods()) {
+            validateInterfaceMethod(method);
+        }
+        
+        this.currentInterface = null;
+    }
+    
+    private void validateInterfaceMethod(FunctionDecl method) {
+        if (method.getBody() != null && !method.getBody().getStatements().isEmpty()) {
+            errorWithHint("Interface method '" + method.getName() + "' cannot have a method body.", method.getSourceLocation(),
+                         "Interface methods should only declare signatures - remove the method body { ... }");
+        }
+        
+        if (method.hasModifier(Modifier.PRIVATE)) {
+            errorWithHint("Interface method '" + method.getName() + "' cannot be private.", method.getSourceLocation(),
+                         "Interface methods are implicitly public - remove the 'private' modifier");
+        }
+        
+        if (method.hasModifier(Modifier.STATIC)) {
+            errorWithHint("Interface method '" + method.getName() + "' cannot be static.", method.getSourceLocation(),
+                         "Interface methods cannot be static - remove the 'static' modifier");
+        }
+        
+        if (method.hasModifier(Modifier.FINAL)) {
+            errorWithHint("Interface method '" + method.getName() + "' cannot be final.", method.getSourceLocation(),
+                         "Interface methods are meant to be implemented - remove the 'final' modifier");
+        }
+    }
 
     private void checkClassBody(ClassDecl klass) {
         this.currentClass = klass;
@@ -137,14 +236,77 @@ public class TypeChecker {
         }
         
         for (FunctionDecl function : klass.getFunctions()) {
-            // Validate modifiers
             validateModifiers(function);
             checkFunction(function, classEnv);
         }
         
         validateAbstractClass(klass);
+        validateInterfaceImplementations(klass);
         
         this.currentClass = null;
+    }
+    
+    private void validateInterfaceImplementations(ClassDecl klass) {
+        for (VariableExpr interfaceExpr : klass.getInterfaces()) {
+            String interfaceName = interfaceExpr.getName().getLexeme();
+            
+            if (!interfaceRegistry.containsKey(interfaceName)) {
+                errorWithHint("Undefined interface '" + interfaceName + "'.", interfaceExpr.getSourceLocation(),
+                             "Make sure the interface is defined before implementing it, or check for typos in the interface name");
+                continue;
+            }
+            
+            InterfaceDecl interfaceDecl = interfaceRegistry.get(interfaceName);
+            
+            for (FunctionDecl interfaceMethod : interfaceDecl.getMethods()) {
+                FunctionDecl classMethod = klass.findMethod(interfaceMethod.getName());
+                
+                if (classMethod == null) {
+                    errorWithHint("Class '" + klass.getName() + "' must implement method '" + interfaceMethod.getName() + 
+                          "' from interface '" + interfaceName + "'.", klass.getSourceLocation(),
+                          "Add implementation: " + interfaceMethod.getReturnType() + " " + interfaceMethod.getName() + "(" + 
+                          getParameterSignature(interfaceMethod) + ") { ... }");
+                    continue;
+                }
+                
+                if (!interfaceMethod.getReturnType().equals(classMethod.getReturnType())) {
+                    errorWithHint("Implementation of '" + interfaceMethod.getName() + "' has mismatched return type. Expected '" +
+                          interfaceMethod.getReturnType() + "', got '" + classMethod.getReturnType() + "'.", classMethod.getSourceLocation(),
+                          "Change the return type to match the interface: " + interfaceMethod.getReturnType() + " " + interfaceMethod.getName() + "(...)");
+                }
+                
+                if (!parametersMatch(interfaceMethod.getParameters(), classMethod.getParameters())) {
+                    errorWithHint("Implementation of '" + interfaceMethod.getName() + "' has mismatched parameters.", classMethod.getSourceLocation(),
+                          "Method parameters must match exactly: " + interfaceMethod.getReturnType() + " " + interfaceMethod.getName() + 
+                          "(" + getParameterSignature(interfaceMethod) + ")");
+                }
+                
+                if (classMethod.hasModifier(Modifier.OVERRIDE)) {
+                } else {
+                    // Could add a warning here for missing @Override annotation
+                }
+            }
+        }
+    }
+    
+    private String getParameterSignature(FunctionDecl function) {
+        return function.getParameters().stream()
+                .map(param -> param.getType() + " " + param.getName())
+                .collect(Collectors.joining(", "));
+    }
+    
+    private boolean parametersMatch(List<VarDecl> interfaceParams, List<VarDecl> classParams) {
+        if (interfaceParams.size() != classParams.size()) {
+            return false;
+        }
+        
+        for (int i = 0; i < interfaceParams.size(); i++) {
+            if (!interfaceParams.get(i).getType().equals(classParams.get(i).getType())) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     private void checkFunction(FunctionDecl function, TypeEnvironment env) {
@@ -165,7 +327,6 @@ public class TypeChecker {
         String previousReturnType = currentFunctionReturnType;
         currentFunctionReturnType = function.getReturnType();
 
-        // Only check the body if it exists (abstract methods have null bodies)
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
         }
@@ -608,6 +769,7 @@ public class TypeChecker {
         if (instanceEnv == null) {
             errorWithHint("Can only access properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
                          "Property access syntax: object.property - ensure the object is a class instance");
+            return "unknown";
         }
         
         try {
@@ -630,6 +792,7 @@ public class TypeChecker {
         if (instanceEnv == null) {
             errorWithHint("Can only set properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
                          "Property assignment syntax: object.field = value - ensure the object is a class instance");
+            return "unknown";
         }
         
         String fieldName = expr.getName().getLexeme();
@@ -685,6 +848,7 @@ public class TypeChecker {
         if (!classRegistry.containsKey(className)) {
             errorWithHint("Unknown class '" + className + "' in static access.", expr.getSourceLocation(),
                          "Make sure the class is defined before accessing static members");
+            return "unknown";
         }
         
         ClassDecl classDecl = classRegistry.get(className);
@@ -721,6 +885,7 @@ public class TypeChecker {
         if (!classRegistry.containsKey(className)) {
             errorWithHint("Unknown class '" + className + "' in static assignment.", expr.getSourceLocation(),
                          "Make sure the class is defined before assigning to static fields");
+            return "unknown";
         }
         
         ClassDecl classDecl = classRegistry.get(className);
@@ -785,6 +950,7 @@ public class TypeChecker {
             if (currentClass == null || currentClass.getSuperclass() == null) {
                 errorWithHint("'super' used incorrectly.", superExpr.getSourceLocation(),
                              "Use 'super' only in classes that extend another class to call parent methods");
+                return "unknown";
             }
             String superclassName = currentClass.getSuperclass().getName().getLexeme();
             funcName = superExpr.method.getLexeme();

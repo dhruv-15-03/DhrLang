@@ -9,6 +9,9 @@ public class SuperExpr extends Expression {
     public SuperExpr(Token keyword, Token method) {
         this.keyword = keyword;
         this.method = method;
+        if (keyword != null) {
+            this.setSourceLocation(keyword.getLocation());
+        }
     }
 
     @Override

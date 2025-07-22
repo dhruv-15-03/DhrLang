@@ -9,6 +9,9 @@ public class GetExpr extends Expression {
     public GetExpr(Expression object, Token name) {
         this.object = object;
         this.name = name;
+        if (name != null) {
+            this.setSourceLocation(name.getLocation());
+        }
     }
 
     public Expression getObject() {
