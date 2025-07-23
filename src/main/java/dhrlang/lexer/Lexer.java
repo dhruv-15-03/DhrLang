@@ -97,6 +97,7 @@ public class Lexer {
             case '}': addToken(TokenType.RBRACE); break;
             case ',': addToken(TokenType.COMMA); break;
             case ';': addToken(TokenType.SEMICOLON); break;
+            case '?': addToken(TokenType.QUESTION); break;
             case '+': 
                 if (match('+')) {
                     addToken(TokenType.INCREMENT);

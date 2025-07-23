@@ -8,6 +8,7 @@ import java.util.Map;
 public class Instance {
     private final DhrClass klass;
     private final Map<String, Object> fields = new HashMap<>();
+    private String[] genericTypeArguments;
 
     public Instance(DhrClass klass) {
         this.klass = klass;
@@ -15,6 +16,18 @@ public class Instance {
 
     public DhrClass getKlass() {
         return this.klass;
+    }
+    
+    public void setGenericTypeArguments(String[] typeArguments) {
+        this.genericTypeArguments = typeArguments;
+    }
+    
+    public String[] getGenericTypeArguments() {
+        return this.genericTypeArguments;
+    }
+    
+    public boolean isGenericInstance() {
+        return this.genericTypeArguments != null && this.genericTypeArguments.length > 0;
     }
 
     public void set(Token name, Object value) {
@@ -36,6 +49,16 @@ public class Instance {
 
     @Override
     public String toString() {
+        if (isGenericInstance()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(klass.name).append("<");
+            for (int i = 0; i < genericTypeArguments.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(genericTypeArguments[i]);
+            }
+            sb.append("> instance");
+            return sb.toString();
+        }
         return klass.name + " instance";
     }
 }

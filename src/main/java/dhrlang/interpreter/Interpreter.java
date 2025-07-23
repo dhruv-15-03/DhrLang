@@ -12,7 +12,10 @@ import java.util.*;
 
 public class Interpreter {
     private final ExecutionStack executionStack = new ExecutionStack();
+    private final GenericTypeManager genericTypeManager = new GenericTypeManager();
     private SourceLocation currentCallLocation = null; // Track current call location for error reporting
+    private static final int MAX_CALL_DEPTH = 1000; 
+    private int currentCallDepth = 0;
     
     public Interpreter() {
         initGlobals();
@@ -26,15 +29,45 @@ public class Interpreter {
         return currentCallLocation;
     }
     
+    public int getCurrentCallDepth() {
+        return currentCallDepth;
+    }
+    
+    public int getMaxCallDepth() {
+        return MAX_CALL_DEPTH;
+    }
+    
+    public void incrementCallDepth() {
+        currentCallDepth++;
+    }
+    
+    public void decrementCallDepth() {
+        currentCallDepth--;
+    }
+    
     public void execute(Program program) {
         try {
             typeChecker.check(program);
         } catch (TypeException e) {
             throw new RuntimeException("Type Error: " + e.getMessage(), e);
         }
+        
+        Map<String, DhrInterface> interfaceRegistry = new HashMap<>();
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            DhrInterface dhrInterface = new DhrInterface(interfaceDecl);
+            interfaceRegistry.put(interfaceDecl.getName(), dhrInterface);
+            globals.define(interfaceDecl.getName(), dhrInterface);
+        }
+        
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            DhrInterface dhrInterface = interfaceRegistry.get(interfaceDecl.getName());
+            dhrInterface.validateInheritance(interfaceRegistry, interfaceDecl.getSourceLocation());
+        }
+        
         for (ClassDecl classDecl : program.getClasses()) {
             globals.define(classDecl.getName(), null);
         }
+        
         for (ClassDecl classDecl : program.getClasses()) {
             DhrClass superclass = null;
             if (classDecl.getSuperclass() != null) {
@@ -69,7 +102,34 @@ public class Interpreter {
                 }
             }
             
-            DhrClass klass = new DhrClass(classDecl.getName(), superclass, methods, staticMethods, staticFields, classDecl.isAbstract());
+            Set<String> implementedInterfaces = new HashSet<>();
+            for (VariableExpr interfaceExpr : classDecl.getInterfaces()) {
+                String interfaceName = interfaceExpr.getName().getLexeme();
+                
+                if (!interfaceRegistry.containsKey(interfaceName)) {
+                    throw ErrorFactory.validationError(
+                        "Undefined interface '" + interfaceName + "'. Make sure the interface is defined before implementing it, or check for typos in the interface name.",
+                        interfaceExpr.getSourceLocation()
+                    );
+                }
+                
+                implementedInterfaces.add(interfaceName);
+                
+                DhrInterface dhrInterface = interfaceRegistry.get(interfaceName);
+                try {
+                    DhrClass tempClass = new DhrClass(classDecl.getName(), superclass, methods, staticMethods, staticFields, classDecl.isAbstract(), implementedInterfaces);
+                    dhrInterface.validateImplementation(tempClass, interfaceExpr.getSourceLocation(), interfaceRegistry);
+                } catch (RuntimeError e) {
+                    throw e; 
+                }
+            }
+            
+            DhrClass klass = new DhrClass(classDecl.getName(), superclass, methods, staticMethods, staticFields, classDecl.isAbstract(), implementedInterfaces);
+            
+            for (String interfaceName : implementedInterfaces) {
+                klass.addImplementedInterface(interfaceName);
+            }
+            
             globals.assign(classDecl.getName(), klass);
         }
         
@@ -156,16 +216,33 @@ public class Interpreter {
             if (throwStmt.getThrowToken() != null) {
                 location = throwStmt.getThrowToken().getLocation();
             }
-            DhrRuntimeException exception = new DhrRuntimeException(value, location);
-            String originalMessage = exception.getDetailedMessage();
-            String stackTrace = executionStack.getStackTrace();
-            String enhancedMessage = originalMessage + "\nStack trace:\n" + stackTrace;
-            throw new DhrRuntimeException(value, location) {
-                @Override
-                public String getDetailedMessage() {
-                    return enhancedMessage;
-                }
-            };
+            
+            // If the thrown value is already a DhrException, convert it to DhrRuntimeException
+            if (value instanceof dhrlang.stdlib.exceptions.DhrException dhrEx) {
+                DhrRuntimeException exception = new DhrRuntimeException(dhrEx.getMessage(), 
+                    dhrEx.getLocation() != null ? dhrEx.getLocation() : location);
+                String originalMessage = exception.getDetailedMessage();
+                String stackTrace = executionStack.getStackTrace();
+                String enhancedMessage = originalMessage + "\nStack trace:\n" + stackTrace;
+                throw new DhrRuntimeException(dhrEx.getMessage(), location) {
+                    @Override
+                    public String getDetailedMessage() {
+                        return enhancedMessage;
+                    }
+                };
+            } else {
+                // Handle primitive values
+                DhrRuntimeException exception = new DhrRuntimeException(value, location);
+                String originalMessage = exception.getDetailedMessage();
+                String stackTrace = executionStack.getStackTrace();
+                String enhancedMessage = originalMessage + "\nStack trace:\n" + stackTrace;
+                throw new DhrRuntimeException(value, location) {
+                    @Override
+                    public String getDetailedMessage() {
+                        return enhancedMessage;
+                    }
+                };
+            }
         } else if (stmt instanceof ExpressionStmt exprStmt) {
             evaluate(exprStmt.getExpression(), env);
         } else if (stmt instanceof PrintStmt printStmt) {
@@ -198,14 +275,29 @@ public class Interpreter {
         } catch (DhrRuntimeException e) {
             boolean caught = false;
             for (CatchClause catchClause : tryStmt.getCatchClauses()) {
-                Environment catchEnv = new Environment(env);
-                catchEnv.define(catchClause.getParameter(), e.getValue());
-                try {
-                    execute(catchClause.getBody(), catchEnv);
-                    caught = true;
-                    break;
-                } catch (DhrRuntimeException nestedE) {
-                    throw nestedE;
+                // Check if this catch clause can handle this exception type
+                if (canCatchException(catchClause.getExceptionType(), e)) {
+                    Environment catchEnv = new Environment(env);
+                    
+                    // For backward compatibility, if catch type is "any", pass the original value
+                    // Otherwise, create a proper DhrException object
+                    Object caughtValue;
+                    if ("any".equals(catchClause.getExceptionType())) {
+                        caughtValue = e.getValue(); // Pass the original thrown value for backward compatibility
+                    } else {
+                        // Create a DhrException object for typed exception handling
+                        caughtValue = createDhrException(e, catchClause.getExceptionType());
+                    }
+                    
+                    catchEnv.define(catchClause.getParameter(), caughtValue);
+                    
+                    try {
+                        execute(catchClause.getBody(), catchEnv);
+                        caught = true;
+                        break;
+                    } catch (DhrRuntimeException nestedE) {
+                        throw nestedE;
+                    }
                 }
             }
             if (!caught) {
@@ -232,6 +324,35 @@ public class Interpreter {
                 }
             }
         }
+    }
+    
+    private boolean canCatchException(String catchType, DhrRuntimeException exception) {
+        if ("any".equals(catchType)) {
+            return true; 
+        }
+        
+        String exceptionCategory = exception.getCategory().toString();
+        return switch (catchType) {
+            case "ArithmeticException" -> exceptionCategory.contains("ARITHMETIC");
+            case "IndexOutOfBoundsException" -> exceptionCategory.contains("INDEX");
+            case "TypeException" -> exceptionCategory.contains("TYPE");
+            case "NullPointerException" -> exceptionCategory.contains("NULL");
+            case "DhrException" -> true; 
+            default -> false;
+        };
+    }
+    
+    private dhrlang.stdlib.exceptions.DhrException createDhrException(DhrRuntimeException runtimeException, String targetType) {
+        String message = runtimeException.getMessage();
+        dhrlang.error.SourceLocation location = runtimeException.getLocation();
+        
+        return switch (targetType) {
+            case "ArithmeticException" -> new dhrlang.stdlib.exceptions.ArithmeticException(message, location);
+            case "IndexOutOfBoundsException" -> new dhrlang.stdlib.exceptions.IndexOutOfBoundsException(message, location);
+            case "TypeException" -> new dhrlang.stdlib.exceptions.TypeException(message, location);
+            case "NullPointerException" -> new dhrlang.stdlib.exceptions.NullPointerException(message, location);
+            default -> new dhrlang.stdlib.exceptions.DhrException(message, location);
+        };
     }
     
     private Object evaluatePostfixIncrement(PostfixIncrementExpr expr, Environment env) {
@@ -367,6 +488,21 @@ public class Interpreter {
         }
     }
     public Object evaluate(Expression expr, Environment env) {
+        if (currentCallDepth >= MAX_CALL_DEPTH) {
+            throw ErrorFactory.runtimeError("Stack overflow: Maximum recursion depth (" + MAX_CALL_DEPTH + ") exceeded. " +
+                "Check for infinite recursion in your function calls. Consider adding a base case to recursive functions.", 
+                (SourceLocation) null);
+        }
+        
+        currentCallDepth++;
+        try {
+            return evaluateInternal(expr, env);
+        } finally {
+            currentCallDepth--;
+        }
+    }
+    
+    private Object evaluateInternal(Expression expr, Environment env) {
         if (expr instanceof PostfixIncrementExpr postfixExpr) {
             return evaluatePostfixIncrement(postfixExpr, env);
         }
@@ -379,9 +515,23 @@ public class Interpreter {
 
         if (expr instanceof NewExpr newExpr) {
             String className = newExpr.getClassName();
-            Object klassObj = globals.get(className);
+            
+            String baseClassName = className;
+            String[] typeArguments = new String[0];
+            if (className.contains("<")) {
+                baseClassName = className.substring(0, className.indexOf('<'));
+                String typeArgsStr = className.substring(className.indexOf('<') + 1, className.lastIndexOf('>'));
+                typeArguments = typeArgsStr.split(",");
+                for (int i = 0; i < typeArguments.length; i++) {
+                    typeArguments[i] = typeArguments[i].trim();
+                }
+            }
+            
+            Object klassObj = globals.get(baseClassName);
             if (!(klassObj instanceof DhrClass)) {
-                throw ErrorFactory.typeError("Can only instantiate classes, not '" + className + "'.", ErrorFactory.getLocation(newExpr));
+                throw ErrorFactory.typeError("Cannot instantiate unknown class '" + baseClassName + "'." + 
+                    (className.contains("<") ? " Generic types use base class name '" + baseClassName + "'." : ""), 
+                    ErrorFactory.getLocation(newExpr));
             }
             DhrClass klass = (DhrClass) klassObj;
             List<Object> arguments = new ArrayList<>();
@@ -390,10 +540,14 @@ public class Interpreter {
             }
             
             try {
-                // Set current call location for error reporting
                 SourceLocation previousLocation = currentCallLocation;
                 currentCallLocation = ErrorFactory.getLocation(newExpr);
                 Object result = klass.call(this, arguments);
+                
+                if (typeArguments.length > 0 && result instanceof Instance) {
+                    ((Instance) result).setGenericTypeArguments(typeArguments);
+                }
+                
                 currentCallLocation = previousLocation; // Restore previous location
                 return result;
             } catch (RuntimeError e) {
@@ -422,11 +576,15 @@ public class Interpreter {
 
         if (expr instanceof GetExpr getExpr) {
             Object object = evaluate(getExpr.getObject(), env);
-            if (object instanceof Object[] && getExpr.getName().getLexeme().equals("length")) {
+            String methodName = getExpr.getName().getLexeme();
+            
+            // Handle array.length
+            if (object instanceof Object[] && methodName.equals("length")) {
                 return (long) ((Object[]) object).length;
             }
-            if (object instanceof String && getExpr.getName().getLexeme().equals("length")) {
-                return (long) ((String) object).length();
+            
+            if (object instanceof String && isBuiltInStringMethod(methodName)) {
+                return createBuiltInStringMethod(methodName, (String) object);
             }
 
             if (object instanceof Instance) {
@@ -446,11 +604,9 @@ public class Interpreter {
             
             DhrClass dhrClass = (DhrClass) classObj;
             
-            // Try to get static field first
             try {
                 return dhrClass.getStaticField(memberName, ErrorFactory.getLocation(staticExpr));
             } catch (DhrRuntimeException e) {
-                // If not a field, try static method
                 Function staticMethod = dhrClass.findStaticMethod(memberName);
                 if (staticMethod != null) {
                     return staticMethod;
@@ -489,14 +645,22 @@ public class Interpreter {
         }
 
         if (expr instanceof VariableExpr var) {
-            return env.get(var.getName().getLexeme());
+            try {
+                return env.get(var.getName().getLexeme());
+            } catch (DhrRuntimeException e) {
+                throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(var));
+            }
         }
 
         if (expr instanceof AssignmentExpr assign) {
             String name = assign.getName().getLexeme();
             Object value = evaluate(assign.getValue(), env);
-            env.assign(name, value);
-            return value;
+            try {
+                env.assign(name, value);
+                return value;
+            } catch (DhrRuntimeException e) {
+                throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(assign));
+            }
         }
         if (expr instanceof CallExpr call) {
             Object callee = evaluate(call.getCallee(), env);
@@ -512,24 +676,25 @@ public class Interpreter {
 
         if (arguments.size() != function.arity()) {
             throw ErrorFactory.validationError("Expected " + function.arity() + " arguments but got " + arguments.size(), ErrorFactory.getLocation(call));
-        }            
-            String functionName = "unknown";
-            if (function instanceof Function func) {
-                functionName = func.getDeclaration().getName();
-                executionStack.push(functionName, null, null);
-            }
+        }
+        
+        String functionName = "unknown";
+        if (function instanceof Function func) {
+            functionName = func.getDeclaration().getName();
+            executionStack.push(functionName, null, null);
+        }
 
-            try {
-                SourceLocation previousLocation = currentCallLocation;
-                currentCallLocation = ErrorFactory.getLocation(call);
-                Object result = function.call(this, arguments);
-                currentCallLocation = previousLocation;
-                return result;
-            } finally {
-                if (function instanceof Function) {
-                    executionStack.pop();
-                }
+        try {
+            SourceLocation previousLocation = currentCallLocation;
+            currentCallLocation = ErrorFactory.getLocation(call);
+            Object result = function.call(this, arguments);
+            currentCallLocation = previousLocation;
+            return result;
+        } finally {
+            if (function instanceof Function) {
+                executionStack.pop();
             }
+        }
         }
 
 
@@ -585,12 +750,16 @@ public class Interpreter {
         Object sizeValue = evaluate(expr.getSize(), env);
         
         if (!(sizeValue instanceof Long)) {
-            throw new DhrRuntimeException("Array size must be a number.", null);
+            throw ErrorFactory.typeError("Array size must be a number.", ErrorFactory.getLocation(expr));
         }
         
         int size = ((Long) sizeValue).intValue();
         if (size < 0) {
-            throw new DhrRuntimeException("Array size cannot be negative.", null);
+            throw ErrorFactory.validationError("Array size cannot be negative.", ErrorFactory.getLocation(expr));
+        }
+        
+        if (size > 1_000_000) { // Prevent memory exhaustion
+            throw ErrorFactory.validationError("Array size too large (max: 1,000,000).", ErrorFactory.getLocation(expr));
         }
         
         Object[] array = new Object[size];
@@ -665,10 +834,11 @@ public class Interpreter {
             case MINUS -> {
                 if (right instanceof Long) yield -((Long) right);
                 if (right instanceof Double) yield -((Double) right);
-                throw new DhrRuntimeException("Operand for '-' must be a number.", null);
+                throw ErrorFactory.typeError("Operand for '-' must be a number, got: " + 
+                    (right == null ? "null" : right.getClass().getSimpleName()), operator);
             }
             case NOT -> !isTruthy(right);
-            default -> throw new DhrRuntimeException("Unsupported unary operator: " + operator.getType(), null);
+            default -> throw ErrorFactory.systemError("Unsupported unary operator: " + operator.getType(), operator);
         };
     }
 
@@ -684,7 +854,7 @@ public class Interpreter {
                 if (left instanceof Long && right instanceof Long) {
                     return (Long) left + (Long) right;
                 }
-                throw new DhrRuntimeException("Operands for '+' must be two numbers or at least one string for concatenation.", null);
+                throw ErrorFactory.typeError("Operands for '+' must be two numbers or at least one string for concatenation.", operator);
 
 
             case MINUS:
@@ -696,20 +866,27 @@ public class Interpreter {
 
 
             case STAR:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Double || right instanceof Double) {
                     return toDouble(left) * toDouble(right);
                 }
                 return (Long) left * (Long) right;
 
             case SLASH:
+                validateNumberOperands(operator, left, right);
                 double divisor = toDouble(right);
                 if (divisor == 0.0) throw ErrorFactory.arithmeticError("Division by zero.", operator);
                 return toDouble(left) / divisor;
             case MOD:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Double || right instanceof Double) {
-                    return toDouble(left) % toDouble(right);
+                    double modDivisor = toDouble(right);
+                    if (modDivisor == 0.0) throw ErrorFactory.arithmeticError("Modulo by zero.", operator);
+                    return toDouble(left) % modDivisor;
                 }
-                return (Long) left % (Long) right;
+                long modDivisor = (Long) right;
+                if (modDivisor == 0) throw ErrorFactory.arithmeticError("Modulo by zero.", operator);
+                return (Long) left % modDivisor;
 
 
             case EQUALITY:
@@ -719,46 +896,53 @@ public class Interpreter {
                 return !isEqual(left, right);
 
             case GREATER:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Long && right instanceof Long) {
                     return (Long) left > (Long) right;
                 }
                 return toDouble(left) > toDouble(right);
 
             case GEQ:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Long && right instanceof Long) {
                     return (Long) left >= (Long) right;
                 }
                 return toDouble(left) >= toDouble(right);
 
             case LESS:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Long && right instanceof Long) {
                     return (Long) left < (Long) right;
                 }
                 return toDouble(left) < toDouble(right);
 
             case LEQ:
+                validateNumberOperands(operator, left, right);
                 if (left instanceof Long && right instanceof Long) {
                     return (Long) left <= (Long) right;
                 }
                 return toDouble(left) <= toDouble(right);
 
             default:
-                throw new DhrRuntimeException("Unsupported binary operator: " + operator.getType(), null);
+                throw ErrorFactory.systemError("Unsupported binary operator: " + operator.getType(), operator);
         }
     }
     private void validateNumberOperands(Token operator, Object left, Object right) {
         if (left == null || right == null) {
-            throw new DhrRuntimeException("Null operand for operator: " + operator.getLexeme(), null);
+            throw ErrorFactory.typeError("Null operand for operator: " + operator.getLexeme(), operator);
         }
         if (!(left instanceof Number && right instanceof Number)) {
-            throw new DhrRuntimeException("Operands must be numbers for operator: " + operator.getLexeme(), null);
+            throw ErrorFactory.typeError("Operands must be numbers for operator: " + operator.getLexeme() + 
+                ", got: " + (left == null ? "null" : left.getClass().getSimpleName()) + 
+                " and " + (right == null ? "null" : right.getClass().getSimpleName()), operator);
         }
     }
 
     private Double toDouble(Object operand) {
         if (operand instanceof Double) return (Double) operand;
         if (operand instanceof Long) return ((Long) operand).doubleValue();
-        throw new DhrRuntimeException("Operand must be a number.", null);
+        throw ErrorFactory.typeError("Operand must be a number, got: " + 
+            (operand == null ? "null" : operand.getClass().getSimpleName()), (Token) null);
     }
 
     private boolean isTruthy(Object value) {
@@ -771,7 +955,149 @@ public class Interpreter {
         return Objects.equals(a, b);
     }
 
+    private boolean isBuiltInStringMethod(String methodName) {
+        return switch (methodName) {
+            case "length", "charAt", "substring", "indexOf", "toUpperCase", 
+                 "toLowerCase", "trim", "startsWith", "endsWith", "equals",
+                 "replace", "split", "repeat", "contains" -> true;
+            default -> false;
+        };
+    }
     
+    private NativeFunction createBuiltInStringMethod(String methodName, String stringValue) {
+        return switch (methodName) {
+            case "length" -> new NativeFunction() {
+                @Override public int arity() { return 0; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    return (long) stringValue.length();
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "charAt" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof Long)) {
+                        throw ErrorFactory.typeError("charAt index must be a number", getCurrentCallLocation());
+                    }
+                    int index = ((Long) arguments.get(0)).intValue();
+                    if (index < 0 || index >= stringValue.length()) {
+                        throw ErrorFactory.indexError("String index out of bounds", getCurrentCallLocation());
+                    }
+                    return String.valueOf(stringValue.charAt(index));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "substring" -> new NativeFunction() {
+                @Override public int arity() { return 2; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof Long) || !(arguments.get(1) instanceof Long)) {
+                        throw ErrorFactory.typeError("substring indices must be numbers", getCurrentCallLocation());
+                    }
+                    int start = ((Long) arguments.get(0)).intValue();
+                    int end = ((Long) arguments.get(1)).intValue();
+                    if (start < 0 || end > stringValue.length() || start > end) {
+                        throw ErrorFactory.indexError("substring indices out of bounds", getCurrentCallLocation());
+                    }
+                    return stringValue.substring(start, end);
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "indexOf" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String)) {
+                        throw ErrorFactory.typeError("indexOf requires a string argument", getCurrentCallLocation());
+                    }
+                    return (long) stringValue.indexOf((String) arguments.get(0));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "toUpperCase" -> new NativeFunction() {
+                @Override public int arity() { return 0; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    return stringValue.toUpperCase();
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "toLowerCase" -> new NativeFunction() {
+                @Override public int arity() { return 0; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    return stringValue.toLowerCase();
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "trim" -> new NativeFunction() {
+                @Override public int arity() { return 0; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    return stringValue.trim();
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "startsWith" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String)) {
+                        throw ErrorFactory.typeError("startsWith requires a string argument", getCurrentCallLocation());
+                    }
+                    return stringValue.startsWith((String) arguments.get(0));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "endsWith" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String)) {
+                        throw ErrorFactory.typeError("endsWith requires a string argument", getCurrentCallLocation());
+                    }
+                    return stringValue.endsWith((String) arguments.get(0));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "equals" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String)) {
+                        return false; // Not equal if not a string
+                    }
+                    return stringValue.equals(arguments.get(0));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "replace" -> new NativeFunction() {
+                @Override public int arity() { return 2; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String) || !(arguments.get(1) instanceof String)) {
+                        throw ErrorFactory.typeError("replace requires string arguments", getCurrentCallLocation());
+                    }
+                    return stringValue.replace((String) arguments.get(0), (String) arguments.get(1));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            case "contains" -> new NativeFunction() {
+                @Override public int arity() { return 1; }
+                @Override public Object call(Interpreter interpreter, List<Object> arguments) {
+                    if (!(arguments.get(0) instanceof String)) {
+                        throw ErrorFactory.typeError("contains requires a string argument", getCurrentCallLocation());
+                    }
+                    return stringValue.contains((String) arguments.get(0));
+                }
+                @Override public String toString() { return "<native method " + methodName + ">"; }
+            };
+            
+            default -> throw ErrorFactory.systemError("Unknown built-in string method: " + methodName, getCurrentCallLocation());
+        };
+    }
 
     
     private String stringify(Object value) {
@@ -905,6 +1231,61 @@ public class Interpreter {
         globals.define("typeOf", UtilityFunctions.typeOf());
         globals.define("range", UtilityFunctions.range());
         globals.define("sleep", UtilityFunctions.sleep());
+        
+        globals.define("DhrException", new NativeFunction() {
+            @Override
+            public int arity() { return 1; }
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return new dhrlang.stdlib.exceptions.DhrException(arguments.get(0).toString());
+            }
+            @Override
+            public String toString() { return "<native exception DhrException>"; }
+        });
+        
+        globals.define("ArithmeticException", new NativeFunction() {
+            @Override
+            public int arity() { return 1; }
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return new dhrlang.stdlib.exceptions.ArithmeticException(arguments.get(0).toString());
+            }
+            @Override
+            public String toString() { return "<native exception ArithmeticException>"; }
+        });
+        
+        globals.define("IndexOutOfBoundsException", new NativeFunction() {
+            @Override
+            public int arity() { return 1; }
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return new dhrlang.stdlib.exceptions.IndexOutOfBoundsException(arguments.get(0).toString());
+            }
+            @Override
+            public String toString() { return "<native exception IndexOutOfBoundsException>"; }
+        });
+        
+        globals.define("TypeException", new NativeFunction() {
+            @Override
+            public int arity() { return 1; }
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return new dhrlang.stdlib.exceptions.TypeException(arguments.get(0).toString());
+            }
+            @Override
+            public String toString() { return "<native exception TypeException>"; }
+        });
+        
+        globals.define("NullPointerException", new NativeFunction() {
+            @Override
+            public int arity() { return 1; }
+            @Override
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return new dhrlang.stdlib.exceptions.NullPointerException(arguments.get(0).toString());
+            }
+            @Override
+            public String toString() { return "<native exception NullPointerException>"; }
+        });
     }
 
     private String formatForPrint(Object obj) {

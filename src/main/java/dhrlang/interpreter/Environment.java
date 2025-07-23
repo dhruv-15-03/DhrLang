@@ -1,5 +1,6 @@
 package dhrlang.interpreter;
 
+import dhrlang.error.ErrorFactory;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,7 +27,17 @@ public class Environment {
         } else if (parent != null) {
             return parent.get(name);
         } else {
-            throw new RuntimeException("Undefined variable '" + name + "'");
+            // Check if this looks like a generic type reference
+            String errorMessage = "Undefined variable '" + name + "'.";
+            String hint = "Did you mean to access it with 'this." + name + "'?";
+            
+            if (name.contains("<") && name.contains(">")) {
+                errorMessage = "Cannot use generic type '" + name + "' as a variable.";
+                hint = "Generic types like '" + name + "' are used for type declarations, not as variables. " +
+                       "Use 'new " + name + "(...)' to create an instance.";
+            }
+            
+            throw ErrorFactory.accessError(errorMessage + " " + hint, (dhrlang.error.SourceLocation) null);
         }
     }
 
@@ -36,7 +47,17 @@ public class Environment {
         } else if (parent != null) {
             parent.assign(name, value);
         } else {
-            throw new RuntimeException("Undefined variable '" + name + "'");
+            // Check if this looks like a generic type reference
+            String errorMessage = "Cannot assign to undefined variable '" + name + "'.";
+            String hint = "Did you mean to access it with 'this." + name + "'?";
+            
+            if (name.contains("<") && name.contains(">")) {
+                errorMessage = "Cannot assign to generic type '" + name + "'.";
+                hint = "Generic types like '" + name + "' are type declarations, not variables. " +
+                       "Declare a variable: " + name + " myVar = new " + name + "(...);";
+            }
+            
+            throw ErrorFactory.accessError(errorMessage + " " + hint, (dhrlang.error.SourceLocation) null);
         }
     }
 

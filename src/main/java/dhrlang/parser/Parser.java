@@ -48,17 +48,75 @@ public class Parser {
         
         consume(TokenType.CLASS, "Expected 'class' keyword to start a class declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected class name after 'class'.");
+        
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        if (check(TokenType.LESS)) {
+            typeParameters = parseTypeParameters();
+        }
+        
         VariableExpr superclass = null;
         if (match(TokenType.EXTENDS)) {
-            consume(TokenType.IDENTIFIER, "Expected superclass name.");
-            superclass = new VariableExpr(previous());
+            Token superclassName = consume(TokenType.IDENTIFIER, "Expected superclass name.");
+            String fullSuperclassName = superclassName.getLexeme();
+            
+            if (check(TokenType.LESS)) {
+                StringBuilder genericSuperclassName = new StringBuilder(fullSuperclassName);
+                genericSuperclassName.append("<");
+                
+                advance();
+                int depth = 1;
+                while (depth > 0 && !isAtEnd()) {
+                    Token token = advance();
+                    genericSuperclassName.append(token.getLexeme());
+                    
+                    if (token.getType() == TokenType.LESS) {
+                        depth++;
+                    } else if (token.getType() == TokenType.GREATER) {
+                        depth--;
+                    }
+                    
+                    if (token.getType() == TokenType.COMMA && depth == 1) {
+                        genericSuperclassName.append(" ");
+                    }
+                }
+                fullSuperclassName = genericSuperclassName.toString();
+            }
+            
+            Token superclassToken = new Token(superclassName.getType(), fullSuperclassName, superclassName.getLine());
+            superclass = new VariableExpr(superclassToken);
         }
         
         List<VariableExpr> interfaces = new ArrayList<>();
         if (match(TokenType.IMPLEMENTS)) {
             do {
-                consume(TokenType.IDENTIFIER, "Expected interface name.");
-                interfaces.add(new VariableExpr(previous()));
+                Token interfaceName = consume(TokenType.IDENTIFIER, "Expected interface name.");
+                String fullInterfaceName = interfaceName.getLexeme();
+                
+                if (check(TokenType.LESS)) {
+                    StringBuilder genericInterfaceName = new StringBuilder(fullInterfaceName);
+                    genericInterfaceName.append("<");
+                    
+                    advance(); 
+                    int depth = 1;
+                    while (depth > 0 && !isAtEnd()) {
+                        Token token = advance();
+                        genericInterfaceName.append(token.getLexeme());
+                        
+                        if (token.getType() == TokenType.LESS) {
+                            depth++;
+                        } else if (token.getType() == TokenType.GREATER) {
+                            depth--;
+                        }
+                        
+                        if (token.getType() == TokenType.COMMA && depth == 1) {
+                            genericInterfaceName.append(" ");
+                        }
+                    }
+                    fullInterfaceName = genericInterfaceName.toString();
+                }
+                
+                Token interfaceToken = new Token(interfaceName.getType(), fullInterfaceName, interfaceName.getLine());
+                interfaces.add(new VariableExpr(interfaceToken));
             } while (match(TokenType.COMMA));
         }
         
@@ -81,7 +139,14 @@ public class Parser {
             }
         }
         consume(TokenType.RBRACE, "Expected '}' after class body.");
-        ClassDecl classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers);
+        
+        ClassDecl classDecl;
+        if (!typeParameters.isEmpty()) {
+            classDecl = new GenericClassDecl(name.getLexeme(), typeParameters, superclass, interfaces, functions, variables, classModifiers);
+        } else {
+            classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers);
+        }
+        
         classDecl.setSourceLocation(name.getLocation());
         return classDecl;
     }
@@ -91,6 +156,19 @@ public class Parser {
         
         consume(TokenType.INTERFACE, "Expected 'interface' keyword to start an interface declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected interface name after 'interface'.");
+        
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        if (check(TokenType.LESS)) {
+            typeParameters = parseTypeParameters();
+        }
+        
+        List<VariableExpr> parentInterfaces = new ArrayList<>();
+        if (match(TokenType.EXTENDS)) {
+            do {
+                consume(TokenType.IDENTIFIER, "Expected parent interface name.");
+                parentInterfaces.add(new VariableExpr(previous()));
+            } while (match(TokenType.COMMA));
+        }
         
         consume(TokenType.LBRACE, "Expected '{' before interface body.");
         
@@ -124,7 +202,14 @@ public class Parser {
         }
         
         consume(TokenType.RBRACE, "Expected '}' after interface body.");
-        InterfaceDecl interfaceDecl = new InterfaceDecl(name.getLexeme(), methods, interfaceModifiers);
+        
+        InterfaceDecl interfaceDecl;
+        if (!typeParameters.isEmpty()) {
+            interfaceDecl = new GenericInterfaceDecl(name.getLexeme(), typeParameters, parentInterfaces, methods, interfaceModifiers);
+        } else {
+            interfaceDecl = new InterfaceDecl(name.getLexeme(), parentInterfaces, methods, interfaceModifiers);
+        }
+        
         interfaceDecl.setSourceLocation(name.getLocation());
         return interfaceDecl;
     }
@@ -301,6 +386,8 @@ public class Parser {
             return false;
         }
         int lookAhead = current + 1;
+        
+        // Handle array types: Type[]
         if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.LBRACKET) {
             lookAhead++;
             if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.RBRACKET) {
@@ -309,14 +396,28 @@ public class Parser {
                 return false;
             }
         }
-
+        
+        // Handle generic types: Type<T, U>
+        if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.LESS) {
+            int depth = 1;
+            lookAhead++;
+            while (lookAhead < tokens.size() && depth > 0) {
+                TokenType type = tokens.get(lookAhead).getType();
+                if (type == TokenType.LESS) {
+                    depth++;
+                } else if (type == TokenType.GREATER) {
+                    depth--;
+                }
+                lookAhead++;
+            }
+            if (depth != 0) return false;
+        }
 
         if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.IDENTIFIER) {
             return true;
         }
 
         return false;
-
     }
 
     private ReturnStmt parseReturnStmt() {
@@ -551,6 +652,31 @@ public class Parser {
                 return expr;
             } else {
                 Token classNameToken = consume(TokenType.IDENTIFIER, "Expect class name after 'new'.");
+                String className = classNameToken.getLexeme();
+                
+                if (check(TokenType.LESS)) {
+                    StringBuilder genericClassName = new StringBuilder(className);
+                    genericClassName.append("<");
+                    
+                    advance(); 
+                    int depth = 1;
+                    while (depth > 0 && !isAtEnd()) {
+                        Token token = advance();
+                        genericClassName.append(token.getLexeme());
+                        
+                        if (token.getType() == TokenType.LESS) {
+                            depth++;
+                        } else if (token.getType() == TokenType.GREATER) {
+                            depth--;
+                        }
+                        
+                        if (token.getType() == TokenType.COMMA && depth == 1) {
+                            genericClassName.append(" ");
+                        }
+                    }
+                    className = genericClassName.toString();
+                }
+                
                 consume(TokenType.LPAREN, "Expect '(' after class name.");
                 List<Expression> arguments = new ArrayList<>();
                 if (!check(TokenType.RPAREN)) {
@@ -559,7 +685,7 @@ public class Parser {
                     } while (match(TokenType.COMMA));
                 }
                 consume(TokenType.RPAREN, "Expect ')' after arguments.");
-                NewExpr expr = new NewExpr(classNameToken.getLexeme(), arguments);
+                NewExpr expr = new NewExpr(className, arguments);
                 expr.setSourceLocation(newToken.getLocation());
                 return expr;
             }
@@ -691,10 +817,29 @@ public class Parser {
         List<CatchClause> catchClauses = new ArrayList<>();
         while (match(TokenType.CATCH)) {
             consume(TokenType.LPAREN, "Expected '(' after 'catch'.");
-            Token parameterName = consume(TokenType.IDENTIFIER, "Expected parameter name in catch clause.");
+            
+            // Parse optional exception type and parameter name
+            String exceptionType = "any"; // Default to catch all exceptions
+            Token parameterName;
+            
+            if (check(TokenType.IDENTIFIER)) {
+                Token firstToken = advance(); // Could be type or parameter name
+                
+                if (check(TokenType.IDENTIFIER)) {
+                    // Two identifiers: first is type, second is parameter name
+                    exceptionType = firstToken.getLexeme();
+                    parameterName = advance();
+                } else {
+                    // Single identifier: parameter name, type defaults to "any"
+                    parameterName = firstToken;
+                }
+            } else {
+                throw error(peek(), "Expected parameter name in catch clause.");
+            }
+            
             consume(TokenType.RPAREN, "Expected ')' after catch parameter.");
             Block catchBody = parseBlock();
-            catchClauses.add(new CatchClause(parameterName.getLexeme(), catchBody));
+            catchClauses.add(new CatchClause(exceptionType, parameterName.getLexeme(), catchBody));
         }
         
         Block finallyBlock = null;
@@ -724,10 +869,26 @@ public class Parser {
                 check(TokenType.IDENTIFIER);
 
         if (!isBaseType) return false;
-        if (current + 1 < tokens.size() && tokens.get(current + 1).getType() == TokenType.LBRACKET) {
-            return current + 2 < tokens.size() && tokens.get(current + 2).getType() == TokenType.RBRACKET;
+        
+        int lookahead = current + 1;
+        if (lookahead < tokens.size() && tokens.get(lookahead).getType() == TokenType.LBRACKET) {
+            return lookahead + 1 < tokens.size() && tokens.get(lookahead + 1).getType() == TokenType.RBRACKET;
         }
-
+        
+        if (lookahead < tokens.size() && tokens.get(lookahead).getType() == TokenType.LESS) {
+            int depth = 1;
+            lookahead++;
+            while (lookahead < tokens.size() && depth > 0) {
+                TokenType type = tokens.get(lookahead).getType();
+                if (type == TokenType.LESS) {
+                    depth++;
+                } else if (type == TokenType.GREATER) {
+                    depth--;
+                }
+                lookahead++;
+            }
+            return depth == 0; 
+        }
 
         return true;
     }
@@ -744,6 +905,30 @@ public class Parser {
             advance();
             consume(TokenType.RBRACKET, "Expected ']' after '[' in array type.");
             return new Token(baseType.getType(), baseType.getLexeme() + "[]", baseType.getLine());
+        }
+        
+        if (check(TokenType.LESS)) {
+            StringBuilder genericTypeName = new StringBuilder(baseType.getLexeme());
+            genericTypeName.append("<");
+            
+            advance(); 
+            int depth = 1;
+            while (depth > 0 && !isAtEnd()) {
+                Token token = advance();
+                genericTypeName.append(token.getLexeme());
+                
+                if (token.getType() == TokenType.LESS) {
+                    depth++;
+                } else if (token.getType() == TokenType.GREATER) {
+                    depth--;
+                }
+                
+                if (token.getType() == TokenType.COMMA && depth == 1) {
+                    genericTypeName.append(" ");
+                }
+            }
+            
+            return new Token(TokenType.IDENTIFIER, genericTypeName.toString(), baseType.getLine());
         }
 
         return baseType;
@@ -808,6 +993,64 @@ public class Parser {
         }
         
         return modifiers;
+    }
+    
+    private List<TypeParameter> parseTypeParameters() {
+        List<TypeParameter> typeParameters = new ArrayList<>();
+        
+        consume(TokenType.LESS, "Expected '<' to start type parameters.");
+        
+        do {
+            Token nameToken = consume(TokenType.IDENTIFIER, "Expected type parameter name.");
+            
+            List<GenericType> bounds = new ArrayList<>();
+            if (match(TokenType.EXTENDS)) {
+                do {
+                    bounds.add(parseGenericType());
+                } while (match(TokenType.AND)); 
+            }
+            
+            TypeParameter param = new TypeParameter(nameToken, bounds);
+            typeParameters.add(param);
+            
+        } while (match(TokenType.COMMA));
+        
+        consume(TokenType.GREATER, "Expected '>' to close type parameters.");
+        
+        return typeParameters;
+    }
+    
+    
+    private GenericType parseGenericType() {
+        if (match(TokenType.QUESTION)) {
+            GenericType.WildcardType wildcardType = null;
+            Token boundType = null;
+            
+            if (match(TokenType.EXTENDS)) {
+                wildcardType = GenericType.WildcardType.EXTENDS;
+                boundType = consume(TokenType.IDENTIFIER, "Expected type after 'extends' in wildcard.");
+            } else if (match(TokenType.SUPER)) {
+                wildcardType = GenericType.WildcardType.SUPER;
+                boundType = consume(TokenType.IDENTIFIER, "Expected type after 'super' in wildcard.");
+            }
+            
+            return new GenericType(boundType, new ArrayList<>(), wildcardType);
+        }
+        
+        Token baseType = consume(TokenType.IDENTIFIER, "Expected type name.");
+        List<GenericType> typeArguments = new ArrayList<>();
+        
+        if (check(TokenType.LESS)) {
+            advance(); 
+            
+            do {
+                typeArguments.add(parseGenericType());
+            } while (match(TokenType.COMMA));
+            
+            consume(TokenType.GREATER, "Expected '>' to close type arguments.");
+        }
+        
+        return new GenericType(baseType, typeArguments);
     }
 
     private ParseException error(Token token, String message) {

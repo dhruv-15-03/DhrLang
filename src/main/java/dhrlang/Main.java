@@ -82,6 +82,13 @@ public class Main {
         try {
             program = parser.parse();
         } catch (ParseException e) {
+            if (e.getToken() != null) {
+                String hint = ErrorMessages.getParseErrorHint(e.getMessage(), e.getToken());
+                errorReporter.error(e.getToken().getLocation(), e.getMessage(), hint);
+            } else {
+                String hint = "Check your syntax for missing tokens, unmatched brackets, or incomplete statements";
+                errorReporter.error(e.getLine(), e.getMessage(), hint);
+            }
         }
 
         if (errorReporter.hasErrors()) return;
@@ -163,19 +170,28 @@ public class Main {
     }
     
     private static String getErrorHint(dhrlang.interpreter.DhrRuntimeException e) {
+        String message = e.getValue() != null ? e.getValue().toString() : "";
+        
         switch (e.getCategory()) {
             case INDEX_ERROR:
                 return ErrorMessages.getArrayIndexErrorHint();
             case TYPE_ERROR:
+                if (message.contains("Generic types")) {
+                    return "Generic types are used in declarations, not as runtime values. Use 'new ClassName<Type>()' to create instances.";
+                }
                 return "Check the types of your variables and operations";
             case NULL_ERROR:
                 return "Make sure the object is properly initialized before use";
             case ARITHMETIC_ERROR:
                 return ErrorMessages.getDivisionByZeroHint();
             case ACCESS_ERROR:
+                if (message.contains("generic type") || message.contains("<") && message.contains(">")) {
+                    return "Generic types cannot be accessed as variables. Use them in 'new' expressions or type declarations.";
+                } else if (message.contains("Undefined variable")) {
+                    return "Check variable spelling and scope. Use 'this.variableName' for instance variables.";
+                }
                 return "Check if you have proper access permissions to this member";
             case VALIDATION_ERROR:
-                String message = e.getValue() != null ? e.getValue().toString() : "";
                 return ErrorMessages.getArrayValidationErrorHint(message);
             default:
                 return "Check your code for potential issues";

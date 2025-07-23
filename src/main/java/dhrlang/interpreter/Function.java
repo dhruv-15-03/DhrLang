@@ -32,8 +32,23 @@ public class Function implements Callable {
 
     @Override
     public Object call(Interpreter interpreter, List<Object> arguments) {
+        // Check for stack overflow before executing
+        if (interpreter.getCurrentCallDepth() >= interpreter.getMaxCallDepth()) {
+            throw new dhrlang.interpreter.DhrRuntimeException("Stack overflow: Maximum recursion depth (" + 
+                interpreter.getMaxCallDepth() + ") exceeded. " +
+                "Check for infinite recursion in your function calls. Consider adding a base case to recursive functions.");
+        }
+        
         Environment environment = new Environment(this.closure);
-        return execute(interpreter, arguments, environment);
+        
+        // Increment call depth
+        interpreter.incrementCallDepth();
+        try {
+            return execute(interpreter, arguments, environment);
+        } finally {
+            // Always decrement, even on exception
+            interpreter.decrementCallDepth();
+        }
     }
     public Object execute(Interpreter interpreter, List<Object> arguments, Environment environment) {
         for (int i = 0; i < declaration.getParameters().size(); i++) {

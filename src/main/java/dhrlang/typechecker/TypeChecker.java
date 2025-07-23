@@ -4,9 +4,11 @@ import dhrlang.ast.*;
 import dhrlang.error.ErrorReporter;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.TokenType;
+import dhrlang.interpreter.GenericTypeManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,10 +20,12 @@ public class TypeChecker {
     private final Map<String, TypeEnvironment> classEnvironments = new HashMap<>();
     private final Map<String, TypeEnvironment> interfaceEnvironments = new HashMap<>();
     private final TypeEnvironment globals = new TypeEnvironment();
+    private final GenericTypeManager genericTypeManager = new GenericTypeManager();
     private ClassDecl currentClass = null;
     private InterfaceDecl currentInterface = null;
     private String currentFunctionReturnType = null;
     private boolean inLoop = false;
+    private Set<String> currentTypeParameters = new HashSet<>();
     private ErrorReporter errorReporter;
 
     public TypeChecker() {
@@ -220,6 +224,15 @@ public class TypeChecker {
 
     private void checkClassBody(ClassDecl klass) {
         this.currentClass = klass;
+        
+        // Set current type parameters for generic classes
+        if (klass instanceof GenericClassDecl) {
+            GenericClassDecl genericClass = (GenericClassDecl) klass;
+            for (TypeParameter typeParam : genericClass.getTypeParameters()) {
+                currentTypeParameters.add(typeParam.getNameString());
+            }
+        }
+        
         TypeEnvironment classEnv = classEnvironments.get(klass.getName());
         
         for (VarDecl field : klass.getVariables()) {
@@ -243,6 +256,8 @@ public class TypeChecker {
         validateAbstractClass(klass);
         validateInterfaceImplementations(klass);
         
+        // Clear current type parameters
+        currentTypeParameters.clear();
         this.currentClass = null;
     }
     
@@ -457,13 +472,33 @@ public class TypeChecker {
         
         for (CatchClause catchClause : stmt.getCatchClauses()) {
             TypeEnvironment catchEnv = new TypeEnvironment(env);
-            catchEnv.define(catchClause.getParameter(), "sab");
+            
+            // Validate exception type
+            String exceptionType = catchClause.getExceptionType();
+            if (!isValidExceptionType(exceptionType)) {
+                errorWithHint("Invalid exception type '" + exceptionType + "'. " +
+                            "Use 'any' to catch all exceptions or a specific exception class name.",
+                            null, // We don't have direct location access for catch clause
+                            "Valid exception types: any, ArithmeticException, IndexOutOfBoundsException, TypeException, NullPointerException");
+            }
+            
+            // Define the exception parameter with the appropriate type
+            catchEnv.define(catchClause.getParameter(), exceptionType.equals("any") ? "sab" : exceptionType);
             checkStatement(catchClause.getBody(), catchEnv);
         }
         
         if (stmt.getFinallyBlock() != null) {
             checkStatement(stmt.getFinallyBlock(), env);
         }
+    }
+    
+    private boolean isValidExceptionType(String exceptionType) {
+        return "any".equals(exceptionType) || 
+               "ArithmeticException".equals(exceptionType) ||
+               "IndexOutOfBoundsException".equals(exceptionType) ||
+               "TypeException".equals(exceptionType) ||
+               "NullPointerException".equals(exceptionType) ||
+               "DhrException".equals(exceptionType);
     }
     
     private void checkThrowStmt(ThrowStmt stmt, TypeEnvironment env) {
@@ -718,16 +753,44 @@ public class TypeChecker {
 
     private String checkNew(NewExpr expr, TypeEnvironment env) {
         String className = expr.getClassName();
-        if (!classRegistry.containsKey(className)) {
-            errorWithHint("Cannot instantiate unknown class '" + className + "'.", expr.getSourceLocation(),
-                         "Make sure the class is defined before creating instances: class " + className + " { ... }");
+        String baseClassName = className;
+        
+        if (className.contains("<")) {
+            baseClassName = className.substring(0, className.indexOf('<'));
         }
         
-        ClassDecl classDecl = classRegistry.get(className);
+        if (!classRegistry.containsKey(baseClassName)) {
+            errorWithHint("Cannot instantiate unknown class '" + baseClassName + "'.", expr.getSourceLocation(),
+                         "Make sure the class is defined before creating instances: class " + baseClassName + " { ... }");
+            return "unknown";
+        }
+        
+        ClassDecl classDecl = classRegistry.get(baseClassName);
+        
+        if (classDecl instanceof GenericClassDecl && className.contains("<")) {
+            try {
+                validateGenericInstantiation((GenericClassDecl) classDecl, className, expr.getSourceLocation());
+            } catch (TypeException e) {
+                errorWithHint(e.getMessage(), expr.getSourceLocation(), 
+                             "Ensure type arguments match the class's generic parameters.");
+            }
+        } else if (!(classDecl instanceof GenericClassDecl) && className.contains("<")) {
+            errorWithHint("Class '" + baseClassName + "' is not generic but type arguments were provided.", 
+                         expr.getSourceLocation(), "Remove type arguments: new " + baseClassName + "()");
+        } else if (classDecl instanceof GenericClassDecl && !className.contains("<")) {
+            errorWithHint("Generic class '" + baseClassName + "' requires type arguments.", 
+                         expr.getSourceLocation(), "Provide type arguments: new " + baseClassName + "<Type>()");
+        }
+        
         FunctionDecl init = classDecl.findMethod("init");
         
         if (init != null) {
-            checkFunctionArguments("init", init.getParameters(), expr.getArguments(), env, expr.getSourceLocation());
+            if (className.contains("<")) {
+                // Handle generic constructor call
+                checkGenericConstructorCall(className, init, expr.getArguments(), env, expr.getSourceLocation());
+            } else {
+                checkFunctionArguments("init", init.getParameters(), expr.getArguments(), env, expr.getSourceLocation());
+            }
         } else if (!expr.getArguments().isEmpty()) {
             errorWithHint("Class '" + className + "' has no 'init' constructor and cannot be called with arguments.", expr.getSourceLocation(),
                          "Remove arguments: new " + className + "(); or add an init method to the class");
@@ -754,6 +817,42 @@ public class TypeChecker {
         
         return elementType + "[]";
     }
+    
+    private void checkGenericConstructorCall(String className, FunctionDecl init, List<Expression> args, TypeEnvironment env, SourceLocation location) {
+        String baseClassName = extractBaseType(className);
+        ClassDecl classDecl = classRegistry.get(baseClassName);
+        
+        if (!(classDecl instanceof GenericClassDecl)) {
+            checkFunctionArguments("init", init.getParameters(), args, env, location);
+            return;
+        }
+        
+        String[] typeArguments = extractTypeArguments(className);
+        GenericClassDecl genericClassDecl = (GenericClassDecl) classDecl;
+        
+        List<VarDecl> parameters = init.getParameters();
+        if (args.size() != parameters.size()) {
+            errorWithHint("Constructor 'init' expects " + parameters.size() + 
+                         " arguments, but got " + args.size() + ".", location,
+                         "Check the constructor definition and provide the correct number of arguments");
+            return;
+        }
+        
+        String[] typeParameters = genericClassDecl.getTypeParameters().stream()
+                                                  .map(TypeParameter::getNameString)
+                                                  .toArray(String[]::new);
+        
+        for (int i = 0; i < args.size(); i++) {
+            String argType = checkExpr(args.get(i), env);
+            String expectedType = resolveGenericReturnType(parameters.get(i).getType(), typeParameters, typeArguments);
+            
+            if (!isAssignable(argType, expectedType)) {
+                errorWithHint("Argument " + (i + 1) + " for constructor 'init' should be '" + expectedType + 
+                             "', but got '" + argType + "'.", args.get(i).getSourceLocation(),
+                             "Pass an argument of type '" + expectedType + "' for parameter " + (i + 1));
+            }
+        }
+    }
 
     private String checkGet(GetExpr expr, TypeEnvironment env) {
         String objectType = checkExpr(expr.getObject(), env);
@@ -764,8 +863,15 @@ public class TypeChecker {
         if (objectType.equals("sab") && propName.equals("length")) {
             return "num";
         }
+        
+        // Handle built-in string methods for sab type
+        if (objectType.equals("sab") && isBuiltInStringMethod(propName)) {
+            return "method";
+        }
 
-        TypeEnvironment instanceEnv = classEnvironments.get(objectType);
+        // Handle generic types: Container<num> -> Container
+        String baseType = extractBaseType(objectType);
+        TypeEnvironment instanceEnv = classEnvironments.get(baseType);
         if (instanceEnv == null) {
             errorWithHint("Can only access properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
                          "Property access syntax: object.property - ensure the object is a class instance");
@@ -776,8 +882,13 @@ public class TypeChecker {
             return instanceEnv.get(propName);
         } catch (TypeException fieldError) {
             try {
-                instanceEnv.getFunction(propName);
-                return "method"; 
+                // For generic types, try generic method resolution
+                if (objectType.contains("<")) {
+                    return checkGenericMethodCall(objectType, propName, new ArrayList<>(), env, expr.getSourceLocation());
+                } else {
+                    instanceEnv.getFunction(propName);
+                    return "method";
+                }
             } catch (TypeException funcError) {
                 errorWithHint("Property '" + propName + "' not found on class '" + objectType + "'.", expr.getSourceLocation(),
                              "Check the property name and ensure it's defined in the class");
@@ -931,17 +1042,31 @@ public class TypeChecker {
             }
         } else if (callee instanceof GetExpr) {
             String objectType = checkExpr(((GetExpr) callee).getObject(), env);
-            TypeEnvironment instanceEnv = classEnvironments.get(objectType);
+            funcName = ((GetExpr) callee).getName().getLexeme();
+            
+            // Handle built-in string method calls for sab type
+            if (objectType.equals("sab") && isBuiltInStringMethod(funcName)) {
+                return checkBuiltInStringMethodCall(funcName, call.getArguments(), env);
+            }
+            
+            // Handle generic method calls
+            if (objectType.contains("<")) {
+                return checkGenericMethodCall(objectType, funcName, call.getArguments(), env, call.getSourceLocation());
+            }
+            
+            // Handle regular (non-generic) method calls
+            String baseType = extractBaseType(objectType);
+            TypeEnvironment instanceEnv = classEnvironments.get(baseType);
             if (instanceEnv == null) {
                 errorWithHint("Can only call methods on class instances, got type '" + objectType + "'.", call.getSourceLocation(),
                              "Method calls syntax: object.method() - ensure the object is a class instance");
                 return "unknown";  // Return after error instead of continuing
             }
-            funcName = ((GetExpr) callee).getName().getLexeme();
+            
             try {
                 signature = instanceEnv.getFunction(funcName);
             } catch (TypeException e) {
-                errorWithHint("Method '" + funcName + "' not found on class '" + objectType + "'.", call.getSourceLocation(),
+                errorWithHint("Method '" + funcName + "' not found on class '" + baseType + "'.", call.getSourceLocation(),
                              "Check the method name and ensure it's defined in the class");
                 return "unknown";
             }
@@ -1586,6 +1711,183 @@ public class TypeChecker {
         return type.equals("num") || type.equals("duo");
     }
 
+    private boolean isPrimitive(String type) {
+        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya");
+    }
+    
+    
+    private String extractBaseType(String type) {
+        if (type.contains("<")) {
+            return type.substring(0, type.indexOf('<'));
+        }
+        return type;
+    }
+    
+   
+    private String[] extractTypeArguments(String type) {
+        if (!type.contains("<")) {
+            return new String[0];
+        }
+        String typeArgsStr = type.substring(type.indexOf('<') + 1, type.lastIndexOf('>'));
+        String[] typeArgs = typeArgsStr.split(",");
+        for (int i = 0; i < typeArgs.length; i++) {
+            typeArgs[i] = typeArgs[i].trim();
+        }
+        return typeArgs;
+    }
+    
+    
+    private String resolveGenericReturnType(String returnType, String[] typeParameters, String[] typeArguments) {
+        if (returnType == null) return "kaam";
+        
+        for (int i = 0; i < typeParameters.length && i < typeArguments.length; i++) {
+            if (returnType.equals(typeParameters[i])) {
+                return typeArguments[i];
+            }
+        }
+        
+        if (returnType.contains("<")) {
+            String baseType = extractBaseType(returnType);
+            String[] returnTypeArgs = extractTypeArguments(returnType);
+            StringBuilder resolvedType = new StringBuilder(baseType);
+            if (returnTypeArgs.length > 0) {
+                resolvedType.append("<");
+                for (int i = 0; i < returnTypeArgs.length; i++) {
+                    if (i > 0) resolvedType.append(", ");
+                    resolvedType.append(resolveGenericReturnType(returnTypeArgs[i], typeParameters, typeArguments));
+                }
+                resolvedType.append(">");
+            }
+            return resolvedType.toString();
+        }
+        
+        return returnType;
+    }
+    
+    
+    private String checkGenericMethodCall(String objectType, String methodName, List<Expression> args, TypeEnvironment env, SourceLocation location) {
+        String baseType = extractBaseType(objectType);
+        String[] typeArguments = extractTypeArguments(objectType);
+        
+        if (!classRegistry.containsKey(baseType)) {
+            errorWithHint("Unknown class '" + baseType + "' in method call.", location,
+                         "Make sure the class is defined before calling methods on it");
+            return "unknown";
+        }
+        
+        ClassDecl classDecl = classRegistry.get(baseType);
+        FunctionDecl method = classDecl.findMethod(methodName);
+        
+        if (method == null) {
+            errorWithHint("Method '" + methodName + "' not found in class '" + baseType + "'.", location,
+                         "Check the method name and ensure it exists in the class");
+            return "unknown";
+        }
+        
+        List<VarDecl> parameters = method.getParameters();
+        if (args.size() != parameters.size()) {
+            errorWithHint("Method '" + methodName + "' expects " + parameters.size() + 
+                         " arguments, but got " + args.size() + ".", location,
+                         "Check the method definition and provide the correct number of arguments");
+            return "unknown";
+        }
+        
+        String[] typeParameters = new String[0];
+        if (classDecl instanceof GenericClassDecl) {
+            List<TypeParameter> genericParams = ((GenericClassDecl) classDecl).getTypeParameters();
+            typeParameters = genericParams.stream().map(TypeParameter::getNameString).toArray(String[]::new);
+        }
+        
+        for (int i = 0; i < args.size(); i++) {
+            String argType = checkExpr(args.get(i), env);
+            String expectedType = resolveGenericReturnType(parameters.get(i).getType(), typeParameters, typeArguments);
+            
+            if (!isAssignable(argType, expectedType)) {
+                errorWithHint("Argument " + (i + 1) + " for '" + methodName + "' should be '" + expectedType + 
+                             "', but got '" + argType + "'.", args.get(i).getSourceLocation(),
+                             "Pass an argument of type '" + expectedType + "' for parameter " + (i + 1));
+            }
+        }
+        
+        String returnType = method.getReturnType();
+        return resolveGenericReturnType(returnType, typeParameters, typeArguments);
+    }
+    
+    
+    private void validateTypeReference(String type, SourceLocation location) {
+        if (type.endsWith("[]")) {
+            String baseType = type.substring(0, type.length() - 2);
+            validateTypeReference(baseType, location);
+            return;
+        }
+        
+        if (type.contains("<")) {
+            String baseType = type.substring(0, type.indexOf('<'));
+            
+            if (!isPrimitive(baseType) && !classRegistry.containsKey(baseType) && !interfaceRegistry.containsKey(baseType)) {
+                errorWithHint("Unknown type '" + baseType + "'.", location,
+                             "Make sure the class or interface is defined: class " + baseType + " { ... }");
+            }
+            
+            if (classRegistry.containsKey(baseType) && classRegistry.get(baseType) instanceof GenericClassDecl) {
+                try {
+                    validateGenericInstantiation((GenericClassDecl) classRegistry.get(baseType), type, location);
+                } catch (TypeException e) {
+                    errorWithHint(e.getMessage(), location, 
+                                 "Check that type arguments match the generic parameters.");
+                }
+            } else if (classRegistry.containsKey(baseType)) {
+                errorWithHint("Class '" + baseType + "' is not generic but type arguments were provided.", location,
+                             "Remove type arguments: " + baseType);
+            }
+            return;
+        }
+        
+        if (!isPrimitive(type) && !classRegistry.containsKey(type) && !interfaceRegistry.containsKey(type)) {
+            errorWithHint("Unknown type '" + type + "'.", location,
+                         "Make sure the type is defined or use a valid primitive type: num, duo, sab, bool");
+        }
+    }
+    
+    
+    private void validateGenericInstantiation(GenericClassDecl genericClass, String instanceType, SourceLocation location) throws TypeException {
+        String typeArgsStr = instanceType.substring(instanceType.indexOf('<') + 1, instanceType.lastIndexOf('>'));
+        String[] typeArgs = typeArgsStr.split(",");
+        
+        for (int i = 0; i < typeArgs.length; i++) {
+            typeArgs[i] = typeArgs[i].trim();
+        }
+        
+        List<TypeParameter> typeParameters = genericClass.getTypeParameters();
+        
+        if (typeArgs.length != typeParameters.size()) {
+            throw new TypeException("Generic class '" + genericClass.getName() + "' expects " + 
+                                  typeParameters.size() + " type arguments but got " + typeArgs.length + ".");
+        }
+        
+        for (int i = 0; i < typeArgs.length; i++) {
+            TypeParameter param = typeParameters.get(i);
+            String typeArg = typeArgs[i];
+            
+            if (!currentTypeParameters.contains(typeArg) && 
+                !isPrimitive(typeArg) && 
+                !classRegistry.containsKey(typeArg) && 
+                !interfaceRegistry.containsKey(typeArg) &&
+                !isGenericType(typeArg)) {
+                throw new TypeException("Unknown type '" + typeArg + "' used as type argument for parameter '" + 
+                                      param.getName() + "'.");
+            }
+        }
+    }
+    
+    private boolean isGenericType(String type) {
+        if (type.contains("<") && type.contains(">")) {
+            String baseType = extractBaseType(type);
+            return classRegistry.containsKey(baseType) || interfaceRegistry.containsKey(baseType);
+        }
+        return false;
+    }
+
     private boolean isAssignable(String from, String to) {
         if (from == null || to == null) return false;
         return from.equals(to) ||
@@ -1740,5 +2042,219 @@ public class TypeChecker {
         }
         
         return abstractMethods;
+    }
+    
+    
+    public String visitGenericType(GenericType genericType) {
+        try {
+            return genericTypeManager.resolveGenericType(genericType);
+        } catch (Exception e) {
+            errorWithHint("Failed to resolve generic type '" + genericType + "': " + e.getMessage(), 
+                         genericType.getSourceLocation(),
+                         "Check that all type parameters are properly declared and in scope");
+            return "unknown";
+        }
+    }
+    
+    public String visitTypeParameter(TypeParameter typeParameter) {
+        return typeParameter.getNameString();
+    }
+    
+    
+    private void validateGenericClass(GenericClassDecl genericClass) {
+        genericTypeManager.enterContext(genericClass.getName());
+        
+        try {
+            for (TypeParameter typeParam : genericClass.getTypeParameters()) {
+                validateTypeParameter(typeParam);
+            }
+            
+            Set<String> paramNames = new java.util.HashSet<>();
+            for (TypeParameter typeParam : genericClass.getTypeParameters()) {
+                String paramName = typeParam.getNameString();
+                if (paramNames.contains(paramName)) {
+                    errorWithHint("Duplicate type parameter '" + paramName + "' in class '" + genericClass.getName() + "'.",
+                                 typeParam.getSourceLocation(),
+                                 "Use unique names for each type parameter: class MyClass<T, U, V>");
+                }
+                paramNames.add(paramName);
+            }
+            
+        } finally {
+            genericTypeManager.exitContext();
+        }
+    }
+    
+    
+    private void validateGenericInterface(GenericInterfaceDecl genericInterface) {
+        genericTypeManager.enterContext(genericInterface.getName());
+        
+        try {
+            for (TypeParameter typeParam : genericInterface.getTypeParameters()) {
+                validateTypeParameter(typeParam);
+            }
+            
+            Set<String> paramNames = new java.util.HashSet<>();
+            for (TypeParameter typeParam : genericInterface.getTypeParameters()) {
+                String paramName = typeParam.getNameString();
+                if (paramNames.contains(paramName)) {
+                    errorWithHint("Duplicate type parameter '" + paramName + "' in interface '" + genericInterface.getName() + "'.",
+                                 typeParam.getSourceLocation(),
+                                 "Use unique names for each type parameter: interface MyInterface<T, U, V>");
+                }
+                paramNames.add(paramName);
+            }
+            
+        } finally {
+            genericTypeManager.exitContext();
+        }
+    }
+   
+    private void validateTypeParameter(TypeParameter typeParam) {
+        for (GenericType bound : typeParam.getBounds()) {
+            String boundType = visitGenericType(bound);
+            
+            if (!isValidType(boundType)) {
+                errorWithHint("Type parameter bound '" + boundType + "' is not a valid type.",
+                             bound.getSourceLocation(),
+                             "Use existing class or interface names as bounds: T extends MyClass");
+            }
+        }
+        
+        for (GenericType bound : typeParam.getBounds()) {
+            if (bound.getBaseNameString().equals(typeParam.getNameString())) {
+                errorWithHint("Type parameter '" + typeParam.getNameString() + "' cannot extend itself.",
+                             bound.getSourceLocation(),
+                             "Use a different class or interface as bound: T extends Number");
+            }
+        }
+    }
+    
+    
+    private boolean isValidType(String typeName) {
+        if (isPrimitive(typeName)) {
+            return true;
+        }
+        
+        return classRegistry.containsKey(typeName) || interfaceRegistry.containsKey(typeName);
+    }
+    
+    
+    private void checkClassWithGenerics(ClassDecl classDecl) {
+        if (classDecl instanceof GenericClassDecl) {
+            validateGenericClass((GenericClassDecl) classDecl);
+        }
+        
+        checkClassBody(classDecl);
+    }
+    
+   
+    private void checkInterfaceWithGenerics(InterfaceDecl interfaceDecl) {
+        if (interfaceDecl instanceof GenericInterfaceDecl) {
+            validateGenericInterface((GenericInterfaceDecl) interfaceDecl);
+        }
+        
+        checkInterfaceBody(interfaceDecl);
+    }
+    
+    private boolean isBuiltInStringMethod(String methodName) {
+        return switch (methodName) {
+            case "length", "charAt", "substring", "indexOf", "toUpperCase", 
+                 "toLowerCase", "trim", "startsWith", "endsWith", "equals",
+                 "replace", "split", "repeat", "contains" -> true;
+            default -> false;
+        };
+    }
+    
+    private String checkBuiltInStringMethodCall(String methodName, List<Expression> args, TypeEnvironment env) {
+        // Check arguments for each built-in string method
+        switch (methodName) {
+            case "length" -> {
+                if (!args.isEmpty()) {
+                    errorWithHint("Method '" + methodName + "' takes no arguments, but got " + args.size() + ".", 
+                                 args.get(0).getSourceLocation(), "Remove the arguments: text." + methodName + "()");
+                }
+                return "num";  // length returns a number
+            }
+            case "toUpperCase", "toLowerCase", "trim" -> {
+                if (!args.isEmpty()) {
+                    errorWithHint("Method '" + methodName + "' takes no arguments, but got " + args.size() + ".", 
+                                 args.get(0).getSourceLocation(), "Remove the arguments: text." + methodName + "()");
+                }
+                return "sab";
+            }
+            case "charAt" -> {
+                if (args.size() != 1) {
+                    errorWithHint("Method 'charAt' expects 1 argument, but got " + args.size() + ".", 
+                                 getArgumentLocation(args), "Use: text.charAt(index)");
+                    return "unknown";
+                }
+                String argType = checkExpr(args.get(0), env);
+                if (!"num".equals(argType)) {
+                    errorWithHint("charAt index must be a number, got '" + argType + "'.", 
+                                 args.get(0).getSourceLocation(), "Use a numeric index: text.charAt(0)");
+                }
+                return "sab";
+            }
+            case "substring" -> {
+                if (args.size() != 2) {
+                    errorWithHint("Method 'substring' expects 2 arguments, but got " + args.size() + ".", 
+                                 getArgumentLocation(args), "Use: text.substring(start, end)");
+                    return "unknown";
+                }
+                for (int i = 0; i < args.size(); i++) {
+                    String argType = checkExpr(args.get(i), env);
+                    if (!"num".equals(argType)) {
+                        errorWithHint("substring argument " + (i + 1) + " must be a number, got '" + argType + "'.", 
+                                     args.get(i).getSourceLocation(), "Use numeric indices: text.substring(0, 5)");
+                    }
+                }
+                return "sab";
+            }
+            case "indexOf", "startsWith", "endsWith", "contains" -> {
+                if (args.size() != 1) {
+                    errorWithHint("Method '" + methodName + "' expects 1 argument, but got " + args.size() + ".", 
+                                 getArgumentLocation(args), "Use: text." + methodName + "(\"searchString\")");
+                    return "unknown";
+                }
+                String argType = checkExpr(args.get(0), env);
+                if (!"sab".equals(argType)) {
+                    errorWithHint(methodName + " argument must be a string, got '" + argType + "'.", 
+                                 args.get(0).getSourceLocation(), "Use a string argument: text." + methodName + "(\"search\")");
+                }
+                return methodName.equals("indexOf") ? "num" : "kya";
+            }
+            case "replace" -> {
+                if (args.size() != 2) {
+                    errorWithHint("Method 'replace' expects 2 arguments, but got " + args.size() + ".", 
+                                 getArgumentLocation(args), "Use: text.replace(\"target\", \"replacement\")");
+                    return "unknown";
+                }
+                for (int i = 0; i < args.size(); i++) {
+                    String argType = checkExpr(args.get(i), env);
+                    if (!"sab".equals(argType)) {
+                        errorWithHint("replace argument " + (i + 1) + " must be a string, got '" + argType + "'.", 
+                                     args.get(i).getSourceLocation(), "Use string arguments: text.replace(\"old\", \"new\")");
+                    }
+                }
+                return "sab";
+            }
+            case "equals" -> {
+                if (args.size() != 1) {
+                    errorWithHint("Method 'equals' expects 1 argument, but got " + args.size() + ".", 
+                                 getArgumentLocation(args), "Use: text.equals(\"other\")");
+                    return "unknown";
+                }
+                checkExpr(args.get(0), env);
+                return "kya";
+            }
+            default -> {
+                return "unknown";
+            }
+        }
+    }
+    
+    private SourceLocation getArgumentLocation(List<Expression> args) {
+        return args.isEmpty() ? null : args.get(0).getSourceLocation();
     }
 }

@@ -77,7 +77,8 @@ public enum TokenType {
     AND,            // &&     (logical and)
     OR,             // ||     (logical or)
     INCREMENT,      // ++     (increment operator)
-    DECREMENT,
+    DECREMENT,      // --     (decrement operator)
+    QUESTION,       // ?      (wildcard in generics)
 
 
     // ===============================

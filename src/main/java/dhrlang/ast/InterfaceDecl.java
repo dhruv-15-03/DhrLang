@@ -4,9 +4,11 @@ import dhrlang.error.SourceLocation;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
 
 public class InterfaceDecl implements ASTNode {
     private final String name;
+    private final List<VariableExpr> parentInterfaces; // Support for interface inheritance
     private final List<FunctionDecl> methods;
     private final Set<Modifier> modifiers;
     private SourceLocation sourceLocation;
@@ -14,17 +16,26 @@ public class InterfaceDecl implements ASTNode {
     private boolean isResolved = false;
 
     public InterfaceDecl(String name, List<FunctionDecl> methods) {
-        this(name, methods, new HashSet<>());
+        this(name, new ArrayList<>(), methods, new HashSet<>());
     }
     
     public InterfaceDecl(String name, List<FunctionDecl> methods, Set<Modifier> modifiers) {
+        this(name, new ArrayList<>(), methods, modifiers);
+    }
+    
+    public InterfaceDecl(String name, List<VariableExpr> parentInterfaces, List<FunctionDecl> methods, Set<Modifier> modifiers) {
         this.name = name;
+        this.parentInterfaces = parentInterfaces != null ? parentInterfaces : new ArrayList<>();
         this.methods = methods;
         this.modifiers = modifiers != null ? modifiers : new HashSet<>();
     }
 
     public String getName() {
         return name;
+    }
+
+    public List<VariableExpr> getParentInterfaces() {
+        return parentInterfaces;
     }
 
     public List<FunctionDecl> getMethods() {

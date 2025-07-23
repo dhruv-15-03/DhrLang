@@ -50,6 +50,15 @@ public class ErrorMessages {
             hint = "Use '@Override' annotation before methods that override parent class or interface methods";
         }
         
+        // If no specific hint found, provide a generic helpful hint
+        if (hint == null) {
+            if (actualToken != null) {
+                hint = "Syntax error near '" + actualToken.getLexeme() + "'. Check the DhrLang syntax guide for correct usage";
+            } else {
+                hint = "Check your syntax. Make sure all parentheses, braces, and semicolons are properly matched";
+            }
+        }
+        
         return hint;
     }
     
