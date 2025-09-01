@@ -1,0 +1,101 @@
+// Comprehensive edge case testing for DhrLang - Fixed version
+class EdgeCaseTests {
+    static kaam main() {
+        printLine("=== Edge Case Tests ===");
+        
+        // Test null safety and error handling
+        try {
+            // Array bounds testing
+            num[] nums = [1, 2, 3];
+            printLine("Array length: " + arrayLength(nums));
+            
+            // Valid access
+            printLine("Valid access nums[1]: " + nums[1]);
+            
+            // Out of bounds access - should throw runtime error
+            printLine("Attempting out of bounds access...");
+            num invalid = nums[10];
+            printLine("This should not print: " + invalid);
+        }
+        catch(error) {
+            printLine("Caught array bounds error: " + error);
+        }
+        
+        // Test division by zero
+        try {
+            duo result = 10.0 / 0.0;  // Use duo for division result
+            printLine("This should not print: " + result);
+        }
+        catch(divError) {
+            printLine("Caught division by zero: " + divError);
+        }
+        
+        // Test string operations edge cases
+        sab emptyString = "";
+        printLine("Empty string length: " + emptyString.length());
+        
+        // Test with special characters
+        sab specialChars = "Hello World !";  // Simplified to avoid escape sequences
+        printLine("Special chars: " + specialChars);
+        printLine("Special chars length: " + specialChars.length());
+        
+        // Test large numbers
+        num largeNum = 9223372036854775807;  // Max long value
+        printLine("Large number: " + largeNum);
+        
+        // Test floating point precision
+        duo pi = 3.141592653589793;
+        printLine("Pi precision: " + pi);
+        
+        // Test nested expressions - use duo for division result
+        duo complex = ((5 + 3) * 2 - 1) / (10 - 7);
+        printLine("Complex expression result: " + complex);
+        
+        // Test array operations
+        num[] numbers = [5, 2, 8, 1, 9];
+        printLine("Original array: [5, 2, 8, 1, 9]");
+        printLine("Array contains 8: " + arrayContains(numbers, 8));
+        printLine("Index of 8: " + arrayIndexOf(numbers, 8));
+        
+        // Test string methods - use object.method() syntax
+        sab testStr = "  Hello World  ";
+        printLine("Original: '" + testStr + "'");
+        printLine("Trimmed: '" + testStr.trim() + "'");
+        printLine("Upper: " + testStr.toUpperCase());
+        printLine("Lower: " + testStr.toLowerCase());
+        
+        // Test character at boundary
+        if (testStr.length() > 0) {
+            printLine("First char: " + testStr.charAt(0));
+            printLine("Last char: " + testStr.charAt(testStr.length() - 1));
+        }
+        
+        // Test boolean edge cases
+        kya alwaysTrue = true;
+        kya alwaysFalse = false;
+        printLine("true && false: " + (alwaysTrue && alwaysFalse));
+        printLine("true || false: " + (alwaysTrue || alwaysFalse));
+        printLine("!true: " + (!alwaysTrue));
+        
+        // Test increment/decrement operators
+        num counter = 5;
+        printLine("Initial counter: " + counter);
+        printLine("Pre-increment: " + (++counter));
+        printLine("Post-increment: " + (counter++));
+        printLine("Final counter: " + counter);
+        
+        // Test string concatenation edge cases
+        sab str1 = "Hello";
+        sab str2 = "World";
+        sab combined = str1 + " " + str2 + "!";
+        printLine("Combined string: " + combined);
+        
+        // Test array modification
+        num[] mutableArray = [10, 20, 30];
+        printLine("Before modification: " + mutableArray[1]);
+        mutableArray[1] = 25;
+        printLine("After modification: " + mutableArray[1]);
+        
+        printLine("=== Edge Case Tests Complete ===");
+    }
+}

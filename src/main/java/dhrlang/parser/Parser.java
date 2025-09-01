@@ -788,6 +788,7 @@ public class Parser {
             loopStatements.add(incrementStmt);
             Block loopBlock = new Block(loopStatements);
             loopBlock.setSourceLocation(body.getSourceLocation()); // Use body location for synthetic block
+                loopBlock.markAsDesugaredForLoopBody();
             
             Statement whileStmt = new WhileStmt(condition, loopBlock);
             whileStmt.setSourceLocation(forToken.getLocation());
@@ -816,6 +817,7 @@ public class Parser {
         
         List<CatchClause> catchClauses = new ArrayList<>();
         while (match(TokenType.CATCH)) {
+            Token catchToken = previous();
             consume(TokenType.LPAREN, "Expected '(' after 'catch'.");
             
             // Parse optional exception type and parameter name
@@ -823,14 +825,23 @@ public class Parser {
             Token parameterName;
             
             if (check(TokenType.IDENTIFIER)) {
-                Token firstToken = advance(); // Could be type or parameter name
-                
+                Token firstToken = advance();
                 if (check(TokenType.IDENTIFIER)) {
-                    // Two identifiers: first is type, second is parameter name
-                    exceptionType = firstToken.getLexeme();
-                    parameterName = advance();
+                    
+                    Token secondToken = peek();
+                    String a = firstToken.getLexeme();
+                    String b = secondToken.getLexeme();
+                    boolean firstLooksParam = a.length()>0 && Character.isLowerCase(a.charAt(0));
+                    boolean secondLooksType = b.length()>0 && Character.isUpperCase(b.charAt(0));
+                    if (firstLooksParam && secondLooksType) {
+                        parameterName = firstToken; // param first
+                        exceptionType = advance().getLexeme();
+                    } else {
+                        exceptionType = firstToken.getLexeme();
+                        parameterName = advance();
+                    }
                 } else {
-                    // Single identifier: parameter name, type defaults to "any"
+                    // Only one identifier -> parameter name, type remains 'any'
                     parameterName = firstToken;
                 }
             } else {
@@ -839,7 +850,9 @@ public class Parser {
             
             consume(TokenType.RPAREN, "Expected ')' after catch parameter.");
             Block catchBody = parseBlock();
-            catchClauses.add(new CatchClause(exceptionType, parameterName.getLexeme(), catchBody));
+            CatchClause clause = new CatchClause(exceptionType, parameterName.getLexeme(), catchBody);
+            clause.setSourceLocation(catchToken.getLocation());
+            catchClauses.add(clause);
         }
         
         Block finallyBlock = null;

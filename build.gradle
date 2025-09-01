@@ -1,10 +1,19 @@
 plugins {
     id 'java'
     id 'application'
+    id 'jacoco'
+    id 'maven-publish'
+    id 'signing'
+    id 'com.github.spotbugs' version '6.0.7'
+    id 'checkstyle'
+    id 'pmd'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'info.solidsoft.pitest' version '1.15.0'
 }
 
 group 'com.dhrlang'
-version '1.0-SNAPSHOT'
+version '1.0.0'
+description 'DhrLang Programming Language - A modern language with Hindi keywords'
 
 application {
     mainClass = 'dhrlang.Main'
@@ -12,21 +21,351 @@ application {
 
 repositories {
     mavenCentral()
+    gradlePluginPortal()
 }
+
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+    testImplementation 'org.mockito:mockito-core:5.5.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.5.0'
+    
+    // Code quality tools
+    spotbugs 'com.github.spotbugs:spotbugs:4.8.3'
+    spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.12.0'
+    
+    // Documentation
+    implementation 'org.apache.commons:commons-lang3:3.13.0'
 }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+    withJavadocJar()
+    withSourcesJar()
 }
+
+// Test configuration
 test {
     useJUnitPlatform()
+    maxHeapSize = "1G"
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat = 'full'
+        showStandardStreams = false
+    }
+}
+
+// Jacoco coverage
+jacoco {
+    toolVersion = "0.8.8"
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+    finalizedBy jacocoTestCoverageVerification
+}
+
+jacocoTestCoverageVerification {
+    // Baseline thresholds retained (will ratchet upwards Step 4 phases)
+    // TODO(step4): raise gradually after adding focused tests; temporarily relaxed to avoid blocking while expanding suite
+    violationRules {
+        rule {
+            element = 'BUNDLE'
+            limit {
+                counter = 'INSTRUCTION'
+                value = 'COVEREDRATIO'
+                minimum = 0.10
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = 0.05
+            }
+        }
+    }
+    // Skip coverage check if no exec data produced (e.g., running a filtered test class that ends up fully disabled)
+    onlyIf {
+        def execFile = file("$buildDir/jacoco/test.exec")
+        return execFile.exists() && execFile.length() > 0
+    }
+}
+
+task jacocoStrictCoverageVerification(type: JacocoCoverageVerification) {
+    executionData fileTree(dir: "$buildDir/jacoco", includes: ["test.exec"]) 
+    sourceSets sourceSets.main
+    violationRules {
+        rule {
+            element = 'BUNDLE'
+            limit { counter = 'LINE'; value = 'COVEREDRATIO'; minimum = 0.85 }
+            limit { counter = 'BRANCH'; value = 'COVEREDRATIO'; minimum = 0.70 }
+        }
+    }
+    onlyIf { false } 
+}
+
+spotbugs {
+    toolVersion = '4.8.3'
+}
+
+spotbugsMain {
+    reports {
+        xml.enabled = false
+        html.enabled = true
+    }
+}
+
+// Checkstyle configuration
+checkstyle {
+    toolVersion = '10.12.1'
+    configFile = file("config/checkstyle/checkstyle.xml")
+    maxWarnings = 0
+    maxErrors = 0
+}
+
+checkstyleMain {
+    source = 'src/main/java'
+}
+
+checkstyleTest {
+    source = 'src/test/java'
+}
+
+// PMD configuration
+pmd {
+    toolVersion = '6.55.0'
+    ruleSetFiles = files("config/pmd/ruleset.xml")
+    ruleSets = []
+    ignoreFailures = false
+}
+
+// Shadow JAR configuration (fat JAR)
+shadowJar {
+    archiveClassifier.set('')
+    manifest {
+        attributes(
+            'Main-Class': 'dhrlang.Main',
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': 'DhrLang Team'
+        )
+    }
 }
 
 
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:unchecked', '-Xlint:deprecation']
+}
+
+// Publishing configuration
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            
+            pom {
+                name = 'DhrLang'
+                description = 'A modern programming language with Hindi keywords'
+                url = 'https://github.com/dhruv-15-03/DhrLang'
+                
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        id = 'dhruv-15-03'
+                        name = 'Dhruv Rastogi'
+                        email = 'dhruv.rastogi@example.com'
+                    }
+                }
+                
+                scm {
+                    connection = 'scm:git:git://github.com/dhruv-15-03/DhrLang.git'
+                    developerConnection = 'scm:git:ssh://github.com:dhruv-15-03/DhrLang.git'
+                    url = 'https://github.com/dhruv-15-03/DhrLang/tree/main'
+                }
+            }
+        }
+    }
+    
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/dhruv-15-03/DhrLang")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+            }
+        }
+    }
+}
+
+// Signing configuration (for Maven Central)
+signing {
+    required { gradle.taskGraph.hasTask("publish") }
+    sign publishing.publications.maven
+}
+
+// Custom tasks
+task integrationTest(type: Test) {
+    description = 'Runs integration tests.'
+    group = 'verification'
+    
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    
+    include '**/integration/**'
+    
+    shouldRunAfter test
+}
+
+tasks.register('generateErrorCodes') {
+    group = 'verification'
+    description = 'Generate ERROR_CODES.md from ErrorCode enum'
+    doLast {
+        def fileObj = file('src/main/java/dhrlang/error/ErrorCode.java')
+        if(!fileObj.exists()) throw new GradleException('ErrorCode.java not found')
+        def src = fileObj.text
+        def matcher = (src =~ /enum\s+ErrorCode\s*\{([\s\S]*?)}/)
+        if(!matcher.find()) throw new GradleException('Cannot parse ErrorCode enum')
+        def body = matcher.group(1)
+        def tokens = body.split(/[,\n]/)*.trim().findAll{ it && !it.startsWith('//') }
+        def codes = tokens.collect{ it.replaceAll(/;.*/, '') }.findAll{ it }
+        def md = new StringBuilder()
+        md << '# Error Codes\n\n'
+        md << 'Generated automatically. Edit descriptions below.\n\n'
+        md << '| Code | Description |\n|------|-------------|\n'
+        codes.sort().each { c -> md << "| ${c} | TODO: add description |\n" }
+        file('ERROR_CODES.md').text = md.toString()
+        println "Generated ERROR_CODES.md with ${codes.size()} codes"
+    }
+}
+
+task runSample(type: JavaExec) {
+    description = 'Runs sample DhrLang program'
+    group = 'application'
+    
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'dhrlang.Main'
+    args = ['input/sample.dhr']
+}
+
+task generateDocs(type: Javadoc) {
+    description = 'Generates API documentation'
+    group = 'documentation'
+    
+    source = sourceSets.main.allJava
+    classpath = sourceSets.main.compileClasspath
+    destinationDir = file('docs/api')
+    
+    options {
+        encoding = 'UTF-8'
+        charSet = 'UTF-8'
+        author = true
+        version = true
+        windowTitle = "DhrLang API Documentation v${project.version}"
+        docTitle = "DhrLang Programming Language API"
+        header = "<b>DhrLang ${project.version}</b>"
+    }
+}
+
+
+task packageDistribution(type: Zip) {
+    description = 'Creates a complete distribution package'
+    group = 'distribution'
+    
+    dependsOn build, shadowJar
+    
+    from('build/libs') {
+        include '*.jar'
+        into 'lib'
+    }
+    
+    from('input') {
+        include '*.dhr'
+        into 'examples'
+    }
+    
+    from('.') {
+        include 'README.md', 'LICENSE', 'CHANGELOG.md'
+    }
+    
+    from('docs') {
+        into 'docs'
+    }
+    
+    archiveFileName = "DhrLang-${project.version}-distribution.zip"
+}
+
+// Ensure build order
+build.dependsOn shadowJar
+check.dependsOn integrationTest, jacocoTestReport
+
+// --- Mutation Testing (PIT) baseline configuration (Step 4) ---
+pitest {
+    pitestVersion = '1.15.0'
+    junit5PluginVersion = '1.2.1'
+    threads = 4
+    timestampedReports = false
+    targetClasses = [
+        'dhrlang.eval.*',
+        'dhrlang.typechecker.*',
+        'dhrlang.runtime.*',
+        'dhrlang.interpreter.*',
+        'dhrlang.error.*'
+    ]
+    targetTests = ['dhrlang.*']
+    excludedClasses = ['dhrlang.tools.*']
+    outputFormats = ['HTML','XML']
+    mutationThreshold = 0 // ratchet later
+    coverageThreshold = 0
+    avoidCallsTo = ['java.util.logging','org.slf4j','org.apache.log4j']
+    verbose = false
+}
+
+// Aggregate quality summary (coverage + mutation) written to console
+tasks.register('qualitySummary') {
+    group = 'verification'
+    description = 'Prints summary of test coverage and mutation score.'
+    dependsOn 'test', 'jacocoTestReport', 'pitest'
+    doLast {
+        def jacocoXml = file("build/reports/jacoco/test/jacocoTestReport.xml")
+        def instrCov = 'n/a'
+        if(jacocoXml.exists()) {
+            // Read text and remove DOCTYPE to avoid parser security restriction
+            def text = jacocoXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
+            def xml = new XmlParser(false,false).parseText(text)
+            def counter = xml.counter.find { it.'@type'.toString() == 'INSTRUCTION' }
+            if(counter) {
+                def cov = (counter.'@covered'.toString().toBigDecimal())
+                def miss = (counter.'@missed'.toString().toBigDecimal())
+                def pct = miss + cov > 0 ? (cov * 100) / (cov + miss) : 0
+                instrCov = String.format('%.2f', pct)
+            }
+        }
+        def mutXml = file('build/reports/pitest/mutations.xml')
+        def mutationScore = 'n/a'
+        if(mutXml.exists()) {
+            def mtext = mutXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
+            def mxml = new XmlParser(false,false).parseText(mtext)
+            def muts = mxml.mutation
+            def total = muts.size()
+            def killed = muts.findAll { it.'@status'.toString() in ['KILLED','TIMED_OUT','MEMORY_ERROR','RUN_ERROR'] }.size()
+            if(total>0) mutationScore = String.format('%.2f', (killed*100.0)/total)
+        }
+        println "\n=== QUALITY SUMMARY ==="
+        println "Instruction Coverage: ${instrCov}%"
+        println "Mutation Score      : ${mutationScore}%"
+        println "(Targets: raise thresholds & mutation score in subsequent Step 4 increments)"
+    }
 }

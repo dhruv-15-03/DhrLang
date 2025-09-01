@@ -35,16 +35,15 @@ public class Instance {
     }
 
     public Object get(Token name) {
-        if (fields.containsKey(name.getLexeme())) {
-            return fields.get(name.getLexeme());
+        String member = name.getLexeme();
+        if (fields.containsKey(member)) {
+            return fields.get(member);
         }
-
-        Function method = klass.findMethod(name.getLexeme());
+        Function method = klass.findMethod(member);
         if (method != null) {
             return method.bind(this);
         }
-
-        throw ErrorFactory.accessError("Undefined property '" + name.getLexeme() + "'.", name.getLocation());
+        throw ErrorFactory.accessError("Undefined property '" + member + "'.", name.getLocation());
     }
 
     @Override

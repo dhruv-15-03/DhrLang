@@ -46,8 +46,10 @@ public class Lexer {
         keywords.put("interface", TokenType.INTERFACE);
         keywords.put("implements", TokenType.IMPLEMENTS);
         keywords.put("Override", TokenType.OVERRIDE);
-        keywords.put("try", TokenType.TRY);
-        keywords.put("catch", TokenType.CATCH);
+    keywords.put("try", TokenType.TRY);
+    keywords.put("koshish", TokenType.TRY); // alias
+    keywords.put("catch", TokenType.CATCH);
+    keywords.put("pakdo", TokenType.CATCH); // alias used in tests
         keywords.put("finally", TokenType.FINALLY);
         keywords.put("throw", TokenType.THROW);
         keywords.put("private", TokenType.PRIVATE);
@@ -67,9 +69,7 @@ public class Lexer {
         this.errorReporter = errorReporter;
     }
 
-    public void setErrorReporter(ErrorReporter errorReporter) {
-        this.errorReporter = errorReporter;
-    }
+    // Removed unused setErrorReporter to reduce surface area.
     
     private SourceLocation getCurrentLocation() {
         return new SourceLocation(null, line, column, current, current);

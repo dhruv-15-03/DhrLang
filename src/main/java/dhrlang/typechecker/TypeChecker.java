@@ -2,16 +2,20 @@ package dhrlang.typechecker;
 
 import dhrlang.ast.*;
 import dhrlang.error.ErrorReporter;
+import dhrlang.error.ErrorCode;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.TokenType;
 import dhrlang.interpreter.GenericTypeManager;
+import dhrlang.stdlib.NativeSignatures;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 public class TypeChecker {
@@ -27,6 +31,10 @@ public class TypeChecker {
     private boolean inLoop = false;
     private Set<String> currentTypeParameters = new HashSet<>();
     private ErrorReporter errorReporter;
+    // Flow-sensitive tracking: variables proven non-null on current path
+    private Set<String> nonNullVars = new HashSet<>();
+    // Generic instantiation bindings: full instantiation string -> param name -> concrete argument type string
+    private final Map<String, Map<String,String>> genericInstanceBindings = new HashMap<>();
 
     public TypeChecker() {
         this.errorReporter = null;
@@ -37,10 +45,14 @@ public class TypeChecker {
     }
 
     public void check(Program program) {
+    // Instrumentation reset
+    exprTypeCache.clear();
+    exprCacheMissCount = 0L;
+    checkStartNanos = System.nanoTime();
         for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
             if (interfaceRegistry.containsKey(interfaceDecl.getName())) {
                 errorWithHint("Interface '" + interfaceDecl.getName() + "' is already defined.", interfaceDecl.getSourceLocation(),
-                             "Each interface name must be unique. Rename one of the interfaces or check for duplicates");
+                             "Each interface name must be unique. Rename one of the interfaces or check for duplicates", ErrorCode.REDECLARATION);
             }
             interfaceRegistry.put(interfaceDecl.getName(), interfaceDecl);
             globals.define(interfaceDecl.getName(), interfaceDecl.getName());
@@ -49,11 +61,11 @@ public class TypeChecker {
         for (ClassDecl classDecl : program.getClasses()) {
             if (classRegistry.containsKey(classDecl.getName())) {
                 errorWithHint("Class '" + classDecl.getName() + "' is already defined.", classDecl.getSourceLocation(),
-                             "Each class name must be unique. Rename one of the classes or check for duplicates");
+                             "Each class name must be unique. Rename one of the classes or check for duplicates", ErrorCode.REDECLARATION);
             }
             if (interfaceRegistry.containsKey(classDecl.getName())) {
                 errorWithHint("Name '" + classDecl.getName() + "' is already used by an interface.", classDecl.getSourceLocation(),
-                             "Classes and interfaces cannot have the same name. Choose a different name");
+                             "Classes and interfaces cannot have the same name. Choose a different name", ErrorCode.REDECLARATION);
             }
             classRegistry.put(classDecl.getName(), classDecl);
             globals.define(classDecl.getName(), classDecl.getName());
@@ -73,6 +85,18 @@ public class TypeChecker {
 
         for (ClassDecl classDecl : program.getClasses()) {
             checkClassBody(classDecl);
+        }
+
+        // Future generic validation hook: invoke validation routines for generic declarations (no-op for non-generic)
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl instanceof GenericClassDecl gc) {
+                validateGenericClass(gc);
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceDecl instanceof GenericInterfaceDecl gi) {
+                validateGenericInterface(gi);
+            }
         }
         
         FunctionDecl mainMethod = null;
@@ -101,10 +125,39 @@ public class TypeChecker {
                 errorWithHint("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", loc,
                              "Add a main method: 'static kaam main() { ... }' in any class to serve as the program entry point");
             }
-        } else if (!mainMethod.getParameters().isEmpty()) {
+    } else if (!mainMethod.getParameters().isEmpty()) {
             errorWithHint("Entry point 'main' should not have parameters.", mainMethod.getSourceLocation(),
                          "The main method should be defined as: 'static kaam main()' without any parameters");
         }
+    lastElapsedNanos = System.nanoTime() - checkStartNanos;
+    if(Boolean.getBoolean("dhrlang.profile")){
+        System.out.println(getPerformanceSummary());
+    }
+    }
+
+    // Cache computed descriptor types for expressions within a single type-check pass.
+    // This avoids repeated string->TypeDesc parsing and repeated dispatch for identical subtrees.
+    private final Map<Expression, TypeDesc> exprTypeCache = new IdentityHashMap<>();
+    // Instrumentation counters (reset per check(Program))
+    private long checkStartNanos = 0L;
+    private long lastElapsedNanos = 0L;
+    private long exprCacheMissCount = 0L;
+
+    private TypeDesc checkExprDesc(Expression expr, TypeEnvironment env) {
+        TypeDesc cached = exprTypeCache.get(expr);
+        if (cached != null) return cached;
+        String raw = checkExpr(expr, env); // delegate to existing logic returning string form
+        TypeDesc desc = TypeDesc.parse(raw);
+        exprTypeCache.put(expr, desc);
+        exprCacheMissCount++;
+        return desc;
+    }
+
+    public long getLastCheckElapsedNanos(){ return lastElapsedNanos; }
+    public long getExprCacheMissCount(){ return exprCacheMissCount; }
+    public String getPerformanceSummary(){
+        double ms = lastElapsedNanos/1_000_000.0;
+        return String.format("TypeChecker Performance: %.3f ms (%,d ns), expr cache misses=%d", ms, lastElapsedNanos, exprCacheMissCount);
     }
 
     private TypeEnvironment resolveClass(ClassDecl klass) {
@@ -123,7 +176,7 @@ public class TypeChecker {
             String superclassName = klass.getSuperclass().getName().getLexeme();
             if (!classRegistry.containsKey(superclassName)) {
                 errorWithHint("Undefined superclass '" + superclassName + "'.", klass.getSuperclass().getSourceLocation(),
-                             "Make sure the superclass is defined before this class, or check for typos in the class name");
+                             "Make sure the superclass is defined before this class, or check for typos in the class name", ErrorCode.UNDECLARED_IDENTIFIER);
             } else {
                 parentEnv = resolveClass(classRegistry.get(superclassName));
             }
@@ -131,10 +184,10 @@ public class TypeChecker {
 
         TypeEnvironment classEnv = new TypeEnvironment(parentEnv);
         
-        for (VarDecl field : klass.getVariables()) {
+    for (VarDecl field : klass.getVariables()) {
             if (classEnv.getLocalFields().containsKey(field.getName())) {
                 errorWithHint("Field '" + field.getName() + "' is already defined in class '" + klass.getName() + "'.", field.getSourceLocation(),
-                             "Rename the field or remove the duplicate - each field name must be unique within a class");
+                             "Rename the field or remove the duplicate - each field name must be unique within a class", ErrorCode.REDECLARATION);
             }
             classEnv.define(field.getName(), field.getType());
         }
@@ -147,7 +200,7 @@ public class TypeChecker {
             String methodName = func.getName();
             if (classEnv.getLocalFunctions().containsKey(methodName)) {
                 errorWithHint("Method '" + methodName + "' is already defined in class '" + klass.getName() + "'.", func.getSourceLocation(),
-                             "Rename the method or remove the duplicate - method overloading is not supported in DhrLang");
+                             "Rename the method or remove the duplicate - method overloading is not supported in DhrLang", ErrorCode.REDECLARATION);
             }
             
             classEnv.defineFunction(methodName, new FunctionSignature(paramTypes, func.getReturnType()));
@@ -179,7 +232,7 @@ public class TypeChecker {
             String methodName = method.getName();
             if (interfaceEnv.getLocalFunctions().containsKey(methodName)) {
                 errorWithHint("Method '" + methodName + "' is already defined in interface '" + interfaceDecl.getName() + "'.", method.getSourceLocation(),
-                             "Rename the method or remove the duplicate - each method signature must be unique within an interface");
+                             "Rename the method or remove the duplicate - each method signature must be unique within an interface", ErrorCode.REDECLARATION);
             }
             
             interfaceEnv.defineFunction(methodName, new FunctionSignature(paramTypes, method.getReturnType()));
@@ -236,14 +289,17 @@ public class TypeChecker {
         TypeEnvironment classEnv = classEnvironments.get(klass.getName());
         
         for (VarDecl field : klass.getVariables()) {
+            // Validate field type early
+            validateTypeReference(field.getType(), field.getSourceLocation());
             validateModifiers(field);
             
             if (field.getInitializer() != null) {
-                String initType = checkExpr(field.getInitializer(), classEnv);
-                if (!isAssignable(initType, field.getType())) {
-                    String hint = dhrlang.error.ErrorMessages.getTypeErrorHint(initType, field.getType());
-                    errorWithHint("Type mismatch in field '" + field.getName() + "': Cannot assign type '" + 
-                          initType + "' to field of type '" + field.getType() + "'.", field.getSourceLocation(), hint);
+                TypeDesc from = checkExprDesc(field.getInitializer(), classEnv);
+                TypeDesc to = TypeDesc.parse(field.getType());
+                if (!isAssignable(from, to)) {
+                  errorWithHint("Type mismatch in field '" + field.getName() + "': Cannot assign type '" + 
+                      from + "' to field of type '" + field.getType() + "'.", field.getSourceLocation(),
+                      buildTypeMismatchHint(from, to, "field initializer"), ErrorCode.TYPE_MISMATCH);
                 }
             }
         }
@@ -267,7 +323,7 @@ public class TypeChecker {
             
             if (!interfaceRegistry.containsKey(interfaceName)) {
                 errorWithHint("Undefined interface '" + interfaceName + "'.", interfaceExpr.getSourceLocation(),
-                             "Make sure the interface is defined before implementing it, or check for typos in the interface name");
+                             "Make sure the interface is defined before implementing it, or check for typos in the interface name", ErrorCode.UNDECLARED_IDENTIFIER);
                 continue;
             }
             
@@ -326,15 +382,18 @@ public class TypeChecker {
 
     private void checkFunction(FunctionDecl function, TypeEnvironment env) {
         TypeEnvironment local = new TypeEnvironment(env);
+    // Reset non-null facts at function entry
+    nonNullVars = new HashSet<>();
         
         if (currentClass != null) {
             local.define("this", currentClass.getName());
         }
         
         for (VarDecl param : function.getParameters()) {
+            validateTypeReference(param.getType(), param.getSourceLocation());
             if (local.getLocalFields().containsKey(param.getName())) {
                 errorWithHint("Parameter '" + param.getName() + "' is already defined in function '" + function.getName() + "'.", param.getSourceLocation(),
-                             "Rename the parameter - each parameter name must be unique within a function");
+                                 "Rename the parameter - each parameter name must be unique within a function", ErrorCode.REDECLARATION);
             }
             local.define(param.getName(), param.getType());
         }
@@ -344,6 +403,14 @@ public class TypeChecker {
 
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
+            if(errorReporter!=null){
+                for (VarDecl param : function.getParameters()) {
+                    Boolean used = local.getLocalUsageMap().get(param.getName());
+                    if(used!=null && !used){
+                        errorReporter.warning(param.getSourceLocation(), "Parameter '"+param.getName()+"' is never used.", "Remove it or use it inside the function", ErrorCode.UNUSED_PARAMETER);
+                    }
+                }
+            }
         }
 
         currentFunctionReturnType = previousReturnType;
@@ -351,8 +418,46 @@ public class TypeChecker {
 
     private void checkBlock(Block block, TypeEnvironment env) {
         TypeEnvironment blockEnv = new TypeEnvironment(env);
+        boolean unreachable = false;
+        // Empty block (no statements) warning (skip if it's function body already handled upstream?)
+        if(block.getStatements().isEmpty() && errorReporter!=null){
+            errorReporter.warning(block.getSourceLocation(), "Empty block.", "Remove or add statements", ErrorCode.EMPTY_BLOCK);
+        }
         for (Statement stmt : block.getStatements()) {
+            if(unreachable){
+                if(errorReporter!=null){
+                    errorReporter.warning(stmt.getSourceLocation(), "Unreachable code.", "Remove or refactor code after a terminating statement", ErrorCode.UNREACHABLE_CODE);
+                }
+                continue;
+            }
             checkStatement(stmt, blockEnv);
+            if(stmt instanceof ReturnStmt || stmt instanceof BreakStmt || stmt instanceof ContinueStmt){
+                unreachable = true;
+            }
+        }
+        if(errorReporter!=null){
+            // Dead store detection: any local variable with a write not subsequently read in this block scope.
+            for(var entry: blockEnv.getLocalReadSinceWriteMap().entrySet()){
+                String var = entry.getKey();
+                boolean read = entry.getValue();
+                if(!read){
+                    Boolean everRead = blockEnv.getLocalUsageMap().get(var);
+                    if(everRead!=null && everRead){
+                        var loc = blockEnv.getLocalLastWriteLocations().get(var);
+                        if(loc==null) loc = blockEnv.getVariableLocation(var);
+                        errorReporter.warning(loc, "Value written to variable '"+var+"' is never read.", "Remove the write or use the value before scope ends", ErrorCode.DEAD_STORE);
+                    }
+                }
+            }
+        }
+        if(errorReporter!=null){
+            for(var e: blockEnv.getLocalUsageMap().entrySet()){
+                if(!e.getValue() && !e.getKey().equals("this")){
+                    var loc = blockEnv.getVariableLocation(e.getKey());
+                    if(loc==null) loc = block.getSourceLocation();
+                    errorReporter.warning(loc, "Variable '"+e.getKey()+"' declared but never used.", "Remove it or use it in logic", ErrorCode.UNUSED_VARIABLE);
+                }
+            }
         }
     }
 
@@ -390,32 +495,92 @@ public class TypeChecker {
     private void checkVarDecl(VarDecl stmt, TypeEnvironment env) {
         if (env.getLocalFields().containsKey(stmt.getName())) {
             errorWithHint("Variable '" + stmt.getName() + "' is already defined in this scope.", stmt.getSourceLocation(),
-                         "Rename the variable or remove the duplicate - each variable name must be unique within a scope");
+                             "Rename the variable or remove the duplicate - each variable name must be unique within a scope", ErrorCode.REDECLARATION);
+        } else if (env.exists(stmt.getName())) {
+            if(errorReporter!=null){
+                errorReporter.warning(stmt.getSourceLocation(), "Variable '"+stmt.getName()+"' shadows a variable from an outer scope.", "Consider renaming to avoid confusion", ErrorCode.VARIABLE_SHADOWING);
+            }
         }
 
-        if (stmt.getInitializer() != null) {
-            String initType = checkExpr(stmt.getInitializer(), env);
-            if (!isAssignable(initType, stmt.getType())) {
-                String hint = dhrlang.error.ErrorMessages.getTypeErrorHint(initType, stmt.getType());
-                errorWithHint("Type mismatch: Cannot assign type '" + initType + 
+    // Validate declared type existence
+    validateTypeReference(stmt.getType(), stmt.getSourceLocation());
+    if (stmt.getInitializer() != null) {
+            TypeDesc from = checkExprDesc(stmt.getInitializer(), env);
+            TypeDesc to = TypeDesc.parse(stmt.getType());
+            if (!isAssignable(from, to)) {
+                errorWithHint("Type mismatch: Cannot assign type '" + from + 
                       "' to variable '" + stmt.getName() + "' of type '" + stmt.getType() + "'.", 
-                      stmt.getSourceLocation(), hint);
+                      stmt.getSourceLocation(), buildTypeMismatchHint(from, to, "variable initializer"), ErrorCode.TYPE_MISMATCH);
             }
         }
         
-        env.define(stmt.getName(), stmt.getType());
+    env.define(stmt.getName(), stmt.getType());
+    env.recordLocation(stmt.getName(), stmt.getSourceLocation());
+    env.recordWrite(stmt.getName(), stmt.getSourceLocation());
     }
 
     private void checkIfStmt(IfStmt stmt, TypeEnvironment env) {
         String conditionType = checkExpr(stmt.getCondition(), env);
-        if (!conditionType.equals("kya")) {
+        if (!"kya".equals(conditionType)) {
             errorWithHint("If condition must be a boolean ('kya'), got '" + conditionType + "'.", stmt.getSourceLocation(),
-                         "If conditions require boolean expressions: if (x > 5) or if (isValid)");
+                    "If conditions require boolean expressions: if (x > 5) or if (isValid)");
         }
+        if (errorReporter != null) {
+            if (stmt.getCondition() instanceof LiteralExpr le && le.getValue() instanceof Boolean) {
+                errorReporter.warning(stmt.getCondition().getSourceLocation(), "Constant condition.", "Remove or refactor constant 'if' condition", ErrorCode.CONSTANT_CONDITION);
+            } else if (stmt.getCondition() instanceof BinaryExpr be) {
+                if (be.getLeft() instanceof LiteralExpr && be.getRight() instanceof LiteralExpr) {
+                    errorReporter.warning(stmt.getCondition().getSourceLocation(), "Constant condition.", "Remove or refactor constant 'if' condition", ErrorCode.CONSTANT_CONDITION);
+                }
+            }
+        }
+        // Flow-sensitive merging logic
+        Set<String> entry = new HashSet<>(nonNullVars);
+        Set<String> thenEntry = new HashSet<>(entry);
+        Set<String> elseEntry = new HashSet<>(entry);
+        if (stmt.getCondition() instanceof BinaryExpr be) {
+            String varName = extractNullComparedVariable(be);
+            if (varName != null) {
+                TokenType op = be.getOperator().getType();
+                if (op == TokenType.NEQ) { // var != null => then: var non-null
+                    thenEntry.add(varName);
+                } else if (op == TokenType.EQUALITY) { // var == null => else: var non-null
+                    elseEntry.add(varName);
+                }
+            }
+        }
+        // Execute then branch
+        nonNullVars = new HashSet<>(thenEntry);
         checkStatement(stmt.getThenBranch(), env);
+        Set<String> thenExit = new HashSet<>(nonNullVars);
+        Set<String> elseExit = null;
         if (stmt.getElseBranch() != null) {
+            nonNullVars = new HashSet<>(elseEntry);
             checkStatement(stmt.getElseBranch(), env);
+            elseExit = new HashSet<>(nonNullVars);
         }
+        // Merge
+        if (elseExit != null) {
+            thenExit.retainAll(elseExit); // intersection
+            nonNullVars = thenExit;
+        } else {
+            nonNullVars = entry; // no safe refinement without else
+        }
+    }
+
+    private boolean isNullLiteral(Expression expr){
+        if(expr instanceof LiteralExpr le){
+            return le.getValue() == null; 
+        }
+        return false;
+    }
+
+    private String extractNullComparedVariable(BinaryExpr be){
+        Expression l = be.getLeft();
+        Expression r = be.getRight();
+        if(l instanceof VariableExpr && isNullLiteral(r)) return ((VariableExpr) l).getName().getLexeme();
+        if(r instanceof VariableExpr && isNullLiteral(l)) return ((VariableExpr) r).getName().getLexeme();
+        return null;
     }
 
     private void checkWhileStmt(WhileStmt stmt, TypeEnvironment env) {
@@ -444,13 +609,12 @@ public class TypeChecker {
                          "Place 'continue' inside a 'while' or 'loop' statement to skip to next iteration");
         }
     }
-
     private void checkReturnStmt(ReturnStmt stmt, TypeEnvironment env) {
         if (currentFunctionReturnType == null) {
             errorWithHint("'return' used outside a function.", stmt.getSourceLocation(),
                          "Return statements can only be used inside function definitions");
         }
-        
+
         if (stmt.getValue() == null) {
             if (!currentFunctionReturnType.equals("kaam")) {
                 errorWithHint("Function with return type '" + currentFunctionReturnType + "' must return a value.", 
@@ -458,13 +622,37 @@ public class TypeChecker {
                              "Add a return value: 'return 42;' or change function return type to 'kaam'");
             }
         } else {
-            String returnType = checkExpr(stmt.getValue(), env);
-            if (!isAssignable(returnType, currentFunctionReturnType)) {
-                errorWithHint("Cannot return '" + returnType + "' from a function expecting '" + currentFunctionReturnType + "'.", 
+            TypeDesc ret = checkExprDesc(stmt.getValue(), env);
+            TypeDesc expected = TypeDesc.parse(currentFunctionReturnType);
+            if (!isAssignable(ret, expected)) {
+                errorWithHint("Cannot return '" + ret + "' from a function expecting '" + currentFunctionReturnType + "'.", 
                              stmt.getSourceLocation(),
-                             "Return a value of type '" + currentFunctionReturnType + "' or change the function's return type");
+                             buildTypeMismatchHint(ret, expected, "return statement"), ErrorCode.TYPE_MISMATCH);
             }
         }
+    }
+
+    private String buildTypeMismatchHint(TypeDesc from, TypeDesc to, String context){
+        if(from.isArray() && to.isArray()){
+            return "Ensure element types align in " + context + ": expected elements of '"+to.element+"'";
+        }
+        if(from.isNumeric() && to.isNumeric()){
+            return "Convert numeric type or adjust expected type: numeric widening only supports num->duo";
+        }
+        if(to.kind==TypeKind.ANY){
+            return "'any' accepts any value – this mismatch indicates an internal issue; report this";
+        }
+    if(from.kind==TypeKind.CLASS && to.kind==TypeKind.CLASS && !from.name.equals(to.name)){
+            return "Use an instance of '"+to.name+"' or a compatible subtype";
+        }
+        if(!from.typeArgs.isEmpty() || !to.typeArgs.isEmpty()){
+            if(!from.name.equals(to.name)) return "Generic base types differ; use '"+to.name+"'";
+            if(from.typeArgs.size()!=to.typeArgs.size()) return "Generic arity mismatch: expected "+to.typeArgs.size()+" type argument(s)";
+            for(int i=0;i<Math.min(from.typeArgs.size(), to.typeArgs.size());i++){
+                if(!from.typeArgs.get(i).equals(to.typeArgs.get(i))) return "Type argument "+(i+1)+" mismatch: expected '"+to.typeArgs.get(i)+"'";
+            }
+        }
+        return "Provide a value of type '"+to+"'";
     }
 
     private void checkTryStmt(TryStmt stmt, TypeEnvironment env) {
@@ -477,9 +665,9 @@ public class TypeChecker {
             String exceptionType = catchClause.getExceptionType();
             if (!isValidExceptionType(exceptionType)) {
                 errorWithHint("Invalid exception type '" + exceptionType + "'. " +
-                            "Use 'any' to catch all exceptions or a specific exception class name.",
-                            null, // We don't have direct location access for catch clause
-                            "Valid exception types: any, ArithmeticException, IndexOutOfBoundsException, TypeException, NullPointerException");
+                                "Use 'any' to catch all exceptions or a specific exception class name.",
+                                catchClause.getSourceLocation()!=null?catchClause.getSourceLocation():stmt.getSourceLocation(),
+                                "Valid exception types: any, ArithmeticException, IndexOutOfBoundsException, TypeException, NullPointerException");
             }
             
             // Define the exception parameter with the appropriate type
@@ -498,7 +686,8 @@ public class TypeChecker {
                "IndexOutOfBoundsException".equals(exceptionType) ||
                "TypeException".equals(exceptionType) ||
                "NullPointerException".equals(exceptionType) ||
-               "DhrException".equals(exceptionType);
+               "DhrException".equals(exceptionType) ||
+               "Error".equals(exceptionType);
     }
     
     private void checkThrowStmt(ThrowStmt stmt, TypeEnvironment env) {
@@ -536,59 +725,107 @@ public class TypeChecker {
             return "unknown[]"; 
         }
 
-        String elementType = checkExpr(expr.getElements().get(0), env);
+        TypeDesc elementDesc = checkExprDesc(expr.getElements().get(0), env);
 
         for (int i = 1; i < expr.getElements().size(); i++) {
-            String currentType = checkExpr(expr.getElements().get(i), env);
-            if (!isAssignable(currentType, elementType)) {
-                errorWithHint("Array elements must all have the same type. Expected '" + elementType +
-                        "' but found '" + currentType + "' at index " + i + ".", expr.getSourceLocation(),
-                        "All array elements must be the same type: [1, 2, 3] or ['a', 'b', 'c']");
+            TypeDesc currentDesc = checkExprDesc(expr.getElements().get(i), env);
+            if (!isAssignable(currentDesc, elementDesc)) {
+                errorWithHint("Array elements must all have the same type. Expected '" + elementDesc +
+                        "' but found '" + currentDesc + "' at index " + i + ".", expr.getSourceLocation(),
+                        buildTypeMismatchHint(currentDesc, elementDesc, "array literal element"), ErrorCode.TYPE_MISMATCH);
             }
         }
 
-        return elementType + "[]";
+        return elementDesc + "[]";
     }
 
     private String checkIndex(IndexExpr expr, TypeEnvironment env) {
-        String objectType = checkExpr(expr.getObject(), env);
-        String indexType = checkExpr(expr.getIndex(), env);
+        TypeDesc objectDesc = checkExprDesc(expr.getObject(), env);
+        TypeDesc indexDesc = checkExprDesc(expr.getIndex(), env);
+        String objectType = objectDesc.toString();
+        String indexType = indexDesc.toString();
 
-        if (!objectType.endsWith("[]")) {
+        if (!objectDesc.isArray()) {
             errorWithHint("Can only index arrays, got type '" + objectType + "'.", expr.getSourceLocation(),
                          "Array indexing syntax: myArray[0] - ensure the variable is an array type like num[] or sab[]");
         }
 
-        if (!indexType.equals("num")) {
+        if (!indexDesc.equals(TypeDesc.num())) {
             errorWithHint("Array index must be a number, got '" + indexType + "'.", expr.getSourceLocation(),
                          "Array indices must be integers: array[0], array[i], or array[count-1]");
         }
-
-        return objectType.substring(0, objectType.length() - 2);
+        // Constant index bounds detection
+        if(expr.getIndex() instanceof LiteralExpr lit && lit.getValue() instanceof Number n){
+            long idx = n.longValue();
+            if(idx < 0){
+                errorWithHint("Negative array index " + idx + " is out of bounds.", expr.getSourceLocation(),
+                             "Use a non-negative index between 0 and length-1", ErrorCode.BOUNDS_VIOLATION);
+            } else {
+                if(expr.getObject() instanceof ArrayExpr arrLit){
+                    int len = arrLit.getElements().size();
+                    if(idx >= len){
+                        errorWithHint("Array index " + idx + " out of bounds for literal length " + len + ".", expr.getSourceLocation(),
+                                     "Valid indices: 0 to " + (len-1), ErrorCode.BOUNDS_VIOLATION);
+                    }
+                } else if(expr.getObject() instanceof NewArrayExpr na && na.getSize() instanceof LiteralExpr sz && sz.getValue() instanceof Number sn){
+                    long size = ((Number) sn).longValue();
+                    if(idx >= size){
+                        errorWithHint("Array index " + idx + " out of bounds for size " + size + ".", expr.getSourceLocation(),
+                                     "Valid indices: 0 to " + (size-1), ErrorCode.BOUNDS_VIOLATION);
+                    }
+                }
+            }
+        }
+    if(!objectDesc.isArray()) return "unknown"; // keep pipeline alive if already reported
+    return objectDesc.element.toString();
     }
 
     private String checkIndexAssign(IndexAssignExpr expr, TypeEnvironment env) {
-        String objectType = checkExpr(expr.getObject(), env);
-        String indexType = checkExpr(expr.getIndex(), env);
-        String valueType = checkExpr(expr.getValue(), env);
+        TypeDesc objectDesc = checkExprDesc(expr.getObject(), env);
+        TypeDesc indexDesc = checkExprDesc(expr.getIndex(), env);
+        TypeDesc valueDesc = checkExprDesc(expr.getValue(), env);
+        String objectType = objectDesc.toString();
 
         if (!objectType.endsWith("[]")) {
             errorWithHint("Can only assign to array elements, got type '" + objectType + "'.", expr.getSourceLocation(),
                          "Array assignment syntax: myArray[index] = value - ensure the target is an array");
         }
 
-        if (!indexType.equals("num")) {
-            errorWithHint("Array index must be a number, got '" + indexType + "'.", expr.getSourceLocation(),
+        if (!indexDesc.equals(TypeDesc.num())) {
+            errorWithHint("Array index must be a number, got '" + indexDesc + "'.", expr.getSourceLocation(),
                          "Array indices must be integers: array[0] = value or array[i] = value");
+        }
+        // Constant index bounds detection for assignments
+        if(expr.getIndex() instanceof LiteralExpr lit && lit.getValue() instanceof Number n){
+            long idx = n.longValue();
+            if(idx < 0){
+                errorWithHint("Negative array index " + idx + " is out of bounds.", expr.getSourceLocation(),
+                             "Use a non-negative index between 0 and length-1", ErrorCode.BOUNDS_VIOLATION);
+            } else {
+                if(expr.getObject() instanceof ArrayExpr arrLit){
+                    int len = arrLit.getElements().size();
+                    if(idx >= len){
+                        errorWithHint("Array index " + idx + " out of bounds for literal length " + len + ".", expr.getSourceLocation(),
+                                     "Valid indices: 0 to " + (len-1), ErrorCode.BOUNDS_VIOLATION);
+                    }
+                } else if(expr.getObject() instanceof NewArrayExpr na && na.getSize() instanceof LiteralExpr sz && sz.getValue() instanceof Number sn){
+                    long size = ((Number) sn).longValue();
+                    if(idx >= size){
+                        errorWithHint("Array index " + idx + " out of bounds for size " + size + ".", expr.getSourceLocation(),
+                                     "Valid indices: 0 to " + (size-1), ErrorCode.BOUNDS_VIOLATION);
+                    }
+                }
+            }
         }
 
         String elementType = objectType.substring(0, objectType.length() - 2);
-        if (!isAssignable(valueType, elementType)) {
-            errorWithHint("Cannot assign '" + valueType + "' to array of '" + elementType + "'.", expr.getSourceLocation(),
-                         "Array elements must match the array type: num[] accepts numbers, sab[] accepts strings");
+        TypeDesc elementDesc = TypeDesc.parse(elementType);
+        if (!isAssignable(valueDesc, elementDesc)) {
+            errorWithHint("Cannot assign '" + valueDesc + "' to array of '" + elementType + "'.", expr.getSourceLocation(),
+                         buildTypeMismatchHint(valueDesc, elementDesc, "array element assignment"), ErrorCode.TYPE_MISMATCH);
         }
 
-        return valueType;
+        return valueDesc.toString();
     }
 
     private String checkPostfixIncrement(PostfixIncrementExpr expr, TypeEnvironment env) {
@@ -600,25 +837,26 @@ public class TypeChecker {
     }
 
     private String checkIncrementTarget(Expression target, TypeEnvironment env, String operation) {
+        TypeDesc targetDesc;
         String targetType;
-        
         if (target instanceof VariableExpr varExpr) {
             targetType = checkVariable(varExpr, env);
+            targetDesc = TypeDesc.parse(targetType);
         } else if (target instanceof GetExpr getExpr) {
             targetType = checkGet(getExpr, env);
+            targetDesc = TypeDesc.parse(targetType);
         } else if (target instanceof IndexExpr indexExpr) {
             targetType = checkIndex(indexExpr, env);
+            targetDesc = TypeDesc.parse(targetType);
         } else {
             errorWithHint("Invalid " + operation + " target. Must be a variable, property, or array element.", target.getSourceLocation(),
-                         "Use " + operation + " on variables, object properties, or array elements: x++, obj.count++, arr[i]++");
+                    "Use " + operation + " on variables, object properties, or array elements: x++, obj.count++, arr[i]++");
             return "unknown";
         }
-        
-        if (!isNumeric(targetType)) {
-            errorWithHint("Can only apply " + operation + " to numeric values, got '" + targetType + "'.", target.getSourceLocation(),
-                         "Increment/decrement operations work only on numbers: count++, value--, index++");
+        if (!targetDesc.isNumeric()) {
+            errorWithHint("Can only apply " + operation + " to numeric values, got '" + targetDesc + "'.", target.getSourceLocation(),
+                    "Increment/decrement operations work only on numbers: count++, value--, index++");
         }
-        
         return targetType;
     }
 
@@ -636,17 +874,18 @@ public class TypeChecker {
             return env.get(expr.getName().getLexeme());
         } catch (TypeException e) {
             errorWithHint("Undefined variable '" + expr.getName().getLexeme() + "'.", expr.getSourceLocation(),
-                         "Make sure the variable is declared before use: num x = 42; or check for typos in variable name");
+                         "Make sure the variable is declared before use: num x = 42; or check for typos in variable name", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown";
         }
     }
 
     private String checkUnary(UnaryExpr expr, TypeEnvironment env) {
-        String rightType = checkExpr(expr.getRight(), env);
+        TypeDesc rightDesc = checkExprDesc(expr.getRight(), env);
+        String rightType = rightDesc.toString();
         TokenType op = expr.getOperator().getType();
         
         if (op == TokenType.MINUS) {
-            if (!isNumeric(rightType)) {
+            if (!rightDesc.isNumeric()) {
                 errorWithHint("Operand for '-' must be a number, got '" + rightType + "'.", 
                              expr.getSourceLocation(),
                              "Use numeric values like 42 or 3.14 with unary minus operator");
@@ -667,8 +906,62 @@ public class TypeChecker {
     }
 
     private String checkBinary(BinaryExpr expr, TypeEnvironment env) {
-        String leftType = checkExpr(expr.getLeft(), env);
-        String rightType = checkExpr(expr.getRight(), env);
+        // Special short-circuit handling for logical AND to propagate non-null facts from left into right
+        if(expr.getOperator().getType()==TokenType.AND){
+            String leftTypePre = checkExpr(expr.getLeft(), env);
+            if(!leftTypePre.equals("kya")){
+                errorWithHint("Left operand of logical operator must be boolean, got '" + leftTypePre + "'.", expr.getSourceLocation(),
+                                 "Logical operators (&&, ||) require boolean values: true && false");
+            }
+            // If pattern var != null on left, add refinement for right evaluation
+            if(expr.getLeft() instanceof BinaryExpr be){
+                TokenType opLeft = be.getOperator().getType();
+                if(opLeft==TokenType.NEQ){
+                    String varName = extractNullComparedVariable(be);
+                    if(varName!=null){
+                        nonNullVars.add(varName);
+                    }
+                }
+            }
+            String rightTypeAfter = checkExpr(expr.getRight(), env);
+            if(!rightTypeAfter.equals("kya")){
+                errorWithHint("Right operand of logical operator must be boolean, got '" + rightTypeAfter + "'.", expr.getSourceLocation(),
+                                 "Logical operators (&&, ||) require boolean values: true && false");
+            }
+            return "kya";
+        }
+        if(expr.getOperator().getType()==TokenType.OR){
+            String leftTypePre = checkExpr(expr.getLeft(), env);
+            if(!leftTypePre.equals("kya")){
+                errorWithHint("Left operand of logical operator must be boolean, got '" + leftTypePre + "'.", expr.getSourceLocation(),
+                                 "Logical operators (&&, ||) require boolean values: true && false");
+            }
+            Set<String> saved = nonNullVars;
+            boolean refined = false;
+            if(expr.getLeft() instanceof BinaryExpr be){
+                TokenType opLeft = be.getOperator().getType();
+                if(opLeft==TokenType.EQUALITY){
+                    String varName = extractNullComparedVariable(be);
+                    if(varName!=null){
+                        Set<String> thenSet = new HashSet<>(saved);
+                        thenSet.add(varName);
+                        nonNullVars = thenSet;
+                        refined = true;
+                    }
+                }
+            }
+            String rightTypeAfter = checkExpr(expr.getRight(), env);
+            if(!rightTypeAfter.equals("kya")){
+                errorWithHint("Right operand of logical operator must be boolean, got '" + rightTypeAfter + "'.", expr.getSourceLocation(),
+                                 "Logical operators (&&, ||) require boolean values: true && false");
+            }
+            if(refined) nonNullVars = saved; 
+            return "kya";
+        }
+    TypeDesc leftDesc = checkExprDesc(expr.getLeft(), env);
+    TypeDesc rightDesc = checkExprDesc(expr.getRight(), env);
+    String leftType = leftDesc.toString();
+    String rightType = rightDesc.toString();
         TokenType op = expr.getOperator().getType();
         
         switch (op) {
@@ -679,16 +972,16 @@ public class TypeChecker {
             case MINUS:
             case STAR:
             case MOD:
-                if (!isNumeric(leftType) || !isNumeric(rightType)) {
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
                     String opName = op == TokenType.PLUS ? "addition/concatenation" : "arithmetic";
                     errorWithHint("Operands for " + opName + " must be numbers (or strings for '+'), got '" + 
                           leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
                           "Use numeric values for arithmetic operations, or strings for concatenation with '+'");
                 }
-                return (leftType.equals("duo") || rightType.equals("duo")) ? "duo" : "num";
+                return (leftDesc.kind==TypeKind.DUO || rightDesc.kind==TypeKind.DUO) ? "duo" : "num";
                 
             case SLASH:
-                if (!isNumeric(leftType) || !isNumeric(rightType)) {
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
                     errorWithHint("Operands for division must be numbers, got '" + leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
                                  "Division requires numeric operands like: 10 / 2 or 5.0 / 2.5");
                 }
@@ -698,7 +991,7 @@ public class TypeChecker {
             case GEQ:
             case LESS:
             case LEQ:
-                if (!isNumeric(leftType) || !isNumeric(rightType)) {
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
                     errorWithHint("Operands for comparison must be numbers, got '" + leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
                                  "Comparison operators (<, >, <=, >=) work with numbers: x > 5 or price <= 100.0");
                 }
@@ -706,9 +999,19 @@ public class TypeChecker {
                 
             case EQUALITY:
             case NEQ:
-                if (!isAssignable(leftType, rightType) && !isAssignable(rightType, leftType)) {
-                    errorWithHint("Cannot compare incompatible types: '" + leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
-                                 "Compare values of the same type: 'hello' == 'world' or 42 == 24");
+                if (!isAssignable(leftDesc, rightDesc) && !isAssignable(rightDesc, leftDesc)) {
+                    errorWithHint("Cannot compare incompatible types: '" + leftDesc + "' and '" + rightDesc + "'.", expr.getSourceLocation(),
+                            buildTypeMismatchHint(leftDesc, rightDesc, "equality comparison"), ErrorCode.TYPE_MISMATCH);
+                }
+                // Redundant null check warning (x != null or x == null) if fact already known
+                if(expr.getLeft() instanceof VariableExpr || expr.getRight() instanceof VariableExpr){
+                    String varName = extractNullComparedVariable(expr);
+                    if(varName!=null){
+                        boolean isInequality = expr.getOperator().getType()==TokenType.NEQ;
+                        if(isInequality && nonNullVars.contains(varName) && errorReporter!=null){
+                            errorReporter.warning(expr.getSourceLocation(), "Redundant null check: variable '"+varName+"' already known non-null.", "Remove unnecessary '!= null'", ErrorCode.REDUNDANT_NULL_CHECK);
+                        }
+                    }
                 }
                 return "kya";
                 
@@ -738,17 +1041,23 @@ public class TypeChecker {
             varType = env.get(varName);
         } catch (TypeException e) {
             errorWithHint("Cannot assign to undefined variable '" + varName + "'.", expr.getSourceLocation(),
-                         "Declare the variable first: num " + varName + " = 0; then assign: " + varName + " = value;");
+                         "Declare the variable first: num " + varName + " = 0; then assign: " + varName + " = value;", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown"; 
         }
-        
-        String valType = checkExpr(expr.getValue(), env);
-        if (!isAssignable(valType, varType)) {
-            String hint = dhrlang.error.ErrorMessages.getTypeErrorHint(valType, varType);
-            errorWithHint("Cannot assign type '" + valType + "' to variable '" + varName + "' of type '" + varType + "'.",
-                         expr.getSourceLocation(), hint);
+        // Dead store: previous value overwritten without read
+        if(env.hadUnreadWrite(varName) && errorReporter!=null){
+            dhrlang.error.SourceLocation prevLoc = env.getLastWriteLocation(varName);
+            if(prevLoc==null) prevLoc = expr.getSourceLocation();
+            errorReporter.warning(prevLoc, "Value written to variable '"+varName+"' is never read before being overwritten.", "Remove the previous assignment or use the value", ErrorCode.DEAD_STORE);
         }
-        return valType;
+        env.recordWrite(varName, expr.getSourceLocation());
+        TypeDesc valueDesc = checkExprDesc(expr.getValue(), env);
+        TypeDesc targetDesc = TypeDesc.parse(varType);
+        if (!isAssignable(valueDesc, targetDesc)) {
+            errorWithHint("Cannot assign type '" + valueDesc + "' to variable '" + varName + "' of type '" + varType + "'.",
+                         expr.getSourceLocation(), buildTypeMismatchHint(valueDesc, targetDesc, "assignment"), ErrorCode.TYPE_MISMATCH);
+        }
+        return valueDesc.toString();
     }
 
     private String checkNew(NewExpr expr, TypeEnvironment env) {
@@ -757,6 +1066,18 @@ public class TypeChecker {
         
         if (className.contains("<")) {
             baseClassName = className.substring(0, className.indexOf('<'));
+        }
+
+        // Built-in synthetic 'Error' behaves like a class for instantiation/catching.
+        if ("Error".equals(baseClassName)) {
+            // Validate no generic args and no constructor args (language design: Error() takes none)
+            if (className.contains("<")) {
+                errorWithHint("'Error' is not generic.", expr.getSourceLocation(), "Use: new Error() without type arguments");
+            }
+            if (!expr.getArguments().isEmpty()) {
+                errorWithHint("Error() takes no arguments.", expr.getSourceLocation(), "Remove arguments: new Error()", ErrorCode.TYPE_MISMATCH);
+            }
+            return "Error"; // treat as its own class type
         }
         
         if (!classRegistry.containsKey(baseClassName)) {
@@ -767,19 +1088,19 @@ public class TypeChecker {
         
         ClassDecl classDecl = classRegistry.get(baseClassName);
         
-        if (classDecl instanceof GenericClassDecl && className.contains("<")) {
+    if (classDecl instanceof GenericClassDecl && className.contains("<")) {
             try {
                 validateGenericInstantiation((GenericClassDecl) classDecl, className, expr.getSourceLocation());
             } catch (TypeException e) {
-                errorWithHint(e.getMessage(), expr.getSourceLocation(), 
-                             "Ensure type arguments match the class's generic parameters.");
+        errorWithHint(e.getMessage(), expr.getSourceLocation(), 
+                 "Ensure type arguments match the class's generic parameters.", ErrorCode.GENERIC_ARITY);
             }
         } else if (!(classDecl instanceof GenericClassDecl) && className.contains("<")) {
-            errorWithHint("Class '" + baseClassName + "' is not generic but type arguments were provided.", 
-                         expr.getSourceLocation(), "Remove type arguments: new " + baseClassName + "()");
+        errorWithHint("Class '" + baseClassName + "' is not generic but type arguments were provided.", 
+             expr.getSourceLocation(), "Remove type arguments: new " + baseClassName + "()", ErrorCode.GENERIC_ARITY);
         } else if (classDecl instanceof GenericClassDecl && !className.contains("<")) {
-            errorWithHint("Generic class '" + baseClassName + "' requires type arguments.", 
-                         expr.getSourceLocation(), "Provide type arguments: new " + baseClassName + "<Type>()");
+        errorWithHint("Generic class '" + baseClassName + "' requires type arguments.", 
+             expr.getSourceLocation(), "Provide type arguments: new " + baseClassName + "<Type>()", ErrorCode.GENERIC_ARITY);
         }
         
         FunctionDecl init = classDecl.findMethod("init");
@@ -801,20 +1122,18 @@ public class TypeChecker {
 
     private String checkNewArray(NewArrayExpr expr, TypeEnvironment env) {
         String elementType = expr.getElementType();
-        
-        if (!elementType.equals("num") && !elementType.equals("duo") && 
-            !elementType.equals("ek") && !elementType.equals("sab") && 
-            !elementType.equals("kya") && !classRegistry.containsKey(elementType)) {
-            errorWithHint("Unknown array element type '" + elementType + "'.", expr.getSourceLocation(),
-                         "Use valid DhrLang types: num, duo, sab, kya, ek, or a defined class name");
+        validateTypeReference(elementType, expr.getSourceLocation());
+        TypeDesc sizeDesc = checkExprDesc(expr.getSize(), env);
+        if (!sizeDesc.isNumeric()) {
+            errorWithHint("Array size must be numeric, got '" + sizeDesc + "'.", expr.getSourceLocation(),
+                    "Array size must be a number: new num[10] or new sab[count]", ErrorCode.BOUNDS_VIOLATION);
+        } else if (expr.getSize() instanceof LiteralExpr le) {
+            Object lit = le.getValue();
+            if (lit instanceof Number n && n.longValue() < 0) {
+                errorWithHint("Array size cannot be negative (" + n + ").", expr.getSourceLocation(),
+                        "Use a non-negative size: new num[0] for empty array", ErrorCode.BOUNDS_VIOLATION);
+            }
         }
-        
-        String sizeType = checkExpr(expr.getSize(), env);
-        if (!isNumeric(sizeType)) {
-            errorWithHint("Array size must be numeric, got '" + sizeType + "'.", expr.getSourceLocation(),
-                         "Array size must be a number: new num[10] or new sab[count]");
-        }
-        
         return elementType + "[]";
     }
     
@@ -846,7 +1165,7 @@ public class TypeChecker {
             String argType = checkExpr(args.get(i), env);
             String expectedType = resolveGenericReturnType(parameters.get(i).getType(), typeParameters, typeArguments);
             
-            if (!isAssignable(argType, expectedType)) {
+            if (!isAssignable(TypeDesc.parse(argType), TypeDesc.parse(expectedType))) {
                 errorWithHint("Argument " + (i + 1) + " for constructor 'init' should be '" + expectedType + 
                              "', but got '" + argType + "'.", args.get(i).getSourceLocation(),
                              "Pass an argument of type '" + expectedType + "' for parameter " + (i + 1));
@@ -856,6 +1175,25 @@ public class TypeChecker {
 
     private String checkGet(GetExpr expr, TypeEnvironment env) {
         String objectType = checkExpr(expr.getObject(), env);
+        if (objectType.equals("null")) {
+            errorWithHint("Cannot access property on null value.", expr.getSourceLocation(),
+                         "Ensure the expression before '.' is not null (add a null check)", ErrorCode.NULL_DEREFERENCE);
+            return "unknown";
+        }
+        // Suppress potential future null warnings if variable proven non-null
+        if(expr.getObject() instanceof VariableExpr v){
+            // If objectType were 'null' we'd have returned already; tracking reserved for future enhancements
+            if(!nonNullVars.contains(v.getName().getLexeme()) && errorReporter!=null){
+                // Heuristic: if original static type is a class (not primitive) and not proven non-null, warn
+                String name = v.getName().getLexeme();
+                try {
+                    String staticType = env.get(name);
+                    if(!isPrimitive(staticType) && !staticType.endsWith("[]")){
+                        errorReporter.warning(expr.getSourceLocation(), "Possible null dereference of '"+name+"'.", "Ensure '"+name+"' is checked for null before property access", ErrorCode.POSSIBLE_NULL_DEREFERENCE);
+                    }
+                } catch (TypeException ignored) {}
+            }
+        }
         String propName = expr.getName().getLexeme();
         if (objectType.endsWith("[]") && propName.equals("length")) {
             return "num";
@@ -871,22 +1209,46 @@ public class TypeChecker {
 
         // Handle generic types: Container<num> -> Container
         String baseType = extractBaseType(objectType);
+        if("unknown".equals(objectType) && baseType.contains("<")) {
+            String possible = extractBaseType(baseType);
+            if(classEnvironments.containsKey(possible)) baseType = possible;
+        }
         TypeEnvironment instanceEnv = classEnvironments.get(baseType);
         if (instanceEnv == null) {
-            errorWithHint("Can only access properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
-                         "Property access syntax: object.property - ensure the object is a class instance");
-            return "unknown";
+            // If this is a generic instantiation whose base type exists, treat as instance
+            if(objectType.contains("<") && classEnvironments.containsKey(baseType)) {
+                instanceEnv = classEnvironments.get(baseType);
+            } else {
+                errorWithHint("Can only access properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
+                             "Property access syntax: object.property - ensure the object is a class instance");
+                return "unknown";
+            }
         }
         
         try {
-            return instanceEnv.get(propName);
+            String fieldType = instanceEnv.get(propName);
+            ClassDecl owner = classRegistry.get(baseType);
+            if (owner != null) {
+                VarDecl fieldDecl = owner.getVariables().stream().filter(v -> v.getName().equals(propName)).findFirst().orElse(null);
+                if (fieldDecl != null && !isAccessible(currentClass, owner, fieldDecl.getModifiers())) {
+                    errorWithHint("Cannot access field '" + propName + "' of class '" + baseType + "' due to access modifier.", expr.getSourceLocation(),
+                             "Use a public/protected member or access within the same class", ErrorCode.ACCESS_MODIFIER);
+                }
+            }
+            // Substitute generic parameters if this is a generic instantiation
+            if(objectType.contains("<")) {
+                fieldType = substituteTypeParameters(fieldType, objectType);
+            }
+            return fieldType;
         } catch (TypeException fieldError) {
             try {
-                // For generic types, try generic method resolution
                 if (objectType.contains("<")) {
-                    return checkGenericMethodCall(objectType, propName, new ArrayList<>(), env, expr.getSourceLocation());
+                    String ret = checkGenericMethodCall(objectType, propName, new ArrayList<>(), env, expr.getSourceLocation());
+                    enforceInstanceMethodAccess(baseType, propName, expr.getSourceLocation());
+                    return ret;
                 } else {
                     instanceEnv.getFunction(propName);
+                    enforceInstanceMethodAccess(baseType, propName, expr.getSourceLocation());
                     return "method";
                 }
             } catch (TypeException funcError) {
@@ -898,30 +1260,51 @@ public class TypeChecker {
     }
 
     private String checkSet(SetExpr expr, TypeEnvironment env) {
-        String objectType = checkExpr(expr.getObject(), env);
-        TypeEnvironment instanceEnv = classEnvironments.get(objectType);
+    String objectType = checkExpr(expr.getObject(), env);
+    String baseType = extractBaseType(objectType);
+    if("unknown".equals(objectType) && baseType.contains("<")) {
+        String possible = extractBaseType(baseType);
+        if(classEnvironments.containsKey(possible)) baseType = possible;
+    }
+    TypeEnvironment instanceEnv = classEnvironments.get(baseType);
         if (instanceEnv == null) {
-            errorWithHint("Can only set properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
-                         "Property assignment syntax: object.field = value - ensure the object is a class instance");
-            return "unknown";
+            if(objectType.contains("<") && classEnvironments.containsKey(baseType)) {
+                instanceEnv = classEnvironments.get(baseType);
+            } else {
+                errorWithHint("Can only set properties on class instances, got type '" + objectType + "'.", expr.getSourceLocation(),
+                             "Property assignment syntax: object.field = value - ensure the object is a class instance");
+                return "unknown";
+            }
         }
         
         String fieldName = expr.getName().getLexeme();
         String fieldType;
         try {
             fieldType = instanceEnv.get(fieldName);
+            ClassDecl owner = classRegistry.get(baseType);
+            if (owner != null) {
+                VarDecl fieldDecl = owner.getVariables().stream().filter(v -> v.getName().equals(fieldName)).findFirst().orElse(null);
+                if (fieldDecl != null && !isAccessible(currentClass, owner, fieldDecl.getModifiers())) {
+                    errorWithHint("Cannot assign to field '" + fieldName + "' of class '" + baseType + "' due to access modifier.", expr.getSourceLocation(),
+                                 "Use a public/protected field or provide a setter method", ErrorCode.ACCESS_MODIFIER);
+                }
+            }
         } catch (TypeException e) {
             errorWithHint("Field '" + fieldName + "' not found on class '" + objectType + "'.", expr.getSourceLocation(),
                          "Check the field name and ensure it's defined in the class");
             return "unknown";
         }
-        
-        String valueType = checkExpr(expr.getValue(), env);
-        if (!isAssignable(valueType, fieldType)) {
-            errorWithHint("Cannot assign type '" + valueType + "' to field '" + fieldName + "' of type '" + fieldType + "'.", expr.getSourceLocation(),
-                         "Assign a value of type '" + fieldType + "' to the field");
+        if(objectType.contains("<")) {
+            fieldType = substituteTypeParameters(fieldType, objectType);
         }
-        return valueType;
+        
+        TypeDesc valueDesc = checkExprDesc(expr.getValue(), env);
+        TypeDesc fieldDesc = TypeDesc.parse(fieldType);
+        if (!isAssignable(valueDesc, fieldDesc)) {
+            errorWithHint("Cannot assign type '" + valueDesc + "' to field '" + fieldName + "' of type '" + fieldType + "'.", expr.getSourceLocation(),
+                         buildTypeMismatchHint(valueDesc, fieldDesc, "field assignment"), ErrorCode.TYPE_MISMATCH);
+        }
+        return valueDesc.toString();
     }
 
     private String checkThis(ThisExpr expr) {
@@ -958,7 +1341,7 @@ public class TypeChecker {
         
         if (!classRegistry.containsKey(className)) {
             errorWithHint("Unknown class '" + className + "' in static access.", expr.getSourceLocation(),
-                         "Make sure the class is defined before accessing static members");
+                         "Make sure the class is defined before accessing static members", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown";
         }
         
@@ -984,8 +1367,8 @@ public class TypeChecker {
             }
         }
         
-        errorWithHint("Static member '" + memberName + "' not found in class '" + className + "'.", expr.getSourceLocation(),
-                     "Check the member name and ensure it's declared as static");
+    errorWithHint("Static member '" + memberName + "' not found in class '" + className + "'.", expr.getSourceLocation(),
+             "Check the member name and ensure it's declared as static", ErrorCode.UNDECLARED_IDENTIFIER);
         return "unknown";
     }
     
@@ -995,7 +1378,7 @@ public class TypeChecker {
         
         if (!classRegistry.containsKey(className)) {
             errorWithHint("Unknown class '" + className + "' in static assignment.", expr.getSourceLocation(),
-                         "Make sure the class is defined before assigning to static fields");
+                         "Make sure the class is defined before assigning to static fields", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown";
         }
         
@@ -1008,18 +1391,18 @@ public class TypeChecker {
                                  "Use public static fields or access from within the same class");
                 }
                 
-                String valueType = checkExpr(expr.value, env);
-                if (!isAssignable(valueType, field.getType())) {
-                    errorWithHint("Cannot assign '" + valueType + "' to static field '" + memberName + "' of type '" + field.getType() + "'.", expr.getSourceLocation(),
-                                 "Assign a value of type '" + field.getType() + "' to the static field");
+                TypeDesc valueDesc = checkExprDesc(expr.value, env);
+                TypeDesc fieldDesc = TypeDesc.parse(field.getType());
+                if (!isAssignable(valueDesc, fieldDesc)) {
+                    errorWithHint("Cannot assign '" + valueDesc + "' to static field '" + memberName + "' of type '" + field.getType() + "'.", expr.getSourceLocation(),
+                                 buildTypeMismatchHint(valueDesc, fieldDesc, "static field assignment"), ErrorCode.TYPE_MISMATCH);
                 }
-                
-                return valueType;
+                return valueDesc.toString();
             }
         }
         
-        errorWithHint("Static field '" + memberName + "' not found in class '" + className + "'.", expr.getSourceLocation(),
-                     "Check the field name and ensure it's declared as static");
+    errorWithHint("Static field '" + memberName + "' not found in class '" + className + "'.", expr.getSourceLocation(),
+             "Check the field name and ensure it's declared as static", ErrorCode.UNDECLARED_IDENTIFIER);
         return "unknown";
     }
 
@@ -1037,24 +1420,21 @@ public class TypeChecker {
                 signature = env.getFunction(funcName);
             } catch (TypeException e) {
                 errorWithHint("Undefined function '" + funcName + "'.", call.getSourceLocation(),
-                             "Make sure the function is declared before calling it");
+                             "Make sure the function is declared before calling it", ErrorCode.UNDECLARED_IDENTIFIER);
                 return "unknown";
             }
         } else if (callee instanceof GetExpr) {
             String objectType = checkExpr(((GetExpr) callee).getObject(), env);
             funcName = ((GetExpr) callee).getName().getLexeme();
             
-            // Handle built-in string method calls for sab type
             if (objectType.equals("sab") && isBuiltInStringMethod(funcName)) {
                 return checkBuiltInStringMethodCall(funcName, call.getArguments(), env);
             }
             
-            // Handle generic method calls
             if (objectType.contains("<")) {
                 return checkGenericMethodCall(objectType, funcName, call.getArguments(), env, call.getSourceLocation());
             }
             
-            // Handle regular (non-generic) method calls
             String baseType = extractBaseType(objectType);
             TypeEnvironment instanceEnv = classEnvironments.get(baseType);
             if (instanceEnv == null) {
@@ -1065,6 +1445,7 @@ public class TypeChecker {
             
             try {
                 signature = instanceEnv.getFunction(funcName);
+                enforceInstanceMethodAccess(baseType, funcName, call.getSourceLocation());
             } catch (TypeException e) {
                 errorWithHint("Method '" + funcName + "' not found on class '" + baseType + "'.", call.getSourceLocation(),
                              "Check the method name and ensure it's defined in the class");
@@ -1094,21 +1475,21 @@ public class TypeChecker {
             TypeEnvironment classEnv = classEnvironments.get(className);
             if (classEnv == null) {
                 errorWithHint("Class '" + className + "' not found.", call.getSourceLocation(),
-                             "Make sure the class is defined before calling static methods");
+                             "Make sure the class is defined before calling static methods", ErrorCode.UNDECLARED_IDENTIFIER);
                 return "unknown";
             }
             
             ClassDecl classDecl = classRegistry.get(className);
             if (classDecl == null) {
                 errorWithHint("Class '" + className + "' not found.", call.getSourceLocation(),
-                             "Make sure the class is defined before calling static methods");
+                             "Make sure the class is defined before calling static methods", ErrorCode.UNDECLARED_IDENTIFIER);
                 return "unknown";
             }
             
             FunctionDecl methodDecl = classDecl.findMethod(funcName);
             if (methodDecl == null) {
                 errorWithHint("Static method '" + funcName + "' not found in class '" + className + "'.", call.getSourceLocation(),
-                             "Check the method name and ensure it's declared as static in the class");
+                             "Check the method name and ensure it's declared as static in the class", ErrorCode.UNDECLARED_IDENTIFIER);
                 return "unknown";
             }
             
@@ -1122,7 +1503,7 @@ public class TypeChecker {
                 signature = classEnv.getFunction(funcName);
             } catch (TypeException e) {
                 errorWithHint("Static method '" + funcName + "' not found in class '" + className + "'.", call.getSourceLocation(),
-                             "Check the method name and ensure it's declared as static in the class");
+                             "Check the method name and ensure it's declared as static in the class", ErrorCode.UNDECLARED_IDENTIFIER);
                 return "unknown";
             }
         } else {
@@ -1133,6 +1514,17 @@ public class TypeChecker {
         
         checkFunctionArguments(funcName, signature.getParameterTypes(), call.getArguments(), env, call.getSourceLocation());
         return signature.getReturnType();
+    }
+
+    private void enforceInstanceMethodAccess(String baseType, String methodName, SourceLocation location) {
+        ClassDecl owner = classRegistry.get(baseType);
+        if (owner == null) return;
+        FunctionDecl methodDecl = owner.getFunctions().stream().filter(m -> m.getName().equals(methodName)).findFirst().orElse(null);
+        if (methodDecl == null) return;
+        if (!isAccessible(currentClass, owner, methodDecl.getModifiers())) {
+            errorWithHint("Cannot access method '" + methodName + "' of class '" + baseType + "' due to access modifier.", location,
+                         "Use a public/protected method or call from within the same class / subclass");
+        }
     }
 
     private void checkFunctionArguments(String name, List<?> expectedParams, List<Expression> args, TypeEnvironment env, SourceLocation callLocation) {
@@ -1147,46 +1539,44 @@ public class TypeChecker {
         
         for (int i = 0; i < args.size(); i++) {
             String argType = checkExpr(args.get(i), env);
-            String expectedType = typesAsStrings ? 
-                (String) expectedParams.get(i) : 
-                ((VarDecl) expectedParams.get(i)).getType();
-            
-            if (!isAssignable(argType, expectedType)) {
-                errorWithHint("Argument " + (i + 1) + " for '" + name + "' should be '" + expectedType + 
-                      "', but got '" + argType + "'.", args.get(i).getSourceLocation(),
-                      "Pass an argument of type '" + expectedType + "' for parameter " + (i + 1));
+            String expectedType = typesAsStrings ?
+                    (String) expectedParams.get(i) :
+                    ((VarDecl) expectedParams.get(i)).getType();
+
+            TypeDesc argDesc = TypeDesc.parse(argType);
+            TypeDesc expectedDesc = TypeDesc.parse(expectedType);
+
+            if (!TypeDesc.assignable(argDesc, expectedDesc)) {
+                String hint;
+                if (argDesc.isArray() && expectedDesc.isArray()) {
+                    hint = "Ensure element types match: expected elements of type '" + expectedDesc.element + "'";
+                } else if (argDesc.isNumeric() && expectedDesc.isNumeric()) {
+                    hint = "Convert numeric type if needed or adjust parameter type"; // Though widening handled, keep generic message
+                } else if (expectedDesc.kind == TypeKind.ANY) {
+                    hint = "'any' accepts any type – this should not normally fail; report if reproducible";
+                } else {
+                    hint = "Pass an argument of type '" + expectedType + "' for parameter " + (i + 1);
+                }
+                errorWithHint("Argument " + (i + 1) + " for '" + name + "' should be '" + expectedType +
+                                "', but got '" + argType + "'.", args.get(i).getSourceLocation(),
+                        hint, ErrorCode.TYPE_MISMATCH);
             }
         }
     }
 
     private boolean isNativeFunction(String name) {
-        return name.equals("print") || name.equals("printLine") || name.equals("clock") ||
-               name.equals("abs") || name.equals("sqrt") || name.equals("pow") ||
-               name.equals("min") || name.equals("max") || name.equals("floor") ||
-               name.equals("ceil") || name.equals("round") || name.equals("random") ||
-               name.equals("length") || name.equals("substring") || name.equals("charAt") ||
-               name.equals("toUpperCase") || name.equals("toLowerCase") || name.equals("indexOf") ||
-               name.equals("replace") || name.equals("startsWith") || name.equals("endsWith") ||
-               name.equals("trim") ||
-               name.equals("readLine") || name.equals("readLineWithPrompt") ||
-               name.equals("toNum") || name.equals("toDuo") || name.equals("toString") ||
-               name.equals("arrayLength") || name.equals("arrayContains") ||
-               name.equals("arrayIndexOf") || name.equals("arrayCopy") ||
-               name.equals("split") || name.equals("join") || name.equals("repeat") ||
-               name.equals("reverse") || name.equals("padLeft") || name.equals("padRight") ||
-               name.equals("arrayReverse") || name.equals("arraySlice") || name.equals("arraySort") ||
-               name.equals("arrayConcat") || name.equals("arrayFill") || name.equals("arraySum") ||
-               name.equals("arrayAverage") || name.equals("arrayPush") || name.equals("arrayPop") ||
-               name.equals("arrayInsert") ||
-               name.equals("sin") || name.equals("cos") || name.equals("tan") ||
-               name.equals("log") || name.equals("log10") || name.equals("exp") ||
-               name.equals("randomRange") || name.equals("clamp") ||
-               name.equals("isNum") || name.equals("isDuo") || name.equals("isSab") ||
-               name.equals("isKya") || name.equals("isArray") || name.equals("typeOf") ||
-               name.equals("range") || name.equals("sleep");
+    return NativeSignatures.exists(name);
     }
 
     private String checkNativeFunction(String name, List<Expression> args, CallExpr call, TypeEnvironment env) {
+        dhrlang.stdlib.NativeSignatures.Signature sig = NativeSignatures.get(name);
+        if(sig != null) {
+            int expected = sig.params.size();
+            if(args.size()!=expected) {
+                errorWithHint("Native function '"+name+"' expects "+expected+" arguments, got "+args.size()+".", call.getSourceLocation(),
+                    "Call '"+name+"' with exactly "+expected+" argument(s)", ErrorCode.NATIVE_ARITY);
+            }
+        }
         switch (name) {
             case "print":
             case "printLine":
@@ -1210,12 +1600,12 @@ public class TypeChecker {
                     errorWithHint("'abs' expects exactly 1 argument, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use abs(number) to get the absolute value of a number");
                 }
-                String absType = checkExpr(args.get(0), env);
-                if (!isNumeric(absType)) {
-                    errorWithHint("'abs' requires a numeric argument, got '" + absType + "'.", call.getSourceLocation(),
+                TypeDesc absDesc = checkExprDesc(args.get(0), env);
+                if (!absDesc.isNumeric()) {
+                    errorWithHint("'abs' requires a numeric argument, got '" + absDesc + "'.", call.getSourceLocation(),
                                  "Absolute value only works with numbers: abs(42) or abs(-3.14)");
                 }
-                return absType;
+                return absDesc.toString();
                 
             case "sqrt":
             case "floor":
@@ -1224,9 +1614,9 @@ public class TypeChecker {
                     errorWithHint("'" + name + "' expects exactly 1 argument, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use " + name + "(number) to perform the mathematical operation");
                 }
-                String argType = checkExpr(args.get(0), env);
-                if (!isNumeric(argType)) {
-                    errorWithHint("'" + name + "' requires a numeric argument, got '" + argType + "'.", call.getSourceLocation(),
+                TypeDesc mathUnaryDesc = checkExprDesc(args.get(0), env);
+                if (!mathUnaryDesc.isNumeric()) {
+                    errorWithHint("'" + name + "' requires a numeric argument, got '" + mathUnaryDesc + "'.", call.getSourceLocation(),
                                  "Mathematical functions only work with numbers: " + name + "(42) or " + name + "(3.14)");
                 }
                 return name.equals("sqrt") ? "duo" : "num";
@@ -1236,9 +1626,9 @@ public class TypeChecker {
                     errorWithHint("'round' expects exactly 1 argument, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use round(number) to round a number to the nearest integer");
                 }
-                String roundType = checkExpr(args.get(0), env);
-                if (!isNumeric(roundType)) {
-                    errorWithHint("'round' requires a numeric argument, got '" + roundType + "'.", call.getSourceLocation(),
+                TypeDesc roundDesc = checkExprDesc(args.get(0), env);
+                if (!roundDesc.isNumeric()) {
+                    errorWithHint("'round' requires a numeric argument, got '" + roundDesc + "'.", call.getSourceLocation(),
                                  "Rounding only works with numbers: round(3.14) becomes 3");
                 }
                 return "num";
@@ -1250,13 +1640,13 @@ public class TypeChecker {
                     errorWithHint("'" + name + "' expects exactly 2 arguments, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use " + name + "(number1, number2) to perform the operation on two numbers");
                 }
-                String leftType = checkExpr(args.get(0), env);
-                String rightType = checkExpr(args.get(1), env);
-                if (!isNumeric(leftType) || !isNumeric(rightType)) {
-                    errorWithHint("'" + name + "' requires numeric arguments, got '" + leftType + "' and '" + rightType + "'.", call.getSourceLocation(),
+                TypeDesc leftDesc = checkExprDesc(args.get(0), env);
+                TypeDesc rightDesc = checkExprDesc(args.get(1), env);
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
+                    errorWithHint("'" + name + "' requires numeric arguments, got '" + leftDesc + "' and '" + rightDesc + "'.", call.getSourceLocation(),
                                  "Both arguments must be numbers: " + name + "(5, 3) or " + name + "(2.5, 1.8)");
                 }
-                return name.equals("pow") ? "duo" : (leftType.equals("duo") || rightType.equals("duo") ? "duo" : "num");
+                return name.equals("pow") ? "duo" : (leftDesc.kind==TypeKind.DUO || rightDesc.kind==TypeKind.DUO ? "duo" : "num");
                 
             case "random":
                 if (!args.isEmpty()) {
@@ -1281,7 +1671,8 @@ public class TypeChecker {
             case "substring":
                 if (args.size() != 3) {
                     errorWithHint("'substring' expects exactly 3 arguments, got " + args.size() + ".", call.getSourceLocation(),
-                                 "Use substring(string, startIndex, endIndex) to extract a portion of a string");
+                                 "Use substring(string, startIndex, endIndex) to extract a portion of a string", ErrorCode.NATIVE_ARITY);
+                    if(args.size() < 3) return "sab"; 
                 }
                 String subStrType = checkExpr(args.get(0), env);
                 String startType = checkExpr(args.get(1), env);
@@ -1290,10 +1681,12 @@ public class TypeChecker {
                     errorWithHint("'substring' first argument must be a string, got '" + subStrType + "'.", call.getSourceLocation(),
                                  "Substring requires a string as first argument: substring('hello', 1, 3)");
                 }
-                if (!isNumeric(startType) || !isNumeric(endType)) {
-                    errorWithHint("'substring' indices must be numeric, got '" + startType + "' and '" + endType + "'.", call.getSourceLocation(),
-                                 "Start and end indices must be numbers: substring('hello', 0, 3)");
-                }
+                    TypeDesc startDesc = TypeDesc.parse(startType);
+                    TypeDesc endDesc = TypeDesc.parse(endType);
+                    if (!startDesc.isNumeric() || !endDesc.isNumeric()) {
+                        errorWithHint("'substring' indices must be numeric, got '" + startDesc + "' and '" + endDesc + "'.", call.getSourceLocation(),
+                                "Start and end indices must be numbers: substring('hello', 0, 3)");
+                    }
                 return "sab";
                 
             case "charAt":
@@ -1307,9 +1700,10 @@ public class TypeChecker {
                     errorWithHint("'charAt' first argument must be a string, got '" + charStrType + "'.", call.getSourceLocation(),
                                  "charAt requires a string as first argument: charAt('hello', 0)");
                 }
-                if (!isNumeric(indexType)) {
-                    errorWithHint("'charAt' index must be numeric, got '" + indexType + "'.", call.getSourceLocation(),
-                                 "Index must be a number: charAt('hello', 1) returns 'e'");
+                TypeDesc charIndexDesc = TypeDesc.parse(indexType);
+                if (!charIndexDesc.isNumeric()) {
+                    errorWithHint("'charAt' index must be numeric, got '" + charIndexDesc + "'.", call.getSourceLocation(),
+                            "Index must be a number: charAt('hello', 1) returns 'e'");
                 }
                 return "sab";
                 
@@ -1429,10 +1823,10 @@ public class TypeChecker {
                                  "Use repeat(string, count) to repeat a string a specified number of times");
                 }
                 String repeatStrType = checkExpr(args.get(0), env);
-                String repeatCountType = checkExpr(args.get(1), env);
-                if (!repeatStrType.equals("sab") || !isNumeric(repeatCountType)) {
-                    errorWithHint("'repeat' requires string and numeric arguments, got '" + repeatStrType + "' and '" + repeatCountType + "'.", call.getSourceLocation(),
-                                 "First argument must be a string, second a number: repeat('hi', 3) returns 'hihihi'");
+                TypeDesc repeatCountDesc = checkExprDesc(args.get(1), env);
+                if (!repeatStrType.equals("sab") || !repeatCountDesc.isNumeric()) {
+                    errorWithHint("'repeat' requires string and numeric arguments, got '" + repeatStrType + "' and '" + repeatCountDesc + "'.", call.getSourceLocation(),
+                            "First argument must be a string, second a number: repeat('hi', 3) returns 'hihihi'");
                 }
                 return "sab";
                 
@@ -1455,11 +1849,11 @@ public class TypeChecker {
                                  "Use " + name + "(string, length, padChar) to pad a string to a specific length");
                 }
                 String padStrType = checkExpr(args.get(0), env);
-                String padLengthType = checkExpr(args.get(1), env);
+                TypeDesc padLengthDesc = checkExprDesc(args.get(1), env);
                 String padCharType = checkExpr(args.get(2), env);
-                if (!padStrType.equals("sab") || !isNumeric(padLengthType) || !padCharType.equals("sab")) {
+                if (!padStrType.equals("sab") || !padLengthDesc.isNumeric() || !padCharType.equals("sab")) {
                     errorWithHint("'" + name + "' requires string, numeric, and string arguments.", call.getSourceLocation(),
-                                 "All arguments must be: string, number, string: " + name + "('hi', 5, '0') becomes '000hi'");
+                            "All arguments must be: string, number, string: " + name + "('hi', 5, '0') becomes '000hi'");
                 }
                 return "sab";
 
@@ -1474,10 +1868,10 @@ public class TypeChecker {
                     errorWithHint("'" + name + "' expects exactly 1 argument, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use " + name + "(number) to perform the mathematical operation");
                 }
-                String mathArgType = checkExpr(args.get(0), env);
-                if (!isNumeric(mathArgType)) {
-                    errorWithHint("'" + name + "' requires a numeric argument, got '" + mathArgType + "'.", call.getSourceLocation(),
-                                 "Mathematical functions only work with numbers: " + name + "(1.5) or " + name + "(45)");
+                TypeDesc mathArgDesc = checkExprDesc(args.get(0), env);
+                if (!mathArgDesc.isNumeric()) {
+                    errorWithHint("'" + name + "' requires a numeric argument, got '" + mathArgDesc + "'.", call.getSourceLocation(),
+                            "Mathematical functions only work with numbers: " + name + "(1.5) or " + name + "(45)");
                 }
                 return "duo";
                 
@@ -1486,10 +1880,10 @@ public class TypeChecker {
                     errorWithHint("'randomRange' expects exactly 2 arguments, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use randomRange(min, max) to get a random integer between min and max");
                 }
-                String minType = checkExpr(args.get(0), env);
-                String maxType = checkExpr(args.get(1), env);
-                if (!isNumeric(minType) || !isNumeric(maxType)) {
-                    errorWithHint("'randomRange' requires numeric arguments, got '" + minType + "' and '" + maxType + "'.", call.getSourceLocation(),
+                TypeDesc minDesc = checkExprDesc(args.get(0), env);
+                TypeDesc maxDesc = checkExprDesc(args.get(1), env);
+                if (!minDesc.isNumeric() || !maxDesc.isNumeric()) {
+                    errorWithHint("'randomRange' requires numeric arguments, got '" + minDesc + "' and '" + maxDesc + "'.", call.getSourceLocation(),
                                  "Both arguments must be numbers: randomRange(1, 10) returns integer between 1-10");
                 }
                 return "num";
@@ -1499,14 +1893,14 @@ public class TypeChecker {
                     errorWithHint("'clamp' expects exactly 3 arguments, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use clamp(value, min, max) to constrain a value between bounds");
                 }
-                String clampValueType = checkExpr(args.get(0), env);
-                String clampMinType = checkExpr(args.get(1), env);
-                String clampMaxType = checkExpr(args.get(2), env);
-                if (!isNumeric(clampValueType) || !isNumeric(clampMinType) || !isNumeric(clampMaxType)) {
+                TypeDesc clampValDesc = checkExprDesc(args.get(0), env);
+                TypeDesc clampMinDesc = checkExprDesc(args.get(1), env);
+                TypeDesc clampMaxDesc = checkExprDesc(args.get(2), env);
+                if (!clampValDesc.isNumeric() || !clampMinDesc.isNumeric() || !clampMaxDesc.isNumeric()) {
                     errorWithHint("'clamp' requires numeric arguments.", call.getSourceLocation(),
                                  "All arguments must be numbers: clamp(15, 0, 10) returns 10");
                 }
-                return clampValueType.equals("duo") || clampMinType.equals("duo") || clampMaxType.equals("duo") ? "duo" : "num";
+                return (clampValDesc.kind==TypeKind.DUO || clampMinDesc.kind==TypeKind.DUO || clampMaxDesc.kind==TypeKind.DUO) ? "duo" : "num";
                 
             case "arrayLength":
                 if (args.size() != 1) {
@@ -1565,11 +1959,11 @@ public class TypeChecker {
                                  "Use arraySlice(array, startIndex, endIndex) to extract a portion of an array");
                 }
                 String sliceArrType = checkExpr(args.get(0), env);
-                String startSliceType = checkExpr(args.get(1), env);
-                String endSliceType = checkExpr(args.get(2), env);
-                if (!sliceArrType.endsWith("[]") || !isNumeric(startSliceType) || !isNumeric(endSliceType)) {
+                TypeDesc startSliceDesc = checkExprDesc(args.get(1), env);
+                TypeDesc endSliceDesc = checkExprDesc(args.get(2), env);
+                if (!sliceArrType.endsWith("[]") || !startSliceDesc.isNumeric() || !endSliceDesc.isNumeric()) {
                     errorWithHint("'arraySlice' requires array and numeric arguments.", call.getSourceLocation(),
-                                 "First argument must be an array, others numbers: arraySlice(myArray, 1, 3)");
+                            "First argument must be an array, others numbers: arraySlice(myArray, 1, 3)");
                 }
                 return sliceArrType;
                 
@@ -1592,10 +1986,10 @@ public class TypeChecker {
                                  "Use arrayFill(value, size) to create an array filled with a value");
                 }
                 checkExpr(args.get(0), env); // Any type for fill value
-                String fillSizeType = checkExpr(args.get(1), env);
-                if (!isNumeric(fillSizeType)) {
-                    errorWithHint("'arrayFill' size must be numeric, got '" + fillSizeType + "'.", call.getSourceLocation(),
-                                 "Size must be a number: arrayFill('hello', 5) creates array with 5 'hello' strings");
+                TypeDesc fillSizeDesc = checkExprDesc(args.get(1), env);
+                if (!fillSizeDesc.isNumeric()) {
+                    errorWithHint("'arrayFill' size must be numeric, got '" + fillSizeDesc + "'.", call.getSourceLocation(),
+                            "Size must be a number: arrayFill('hello', 5) creates array with 5 'hello' strings");
                 }
                 return "unknown[]"; // Generic array type
                 
@@ -1642,18 +2036,18 @@ public class TypeChecker {
                     errorWithHint("'arrayInsert' expects exactly 3 arguments, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use arrayInsert(array, index, element) to insert an element at a specific position");
                 }
-                String insertArrType = checkExpr(args.get(0), env);
-                if (!insertArrType.endsWith("[]")) {
-                    errorWithHint("'arrayInsert' first argument must be an array, got '" + insertArrType + "'.", call.getSourceLocation(),
-                                 "First argument must be an array: arrayInsert(myArray, 2, element)");
+                TypeDesc insertArrDesc = TypeDesc.parse(checkExpr(args.get(0), env));
+                if (!insertArrDesc.isArray()) {
+                    errorWithHint("'arrayInsert' first argument must be an array, got '" + insertArrDesc + "'.", call.getSourceLocation(),
+                            "First argument must be an array: arrayInsert(myArray, 2, element)");
                 }
-                String insertIndexType = checkExpr(args.get(1), env);
-                if (!isNumeric(insertIndexType)) {
-                    errorWithHint("'arrayInsert' index must be numeric, got '" + insertIndexType + "'.", call.getSourceLocation(),
-                                 "Index must be a number: arrayInsert(myArray, 2, element)");
+                TypeDesc insertIndexDesc = checkExprDesc(args.get(1), env);
+                if (!insertIndexDesc.isNumeric()) {
+                    errorWithHint("'arrayInsert' index must be numeric, got '" + insertIndexDesc + "'.", call.getSourceLocation(),
+                            "Index must be a number: arrayInsert(myArray, 2, element)");
                 }
-                checkExpr(args.get(2), env); 
-                return insertArrType;
+                checkExpr(args.get(2), env);
+                return insertArrDesc.toString();
 
             case "isNum":
             case "isDuo":
@@ -1680,11 +2074,11 @@ public class TypeChecker {
                     errorWithHint("'range' expects exactly 2 arguments, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use range(start, end) to create an array of numbers from start to end");
                 }
-                String rangeStartType = checkExpr(args.get(0), env);
-                String rangeEndType = checkExpr(args.get(1), env);
-                if (!isNumeric(rangeStartType) || !isNumeric(rangeEndType)) {
-                    errorWithHint("'range' requires numeric arguments, got '" + rangeStartType + "' and '" + rangeEndType + "'.", call.getSourceLocation(),
-                                 "Both arguments must be numbers: range(1, 10) creates [1, 2, 3, ..., 10]");
+                TypeDesc rangeStart = checkExprDesc(args.get(0), env);
+                TypeDesc rangeEnd = checkExprDesc(args.get(1), env);
+                if (!rangeStart.isNumeric() || !rangeEnd.isNumeric()) {
+                    errorWithHint("'range' requires numeric arguments, got '" + rangeStart + "' and '" + rangeEnd + "'.", call.getSourceLocation(),
+                            "Both arguments must be numbers: range(1, 10) creates [1, 2, 3, ..., 10]");
                 }
                 return "num[]";
                 
@@ -1693,26 +2087,23 @@ public class TypeChecker {
                     errorWithHint("'sleep' expects exactly 1 argument, got " + args.size() + ".", call.getSourceLocation(),
                                  "Use sleep(milliseconds) to pause execution for a specified time");
                 }
-                String sleepType = checkExpr(args.get(0), env);
-                if (!isNumeric(sleepType)) {
-                    errorWithHint("'sleep' requires a numeric argument, got '" + sleepType + "'.", call.getSourceLocation(),
-                                 "Sleep duration must be a number in milliseconds: sleep(1000) pauses for 1 second");
+                TypeDesc sleepDesc = checkExprDesc(args.get(0), env);
+                if (!sleepDesc.isNumeric()) {
+                    errorWithHint("'sleep' requires a numeric argument, got '" + sleepDesc + "'.", call.getSourceLocation(),
+                            "Sleep duration must be a number in milliseconds: sleep(1000) pauses for 1 second");
                 }
                 return "kaam";
                 
             default:
                 errorWithHint("Unknown native function: " + name, call.getSourceLocation(),
-                             "Check the function name for typos or refer to the DhrLang documentation for available functions");
+                             "Check the function name for typos or refer to the DhrLang documentation for available functions", ErrorCode.UNKNOWN_NATIVE);
                 return "unknown";
         }
     }
 
-    private boolean isNumeric(String type) {
-        return type.equals("num") || type.equals("duo");
-    }
 
     private boolean isPrimitive(String type) {
-        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya");
+        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek");
     }
     
     
@@ -1843,9 +2234,9 @@ public class TypeChecker {
             return;
         }
         
-        if (!isPrimitive(type) && !classRegistry.containsKey(type) && !interfaceRegistry.containsKey(type)) {
-            errorWithHint("Unknown type '" + type + "'.", location,
-                         "Make sure the type is defined or use a valid primitive type: num, duo, sab, bool");
+    if (!isPrimitive(type) && !classRegistry.containsKey(type) && !interfaceRegistry.containsKey(type)) {
+        errorWithHint("Unknown type '" + type + "'.", location,
+            "Make sure the type is defined or use a valid primitive type: num, duo, sab, kya, ek");
         }
     }
     
@@ -1877,6 +2268,20 @@ public class TypeChecker {
                 throw new TypeException("Unknown type '" + typeArg + "' used as type argument for parameter '" + 
                                       param.getName() + "'.");
             }
+
+            // Enforce bounds: each bound must be a supertype of the argument (simplified: exact or ANY for now)
+            if (param.hasBounds()) {
+                for (GenericType bound : param.getBounds()) {
+                    String boundName = visitGenericType(bound);
+                    TypeDesc argDesc = TypeDesc.parse(typeArg);
+                    TypeDesc boundDesc = TypeDesc.parse(boundName);
+                    if (!TypeDesc.assignable(argDesc, boundDesc)) {
+                        errorWithHint("Type argument '" + typeArg + "' does not satisfy bound '" + boundName + "' for parameter '" + param.getNameString() + "'.",
+                                     location,
+                                     "Ensure the type argument extends/implements required bound", ErrorCode.BOUNDS_VIOLATION);
+                    }
+                }
+            }
         }
     }
     
@@ -1889,19 +2294,58 @@ public class TypeChecker {
     }
 
     private boolean isAssignable(String from, String to) {
-        if (from == null || to == null) return false;
-        return from.equals(to) ||
-                (from.equals("num") && to.equals("duo")) ||
-                (from.equals("unknown[]") && to.endsWith("[]")); 
+    if (from == null || to == null) return false;
+    return isAssignable(TypeDesc.parse(from), TypeDesc.parse(to));
+    }
+    // New descriptor-based assignability (to gradually replace string variant)
+    private boolean isAssignable(TypeDesc from, TypeDesc to){
+        return TypeDesc.assignable(from,to);
+    }
+
+    /* -------------------- Generic Instantiation Support (Foundational) -------------------- */
+    /**
+     * Obtain (or create) the binding map for an instantiation like Foo<num, sab> mapping T->num, U->sab.
+     */
+    private Map<String,String> bindingsForInstance(String instanceType){
+        if(!instanceType.contains("<")) return Collections.emptyMap();
+        return genericInstanceBindings.computeIfAbsent(instanceType, key -> {
+            String base = extractBaseType(key);
+            ClassDecl cd = classRegistry.get(base);
+            if(!(cd instanceof GenericClassDecl g)) return Collections.emptyMap();
+            String[] args = extractTypeArguments(key);
+            List<TypeParameter> params = g.getTypeParameters();
+            if(args.length != params.size()) return Collections.emptyMap(); // validation elsewhere
+            Map<String,String> map = new HashMap<>();
+            for(int i=0;i<params.size();i++){
+                map.put(params.get(i).getNameString(), args[i].trim());
+            }
+            return map;
+        });
+    }
+    /**
+     * Substitute generic parameter occurrences in a type relative to a concrete instantiation.
+     * Conservative textual replacement of whole identifiers; nested generics handled recursively by re-parsing segments.
+     */
+    private String substituteTypeParameters(String originalType, String instanceType){
+        if(originalType==null) return null;
+        Map<String,String> bindings = bindingsForInstance(instanceType);
+        if(bindings.isEmpty()) return originalType;
+        String result = originalType;
+        for(Map.Entry<String,String> e : bindings.entrySet()){
+            String param = e.getKey();
+            String arg = e.getValue();
+            // Replace standalone param tokens (boundaries: start, end, non-word chars)
+            result = result.replaceAll("(?<![A-Za-z0-9_])"+param+"(?![A-Za-z0-9_])", arg);
+        }
+        return result;
     }
     
     
-    private void errorWithHint(String message, SourceLocation location, String hint) {
+    private void errorWithHint(String message, SourceLocation location, String hint) { errorWithHint(message, location, hint, null); }
+    private void errorWithHint(String message, SourceLocation location, String hint, ErrorCode code) {
         if (errorReporter != null) {
-            errorReporter.error(location, message, hint);
-        } else {
-            throw new TypeException(message);
-        }
+            if(code==null) errorReporter.error(location, message, hint); else errorReporter.error(location, message, hint, code);
+        } else { throw new TypeException(message); }
     }
     
     private void validateModifiers(VarDecl field) {
@@ -2140,22 +2584,7 @@ public class TypeChecker {
     }
     
     
-    private void checkClassWithGenerics(ClassDecl classDecl) {
-        if (classDecl instanceof GenericClassDecl) {
-            validateGenericClass((GenericClassDecl) classDecl);
-        }
-        
-        checkClassBody(classDecl);
-    }
-    
-   
-    private void checkInterfaceWithGenerics(InterfaceDecl interfaceDecl) {
-        if (interfaceDecl instanceof GenericInterfaceDecl) {
-            validateGenericInterface((GenericInterfaceDecl) interfaceDecl);
-        }
-        
-        checkInterfaceBody(interfaceDecl);
-    }
+    // Removed unused wrapper methods checkClassWithGenerics / checkInterfaceWithGenerics (logic inlined elsewhere)
     
     private boolean isBuiltInStringMethod(String methodName) {
         return switch (methodName) {

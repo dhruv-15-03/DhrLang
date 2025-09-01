@@ -7,6 +7,8 @@ import java.util.List;
  */
 public class Block extends Statement{
     private final List<Statement> statements;
+    
+    private boolean desugaredForLoopBody = false;
 
     public Block(List<Statement> statements) {
         this.statements = statements;
@@ -14,6 +16,14 @@ public class Block extends Statement{
 
     public List<Statement> getStatements() {
         return statements;
+    }
+
+    public boolean isDesugaredForLoopBody() {
+        return desugaredForLoopBody;
+    }
+
+    public void markAsDesugaredForLoopBody() {
+        this.desugaredForLoopBody = true;
     }
 
     @Override

@@ -1,12 +1,13 @@
 package dhrlang.ast;
 
 import java.util.Objects;
-
+import dhrlang.error.SourceLocation;
 
 public class CatchClause implements ASTNode {
     private final String exceptionType;
     private final String parameter;
     private final Block body;
+    private SourceLocation location; // start location of 'catch' keyword / clause
 
     // Constructor with exception type support
     public CatchClause(String exceptionType, String parameter, Block body) {
@@ -31,6 +32,10 @@ public class CatchClause implements ASTNode {
     public Block getBody() {
         return body;
     }
+
+    public void setSourceLocation(SourceLocation loc){ this.location = loc; }
+    @Override
+    public dhrlang.error.SourceLocation getSourceLocation(){ return location; }
 
     @Override
     public String toString() {

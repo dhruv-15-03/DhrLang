@@ -21,7 +21,11 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
-        String filePath = args.length > 0 ? args[0] : "input/sample.dhr";
+        boolean jsonMode = false;
+        String filePath = null;
+        for(String a: args){
+            if("--json".equals(a)) jsonMode = true; else filePath = a; }
+        if(filePath==null) filePath = "input/sample.dhr";
 
         try {
             String sourceCode = Files.readString(Path.of(filePath));
@@ -34,6 +38,10 @@ public class Main {
         }
 
         if (errorReporter.hasErrors()) {
+            if(jsonMode){
+                System.out.println(errorReporter.toJson());
+                System.exit(65);
+            }
             System.err.println();
             System.err.println("\u001B[91m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
             System.err.println("\u001B[91m║                    COMPILATION FAILED                       ║\u001B[0m");
@@ -60,6 +68,9 @@ public class Main {
         }
 
         if (errorReporter.hasWarnings()) {
+            if(jsonMode){
+                System.out.println(errorReporter.toJson());
+                return; }
             System.err.println();
             System.err.println("\u001B[93m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
             System.err.println("\u001B[93m║                        WARNINGS                             ║\u001B[0m");
@@ -82,13 +93,6 @@ public class Main {
         try {
             program = parser.parse();
         } catch (ParseException e) {
-            if (e.getToken() != null) {
-                String hint = ErrorMessages.getParseErrorHint(e.getMessage(), e.getToken());
-                errorReporter.error(e.getToken().getLocation(), e.getMessage(), hint);
-            } else {
-                String hint = "Check your syntax for missing tokens, unmatched brackets, or incomplete statements";
-                errorReporter.error(e.getLine(), e.getMessage(), hint);
-            }
         }
 
         if (errorReporter.hasErrors()) return;

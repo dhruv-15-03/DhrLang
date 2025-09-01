@@ -1,6 +1,9 @@
 package dhrlang.interpreter;
 
 import dhrlang.error.ErrorFactory;
+import dhrlang.ast.FunctionDecl;
+import dhrlang.ast.VarDecl;
+import dhrlang.ast.Modifier;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -15,6 +18,9 @@ public class DhrClass implements Callable {
     private final Map<String, Object> staticFields;
     private final boolean isAbstract;
     private final Set<String> implementedInterfaces; // Track implemented interfaces
+    // Metadata for access control
+    private final Map<String, Set<Modifier>> methodModifiers = new HashMap<>();
+    private final Map<String, Set<Modifier>> fieldModifiers = new HashMap<>();
     
     public DhrClass(String name, DhrClass superclass, Map<String, Function> methods) {
         this(name, superclass, methods, new HashMap<>(), new HashMap<>(), false);
@@ -27,12 +33,19 @@ public class DhrClass implements Callable {
     
     public DhrClass(String name, DhrClass superclass, Map<String, Function> methods, 
                     Map<String, Function> staticMethods, Map<String, Object> staticFields, boolean isAbstract) {
-        this(name, superclass, methods, staticMethods, staticFields, isAbstract, new HashSet<>());
+        this(name, superclass, methods, staticMethods, staticFields, isAbstract, new HashSet<>(), List.of(), List.of());
     }
     
     public DhrClass(String name, DhrClass superclass, Map<String, Function> methods, 
                     Map<String, Function> staticMethods, Map<String, Object> staticFields, 
                     boolean isAbstract, Set<String> implementedInterfaces) {
+        this(name, superclass, methods, staticMethods, staticFields, isAbstract, implementedInterfaces, List.of(), List.of());
+    }
+
+    public DhrClass(String name, DhrClass superclass, Map<String, Function> methods, 
+                    Map<String, Function> staticMethods, Map<String, Object> staticFields, 
+                    boolean isAbstract, Set<String> implementedInterfaces, 
+                    List<FunctionDecl> methodDecls, List<VarDecl> fieldDecls) {
         this.name = name;
         this.superclass = superclass;
         this.methods = methods;
@@ -40,6 +53,12 @@ public class DhrClass implements Callable {
         this.staticFields = staticFields != null ? staticFields : new HashMap<>();
         this.isAbstract = isAbstract;
         this.implementedInterfaces = implementedInterfaces != null ? implementedInterfaces : new HashSet<>();
+        if(methodDecls!=null){
+            for(FunctionDecl d: methodDecls){ methodModifiers.put(d.getName(), d.getModifiers()); }
+        }
+        if(fieldDecls!=null){
+            for(VarDecl v: fieldDecls){ fieldModifiers.put(v.getName(), v.getModifiers()); }
+        }
     }
 
     public Function findMethod(String name) {
@@ -122,6 +141,9 @@ public class DhrClass implements Callable {
     public String toString() {
         return "<class " + name + ">";
     }
+
+    public String getName(){ return name; }
+    public DhrClass getSuperclass(){ return superclass; }
     
     // Interface support methods
     public boolean implementsInterface(String interfaceName) {
@@ -143,5 +165,46 @@ public class DhrClass implements Callable {
             allInterfaces.addAll(superclass.getAllImplementedInterfaces());
         }
         return allInterfaces;
+    }
+
+    // Access modifier queries
+    public Set<Modifier> getMethodModifiers(String method){
+        if(methodModifiers.containsKey(method)) return methodModifiers.get(method);
+        if(superclass!=null) return superclass.getMethodModifiers(method);
+        return Set.of();
+    }
+    public Set<Modifier> getFieldModifiers(String field){
+        if(fieldModifiers.containsKey(field)) return fieldModifiers.get(field);
+        if(superclass!=null) return superclass.getFieldModifiers(field);
+        return Set.of();
+    }
+    public boolean isMethodPrivate(String method){ return getMethodModifiers(method).contains(Modifier.PRIVATE); }
+    public boolean isMethodProtected(String method){ return getMethodModifiers(method).contains(Modifier.PROTECTED); }
+    public boolean isFieldPrivate(String field){ return getFieldModifiers(field).contains(Modifier.PRIVATE); }
+    public boolean isFieldProtected(String field){ return getFieldModifiers(field).contains(Modifier.PROTECTED); }
+
+    // Helper to determine subclass relationships
+    public boolean isSubclassOf(DhrClass other) {
+        if (other == null) return false;
+        DhrClass cur = this.superclass;
+        while (cur != null) {
+            if (cur == other) return true;
+            cur = cur.superclass;
+        }
+        return false;
+    }
+
+    // Find class in hierarchy that originally declared a field
+    public DhrClass findDeclaringClassForField(String field) {
+        if (fieldModifiers.containsKey(field)) return this;
+        if (superclass != null) return superclass.findDeclaringClassForField(field);
+        return null;
+    }
+
+    // Find class in hierarchy that originally declared a method
+    public DhrClass findDeclaringClassForMethod(String method) {
+        if (methodModifiers.containsKey(method)) return this;
+        if (superclass != null) return superclass.findDeclaringClassForMethod(method);
+        return null;
     }
 }

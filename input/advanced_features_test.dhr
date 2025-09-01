@@ -1,0 +1,110 @@
+// Advanced Feature Tests - Generics, Interfaces, Static Methods
+// NOTE: Generic types & generic arrays are currently only partially supported (syntactic).
+// Lines using Container<T> arrays may fail compilation until full generics implementation (tracked in ROADMAP).
+class Container<T> {
+    private T value;
+    
+    kaam init(T value) {
+        this.value = value;
+    }
+    
+    T getValue() {
+        return this.value;
+    }
+    
+    kaam setValue(T newValue) {
+        this.value = newValue;
+    }
+}
+
+interface Printable {
+    kaam printInfo();
+}
+
+class Document implements Printable {
+    private sab title;
+    
+    kaam init(sab title) {
+        this.title = title;
+    }
+    
+    kaam printInfo() {
+        printLine("Document: " + this.title);
+    }
+    
+    sab getTitle() {
+        return this.title;
+    }
+}
+
+class MathUtils {
+    static num factorial(num n) {
+        if (n <= 1) {
+            return 1;
+        }
+        return n * MathUtils.factorial(n - 1);
+    }
+    
+    static num gcd(num a, num b) {
+        while (b != 0) {
+            num temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+    
+    static duo circleArea(duo radius) {
+        return 3.14159 * radius * radius;
+    }
+}
+
+class AdvancedFeatureTests {
+    static kaam main() {
+        printLine("=== Advanced Feature Tests ===");
+        
+        // Test generic classes
+        Container<num> numberContainer = new Container<num>(42);
+        printLine("Number container value: " + numberContainer.getValue());
+        
+        Container<sab> stringContainer = new Container<sab>("Hello Generics");
+        printLine("String container value: " + stringContainer.getValue());
+        
+        // Modify container values
+        numberContainer.setValue(100);
+        stringContainer.setValue("Updated String");
+        printLine("Updated number: " + numberContainer.getValue());
+        printLine("Updated string: " + stringContainer.getValue());
+        
+        // Test interface implementation
+        Document doc = new Document("User Manual");
+        doc.printInfo();
+        printLine("Document title: " + doc.getTitle());
+        
+        // Test static methods
+        printLine("Factorial of 5: " + MathUtils.factorial(5));
+        printLine("GCD of 48 and 18: " + MathUtils.gcd(48, 18));
+        printLine("Area of circle (radius 5): " + MathUtils.circleArea(5.0));
+        
+        // Test array with generics
+        Container<num>[] containers = new Container<num>[3];
+        containers[0] = new Container<num>(10);
+        containers[1] = new Container<num>(20);
+        containers[2] = new Container<num>(30);
+        
+        printLine("Container array values:");
+        for (num i = 0; i < arrayLength(containers); i++) {
+            printLine("Container " + i + ": " + containers[i].getValue());
+        }
+        
+        // Test mathematical operations
+        duo result1 = MathUtils.circleArea(3.0);
+        duo result2 = MathUtils.circleArea(4.0);
+        printLine("Circle areas comparison:");
+        printLine("Radius 3: " + result1);
+        printLine("Radius 4: " + result2);
+        printLine("Difference: " + (result2 - result1));
+        
+        printLine("=== Advanced Feature Tests Complete ===");
+    }
+}

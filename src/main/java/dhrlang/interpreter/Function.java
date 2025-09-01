@@ -6,10 +6,15 @@ import java.util.List;
 public class Function implements Callable {
     private final FunctionDecl declaration;
     private final Environment closure;
-
+    // Class context this function logically belongs to (even if static). Used for access control.
+    private final String ownerClassName;
     public Function(FunctionDecl declaration, Environment closure) {
+        this(declaration, closure, null);
+    }
+    public Function(FunctionDecl declaration, Environment closure, String ownerClassName) {
         this.declaration = declaration;
         this.closure = closure;
+        this.ownerClassName = ownerClassName;
     }
 
     public FunctionDecl getDeclaration() {
@@ -19,11 +24,14 @@ public class Function implements Callable {
     public Function bind(Instance instance) {
         Environment environment = new Environment(closure);
         environment.define("this", instance);
-        return new Function(declaration, environment);
+    // Preserve original declaring class context (ownerClassName) so that
+    // private/protected access checks use the method's defining class, not the runtime subclass.
+    return new Function(declaration, environment, this.ownerClassName);
     }
     public Environment getClosure() {
         return closure;
     }
+    public String getOwnerClassName(){ return ownerClassName; }
 
     @Override
     public int arity() {
@@ -43,11 +51,23 @@ public class Function implements Callable {
         
         // Increment call depth
         interpreter.incrementCallDepth();
+        // Push execution frame with class context if available
+        String className = ownerClassName;
+        if(className==null){
+            try {
+                Object maybeThis = closure.get("this");
+                if (maybeThis instanceof Instance inst) {
+                    className = inst.getKlass().name;
+                }
+            } catch (dhrlang.interpreter.DhrRuntimeException ignored) {}
+        }
+        interpreter.pushFrame(declaration.getName(), className, interpreter.getCurrentCallLocation());
         try {
             return execute(interpreter, arguments, environment);
         } finally {
             // Always decrement, even on exception
             interpreter.decrementCallDepth();
+            interpreter.popFrame();
         }
     }
     public Object execute(Interpreter interpreter, List<Object> arguments, Environment environment) {

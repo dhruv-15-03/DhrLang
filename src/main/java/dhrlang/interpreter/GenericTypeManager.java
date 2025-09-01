@@ -208,12 +208,5 @@ public class GenericTypeManager {
     }
     
     
-    public String getDebugInfo() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Generic Type Manager State:\n");
-        sb.append("Current Context: ").append(getCurrentContext()).append("\n");
-        sb.append("Class Bindings: ").append(classTypeBindings).append("\n");
-        sb.append("Method Bindings: ").append(methodTypeBindings).append("\n");
-        return sb.toString();
-    }
+    // Removed unused getDebugInfo() for leaner runtime.
 }
