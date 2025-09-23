@@ -37,8 +37,10 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Build
-      run: ./gradlew build -x test
+    - name: Build (Gradle)
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: build -x test
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

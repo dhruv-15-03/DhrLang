@@ -37,13 +37,19 @@ jobs:
       run: chmod +x gradlew
     
     - name: Run tests
-      run: ./gradlew test
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: test
     
     - name: Run integration tests
-      run: ./gradlew integrationTest
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: integrationTest
     
     - name: Generate test report
-      run: ./gradlew jacocoTestReport
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: jacocoTestReport
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
@@ -86,10 +92,14 @@ jobs:
       run: chmod +x gradlew
     
     - name: Build with Gradle
-      run: ./gradlew build
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: build
     
     - name: Build distribution
-      run: ./gradlew distZip distTar
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: distZip distTar
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -129,7 +139,9 @@ jobs:
       run: chmod +x gradlew
     
     - name: Build release artifacts
-      run: ./gradlew build distZip distTar
+      uses: gradle/gradle-build-action@v3
+      with:
+        arguments: build distZip distTar
     
     - name: Extract version from tag
       id: extract_version

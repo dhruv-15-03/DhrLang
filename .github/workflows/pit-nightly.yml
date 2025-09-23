@@ -27,7 +27,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Run PIT mutation tests
-        run: ./gradlew pitest
+        uses: gradle/gradle-build-action@v3
+        with:
+          arguments: pitest
       - name: Upload PIT reports
         uses: actions/upload-artifact@v4
         if: always()
