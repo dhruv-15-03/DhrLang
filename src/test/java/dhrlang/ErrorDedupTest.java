@@ -9,24 +9,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
-/**
- * Verifies that identical diagnostics are de-duplicated and that
- * distinct diagnostics still appear.
- */
 public class ErrorDedupTest {
 
     @Test
     public void duplicateTypeErrorsReportedOnce() {
-        // Craft code that triggers same semantic error twice via repeated pass / re-check scenario simulation.
-        // Here we manually call type checker twice on same AST to simulate re-run without clearing reporter.
-    // Directly test reporter de-dup by adding same logical error twice manually.
     ErrorReporter er = new ErrorReporter("manual.dhr", "");
     SourceLocation loc = new SourceLocation("manual.dhr", 1, 1);
     er.error(loc, "Type mismatch: Cannot assign type 'sab' to variable 'a' of type 'num'.", "hint", ErrorCode.TYPE_MISMATCH);
     er.error(loc, "Type mismatch: Cannot assign type 'sab' to variable 'a' of type 'num'.", "hint", ErrorCode.TYPE_MISMATCH);
     assertEquals(1, er.getErrorCount(), "Duplicate identical error should be suppressed");
 
-    // Now run a semantic scenario producing two distinct messages and ensure both kept.
     String code = "class Main1 { static kaam main() { num a = \"str\"; sab s = 123; } }";
     ErrorReporter er2 = new ErrorReporter("sem.dhr", code);
     Lexer lx = new Lexer(code, er2);

@@ -6,8 +6,8 @@
 
 # DhrLang Language Specification
 
-Version: 0.1 (Specification commit placeholder)
-Stability: Experimental – incompatible changes may occur prior to 1.0.
+Version: 1.0.0
+Stability: Stable – subject to semantic versioning.
 Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth.
 
 ## 0. Overview (Informative)
@@ -191,16 +191,13 @@ Classes, interfaces, arrays, and parameterized forms (syntactic generics). All n
 
 ### 4.3 Arrays
 Type `T[]` where `T` is any type (primitive or reference). Arrays are covariant at runtime (Java array semantics). (FUTURE: specify invariance for safety.)
-Multi-dimensional array syntax like `T[][]` is parsed only in limited negative tests; true nested array allocation via `new T[m][n]` is NOT supported yet (create separate `T[]` instances manually).
+Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported: parser, typechecker, and evaluator allow creation, assignment, and access for arrays of any dimension. Nested array allocation via `new T[m][n]` and higher is implemented; elements are initialized recursively to type default (§4.1 or null).
 
 ### 4.4 Class & Interface Types
 Single class inheritance; multiple interfaces. Abstract classes may declare abstract methods (no body). Interfaces declare signatures only.
 
 ### 4.5 Generic Types (Current Semantics)
-- Parsing supports `Class<A, B>`; TypeChecker currently performs only superficial arity checks and name recording (erased behavior; *no true substitution or variance checks*).
-- Wildcards `?`, `? extends T`, `? super T` parsed but not enforced.
-- Generic arrays (e.g. `Container<num>[]`) are syntactically accepted in some samples but may emit errors; full support deferred.
-- (FUTURE) Full binding environment & assignability.
+Parsing supports `Class<A, B>`; TypeChecker enforces arity, bounds, and performs type parameter substitution for generics in fields and methods. Generic substitution is applied for unqualified field access and assignment inside instance methods, with access control and diagnostics. Wildcards `?`, `? extends T`, `? super T` are parsed but enforcement is limited. Generic arrays (e.g. `Container<num>[]`) are supported. Full binding environment and assignability are planned for future versions.
 
 ### 4.6 Null
 Any reference value (class, interface, array, parameterized) may be `null`. There is no distinct `null` literal token; `null` appears as runtime value produced by uninitialized variables, missing return expressions, or explicit default object field values.
@@ -211,6 +208,8 @@ Lexical scoping. Nested blocks introduce new variable scope. Variable shadowing 
 Resolution order for unqualified identifiers inside a method:
 1. Local variables & parameters
 2. Fields of the current class (including inherited)
+	- In instance methods, unqualified variable access and assignment will resolve to instance fields if no local variable or parameter matches, with generic substitution and access control enforced.
+	- In static methods, unqualified identifiers do NOT resolve to instance fields; diagnostics for undefined variables are preserved.
 3. Global (class/interface) symbols in the root environment
 Collision produces the nearest binding.
 
@@ -225,10 +224,80 @@ A class declares fields & methods. Fields can be static; methods can be static/a
 Multiple `implements` allowed. Each interface method must be provided by a concrete (non‑abstract) class unless class is abstract.
 
 ### 6.4 Static Members
-Accessible via `ClassName.member`. Static fields initialized to default value then optional initializer expression evaluated at class loading (program execution start) for fields with `static` modifier.
+Accessible via `ClassName.member`. Static fields are initialized as follows:
+- All static fields start at their type's default value (§4.1 or null).
+- Then, for each class independently, static field initializers are evaluated in source order.
 
-### 6.5 Access Modifiers (Current Implementation)
-`public`, `private`, `protected` parsed and stored; *runtime enforcement is partial* (field & method access checks incomplete in 0.1). (FUTURE: strict enforcement rules: private = declaring class only; protected = subclasses + same package; public = all.)
+Static initializer constraints (Normative):
+- A static field initializer in class C MUST NOT read another static field of C that is declared later in the source. Such a read is an error: code STATIC_FORWARD_REFERENCE.
+- Static field initializers in class C MUST NOT form a cycle of dependencies (e.g., C.a depends on C.b which depends on C.a). Any cycle is an error: code STATIC_INIT_CYCLE.
+
+Examples:
+```
+class A {
+	static num x = 1;
+	static num y = x + 2;        // OK: reads earlier field
+}
+
+class B {
+	static num y = B.x + 1;      // ERROR [STATIC_FORWARD_REFERENCE]: forward read of x
+	static num x = 1;
+}
+
+class C {
+	static num a = C.b + 1;      // ERROR [STATIC_INIT_CYCLE]
+	static num b = C.a + 1;
+}
+```
+
+### 6.5 Access Modifiers (Normative)
+Access control is enforced at compile time for fields and methods, both instance and static:
+
+- public: accessible from any class.
+- private: accessible only within the declaring class.
+- protected: accessible within the declaring class and any subclass.
+
+Rules apply uniformly to:
+- Instance field get/set and method calls
+- Static field access/assignment and static method calls via `ClassName.member`
+
+Multiple access modifiers on the same member are illegal. The checker emits an error:
+- Field: `Field 'x' cannot have multiple access modifiers.`
+- Method: `Method 'foo' cannot have multiple access modifiers.`
+
+Diagnostics for illegal access are reported with actionable messages, e.g.:
+- Instance field read: `Cannot access field 'prop' of class 'C' due to access modifier.`
+- Static field read or assignment: `Cannot access private/protected static field 'v' from class 'C'.`
+- Static method call: `Cannot access private/protected static method 'm' from class 'C'.`
+
+Examples:
+```
+class A {
+	private num x;              // only A's methods can read/write x
+	protected num y;            // A and subclasses can read/write y
+	public static num z;        // accessible as A.z everywhere
+
+	private static kaam p() {}
+	protected static kaam q() {}
+	public static kaam r() {}
+}
+
+class B extends A {
+	static kaam main(){
+		B b = new B();
+		printLine(b.y);   // OK (protected in subclass)
+		printLine(A.q()); // OK (protected static in subclass)
+	}
+}
+
+class C {
+	static kaam main(){
+		printLine(A.y);   // ERROR: instance field, and protected outside subclass
+		printLine(A.q()); // ERROR: protected static not visible to non-subclass
+		printLine(A.p()); // ERROR: private static not visible
+	}
+}
+```
 
 ### 6.6 Override Annotation
 `Override` (capitalized) may precede a method declaration. Currently advisory; missing annotation on an override is not an error. (FUTURE: detection & warning if missing.)
@@ -273,7 +342,7 @@ Evaluation order: left‑to‑right for arguments and binary operands. Assignmen
 - Prefix: update then yield new value.
 - Postfix: yield old value then update.
 
-Recursion depth limited (current MAX = 1000) raising runtime error on overflow. Self-recursive static calls inside same class currently require explicit qualification; unqualified forward static references may yield access errors (known limitation).
+Recursion depth limited (current MAX = 1000) raising runtime error on overflow.
 
 ## 9. Exceptions (Normative)
 Throwing: `throw expression;` wraps primitives in runtime exception object if not already DhrException. Catch matching rules:
@@ -288,6 +357,9 @@ Throwing: `throw expression;` wraps primitives in runtime exception object if no
 
 Finally always executes except if runtime throws inside finally itself (propagated). `break`, `continue`, `return` rethrown through try after running finally.
 
+### 9.1 Stringification and printing (Normative)
+When an exception value (a `DhrException` or subclass) is concatenated with a string or printed via `print/printLine`, its string form is the exception message only (i.e., `ex.getMessage()`). Exception type and source location are preserved in the runtime error record if the exception escapes to the top level, but user‑level printing within programs intentionally shows just the message.
+
 ## 10. Arrays (Normative)
 `new T[expr]`: expr must evaluate to num (Long) >=0; size > 1_000_000 rejected. Elements initialized to type default (§4.1 or null).
 Indexing `arr[i]` bounds checked; negative or >= length raises index error.
@@ -296,7 +368,7 @@ Indexing `arr[i]` bounds checked; negative or >= length raises index error.
 All provided as global native functions until namespacing (FUTURE). Selected categories: math.*, string.*, array.*, IO, util.* (range, sleep, type predicates). Some string instance-like methods also accessible via property access returning callable objects (e.g. `"abc".length()`).
 
 ## 12. Generics Future Semantics (Informative)
-Planned: Type parameter environment with substitution; invariant generic classes; wildcard capture; erased runtime with optional debug reification tags. Assignment rules will treat raw vs parameterized mismatch as error. Variance annotations (FUTURE).
+Current: Type parameter environment with substitution is implemented for generics in fields and methods, including implicit field access in instance methods. Assignment rules treat raw vs parameterized mismatch as error. Wildcard capture and variance annotations are planned for future versions. Runtime remains erased with optional debug reification tags.
 
 ## 13. Diagnostics (Normative)
 Diagnostic record fields: `type (ERROR|WARNING)`, `code?`, `message`, `hint?`, `location(file?, line, column)`. De‑duplication by (type|line|col|code|message). Suppression directive:
@@ -310,10 +382,9 @@ A program conforms if:
 4. Runtime terminates without uncaught runtime error (unless test intentionally asserts error).
 
 ## 15. Deviations & Known Limitations (Informative)
-- Access modifier runtime enforcement incomplete.
-- Generics largely syntactic sugar; generic arrays & deep type substitution unsupported.
-- Multi-dimensional arrays not implemented (simulate with arrays-of-arrays manually).
-- Static forward references for fields may raise access errors (initialization order improvement pending).
+- Generics are now enforced with type parameter substitution and diagnostics; generic arrays and deep type substitution are supported for fields and methods.
+- Multi-dimensional arrays are fully implemented and supported in all language components.
+- (Removed) Static forward reference ambiguity: Now enforced at compile-time per §6.4 (STATIC_FORWARD_REFERENCE, STATIC_INIT_CYCLE).
 - No method overloading; duplicate name rejected.
 - No package / module system; single global namespace.
 - No `null` literal token (implicit only).

@@ -3,6 +3,7 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
 
@@ -101,7 +102,7 @@ jobs:
   release:
     needs: [test, build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     
     steps:
     - uses: actions/checkout@v4
@@ -130,10 +131,10 @@ jobs:
     - name: Build release artifacts
       run: ./gradlew build distZip distTar
     
-    - name: Extract version
+    - name: Extract version from tag
       id: extract_version
       run: |
-        VERSION=$(grep '^version' build.gradle | sed "s/version '\(.*\)'/\1/")
+        VERSION=${GITHUB_REF_NAME#v}
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
     
     - name: Create Release
@@ -187,13 +188,13 @@ jobs:
       run: chmod +x gradlew
     
     - name: Run SpotBugs
-      run: ./gradlew spotbugsMain
+      run: ./gradlew -PenableQuality=true spotbugsMain
     
     - name: Run Checkstyle
-      run: ./gradlew checkstyleMain
+      run: ./gradlew -PenableQuality=true checkstyleMain
     
     - name: Run PMD
-      run: ./gradlew pmdMain
+      run: ./gradlew -PenableQuality=true pmdMain
     
     - name: Upload code quality reports
       uses: actions/upload-artifact@v3

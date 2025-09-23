@@ -28,12 +28,11 @@ public class TypeChecker {
     private ClassDecl currentClass = null;
     private InterfaceDecl currentInterface = null;
     private String currentFunctionReturnType = null;
+    private boolean currentFunctionIsStatic = false;
     private boolean inLoop = false;
     private Set<String> currentTypeParameters = new HashSet<>();
     private ErrorReporter errorReporter;
-    // Flow-sensitive tracking: variables proven non-null on current path
     private Set<String> nonNullVars = new HashSet<>();
-    // Generic instantiation bindings: full instantiation string -> param name -> concrete argument type string
     private final Map<String, Map<String,String>> genericInstanceBindings = new HashMap<>();
 
     public TypeChecker() {
@@ -287,7 +286,54 @@ public class TypeChecker {
         }
         
         TypeEnvironment classEnv = classEnvironments.get(klass.getName());
-        
+
+        // Step 6: Static field forward reference and cycle detection
+        // Build ordered list and name->index for static fields of this class
+        List<VarDecl> staticFields = new ArrayList<>();
+        Map<String, Integer> staticIndex = new HashMap<>();
+        for (int i = 0; i < klass.getVariables().size(); i++) {
+            VarDecl f = klass.getVariables().get(i);
+            if (f.hasModifier(Modifier.STATIC)) {
+                staticIndex.put(f.getName(), staticFields.size());
+                staticFields.add(f);
+            }
+        }
+        // Collect dependencies from each static field's initializer: same-class static reads
+        List<Set<String>> dependencies = new ArrayList<>();
+        for (int i = 0; i < staticFields.size(); i++) dependencies.add(new HashSet<>());
+        for (int i = 0; i < staticFields.size(); i++) {
+            VarDecl f = staticFields.get(i);
+            if (f.getInitializer() != null) {
+                Set<String> refs = collectSameClassStaticFieldReads(f.getInitializer(), klass.getName(), staticIndex.keySet());
+                // Record and check illegal forward references (reads of later-declared fields)
+                for (String ref : refs) {
+                    Integer j = staticIndex.get(ref);
+                    if (j != null) {
+                        dependencies.get(i).add(ref);
+                        if (j > i) {
+                            // Forward read detected
+                            errorWithHint(
+                                "Illegal forward reference to static field '" + ref + "' in initializer of '" + f.getName() + "'.",
+                                f.getSourceLocation(),
+                                "Reorder fields or remove forward reference to later-declared static field",
+                                ErrorCode.STATIC_FORWARD_REFERENCE
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        // Detect dependency cycles among static fields (regardless of order)
+        // Simple DFS for cycles over indices
+        int n = staticFields.size();
+        int[] color = new int[n]; // 0=unvisited,1=visiting,2=done
+        List<Integer> stack = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            if (color[i] == 0) {
+                detectStaticCycleDFS(i, staticFields, staticIndex, dependencies, color, stack);
+            }
+        }
+
         for (VarDecl field : klass.getVariables()) {
             // Validate field type early
             validateTypeReference(field.getType(), field.getSourceLocation());
@@ -315,6 +361,110 @@ public class TypeChecker {
         // Clear current type parameters
         currentTypeParameters.clear();
         this.currentClass = null;
+    }
+
+    // DFS helper to report a single cycle per back-edge discovered
+    private void detectStaticCycleDFS(int u,
+                                      List<VarDecl> staticFields,
+                                      Map<String,Integer> staticIndex,
+                                      List<Set<String>> dependencies,
+                                      int[] color,
+                                      List<Integer> stack){
+        color[u] = 1; // visiting
+        stack.add(u);
+        for(String depName : dependencies.get(u)){
+            Integer v = staticIndex.get(depName);
+            if(v==null) continue;
+            if(color[v]==0){
+                detectStaticCycleDFS(v, staticFields, staticIndex, dependencies, color, stack);
+            } else if(color[v]==1){
+                // Found a cycle; reconstruct cycle path from v to u
+                int startIdx = stack.indexOf(v);
+                if(startIdx>=0){
+                    List<String> cycleNames = new ArrayList<>();
+                    for(int k=startIdx;k<stack.size();k++){
+                        cycleNames.add(staticFields.get(stack.get(k)).getName());
+                    }
+                    cycleNames.add(staticFields.get(v).getName()); // close the loop
+                    String path = String.join(" -> ", cycleNames);
+                    VarDecl at = staticFields.get(u);
+                    errorWithHint(
+                        "Static initialization cycle detected: " + path + ".",
+                        at.getSourceLocation(),
+                        "Break the cycle by removing circular references or using a method call",
+                        ErrorCode.STATIC_INIT_CYCLE
+                    );
+                }
+            }
+        }
+        stack.remove(stack.size()-1);
+        color[u] = 2;
+    }
+
+    // Collect reads of same-class static fields via A.x or unqualified? Here, static reads appear as StaticAccessExpr of the same class
+    private Set<String> collectSameClassStaticFieldReads(Expression expr, String className, java.util.Set<String> staticNames){
+        Set<String> refs = new HashSet<>();
+        collectStaticReads(expr, className, staticNames, refs);
+        return refs;
+    }
+
+    private void collectStaticReads(Expression expr, String className, java.util.Set<String> staticNames, Set<String> out){
+        if(expr == null) return;
+        if(expr instanceof StaticAccessExpr sae){
+            String cls = sae.className.getName().getLexeme();
+            if(className.equals(cls)){
+                out.add(sae.memberName.getLexeme());
+            }
+            return; // StaticAccessExpr has no additional children beyond identifiers
+        }
+        if(expr instanceof VariableExpr ve){
+            String name = ve.getName().getLexeme();
+            if(staticNames.contains(name)){
+                out.add(name);
+            }
+            return;
+        }
+        // Traverse common expression forms for potential nested StaticAccessExpr
+        if(expr instanceof BinaryExpr b){
+            collectStaticReads(b.getLeft(), className, staticNames, out);
+            collectStaticReads(b.getRight(), className, staticNames, out);
+        } else if(expr instanceof UnaryExpr u){
+            collectStaticReads(u.getRight(), className, staticNames, out);
+        } else if(expr instanceof CallExpr c){
+            collectStaticReads(c.getCallee(), className, staticNames, out);
+            for(Expression a : c.getArguments()) collectStaticReads(a, className, staticNames, out);
+        } else if(expr instanceof GetExpr g){
+            collectStaticReads(g.getObject(), className, staticNames, out);
+        } else if(expr instanceof SetExpr s){
+            collectStaticReads(s.getObject(), className, staticNames, out);
+            collectStaticReads(s.getValue(), className, staticNames, out);
+        } else if(expr instanceof AssignmentExpr a){
+            collectStaticReads(a.getValue(), className, staticNames, out);
+        } else if(expr instanceof ArrayExpr arr){
+            for(Expression e : arr.getElements()) collectStaticReads(e, className, staticNames, out);
+        } else if(expr instanceof IndexExpr idx){
+            collectStaticReads(idx.getObject(), className, staticNames, out);
+            collectStaticReads(idx.getIndex(), className, staticNames, out);
+        } else if(expr instanceof IndexAssignExpr ia){
+            collectStaticReads(ia.getObject(), className, staticNames, out);
+            collectStaticReads(ia.getIndex(), className, staticNames, out);
+            collectStaticReads(ia.getValue(), className, staticNames, out);
+        } else if(expr instanceof NewExpr ne){
+            for(Expression a : ne.getArguments()) collectStaticReads(a, className, staticNames, out);
+        } else if(expr instanceof NewArrayExpr na){
+            if(na.getSizes()!=null){
+                for(Expression d : na.getSizes()) collectStaticReads(d, className, staticNames, out);
+            } else if(na.getSize()!=null){
+                collectStaticReads(na.getSize(), className, staticNames, out);
+            }
+        } else if(expr instanceof PostfixIncrementExpr pi){
+            collectStaticReads(pi.getTarget(), className, staticNames, out);
+        } else if(expr instanceof PrefixIncrementExpr pri){
+            collectStaticReads(pri.getTarget(), className, staticNames, out);
+        } else if(expr instanceof StaticAssignExpr sas){
+            // static assignment in initializer could reference same-class static in value
+            collectStaticReads(sas.value, className, staticNames, out);
+        } // VariableExpr, LiteralExpr, ThisExpr, SuperExpr have no static reads to collect here
     }
     
     private void validateInterfaceImplementations(ClassDecl klass) {
@@ -384,6 +534,8 @@ public class TypeChecker {
         TypeEnvironment local = new TypeEnvironment(env);
     // Reset non-null facts at function entry
     nonNullVars = new HashSet<>();
+        boolean prevStatic = currentFunctionIsStatic;
+        currentFunctionIsStatic = function.hasModifier(Modifier.STATIC);
         
         if (currentClass != null) {
             local.define("this", currentClass.getName());
@@ -414,6 +566,7 @@ public class TypeChecker {
         }
 
         currentFunctionReturnType = previousReturnType;
+        currentFunctionIsStatic = prevStatic;
     }
 
     private void checkBlock(Block block, TypeEnvironment env) {
@@ -870,10 +1023,36 @@ public class TypeChecker {
     }
 
     private String checkVariable(VariableExpr expr, TypeEnvironment env) {
+        String name = expr.getName().getLexeme();
         try {
-            return env.get(expr.getName().getLexeme());
+            return env.get(name);
         } catch (TypeException e) {
-            errorWithHint("Undefined variable '" + expr.getName().getLexeme() + "'.", expr.getSourceLocation(),
+            // If inside a non-static class method, allow implicit access to fields via 'this'
+            if (currentClass != null && !currentFunctionIsStatic) {
+                // Look up field on current class
+                String baseType = currentClass.getName();
+                TypeEnvironment classEnv = classEnvironments.get(baseType);
+                if (classEnv != null && classEnv.getLocalFields().containsKey(name)) {
+                    // Enforce access modifier
+                    VarDecl fieldDecl = currentClass.getVariables().stream().filter(v -> v.getName().equals(name)).findFirst().orElse(null);
+                    if (fieldDecl != null && !isAccessible(currentClass, currentClass, fieldDecl.getModifiers())) {
+                        errorWithHint("Cannot access field '" + name + "' due to access modifier.", expr.getSourceLocation(),
+                                     "Use a public/protected field or access within allowed scope", ErrorCode.ACCESS_MODIFIER);
+                        return "unknown";
+                    }
+                    String fieldType = classEnv.getLocalFields().get(name);
+                    // If 'this' is a generic instantiation, substitute type parameters in field type
+                    // Our type for 'this' in env is the class name; reconstruct potential instantiation from locals if available
+                    try {
+                        String thisType = env.get("this");
+                        if (thisType != null && thisType.contains("<")) {
+                            fieldType = substituteTypeParameters(fieldType, thisType);
+                        }
+                    } catch (Exception ignored) { }
+                    return fieldType;
+                }
+            }
+            errorWithHint("Undefined variable '" + name + "'.", expr.getSourceLocation(),
                          "Make sure the variable is declared before use: num x = 42; or check for typos in variable name", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown";
         }
@@ -1040,6 +1219,25 @@ public class TypeChecker {
         try {
             varType = env.get(varName);
         } catch (TypeException e) {
+            // If in non-static instance context, allow implicit 'this.field = ...'
+            if (currentClass != null && !currentFunctionIsStatic) {
+                String baseType = currentClass.getName();
+                TypeEnvironment classEnv = classEnvironments.get(baseType);
+                if (classEnv != null && classEnv.getLocalFields().containsKey(varName)) {
+                    String fieldType = classEnv.getLocalFields().get(varName);
+                    try {
+                        String thisType = env.get("this");
+                        if (thisType != null && thisType.contains("<")) fieldType = substituteTypeParameters(fieldType, thisType);
+                    } catch (Exception ignored) { }
+                    TypeDesc valueDesc = checkExprDesc(expr.getValue(), env);
+                    TypeDesc targetDesc = TypeDesc.parse(fieldType);
+                    if (!isAssignable(valueDesc, targetDesc)) {
+                        errorWithHint("Cannot assign type '" + valueDesc + "' to field '" + varName + "' of type '" + fieldType + "'.",
+                                     expr.getSourceLocation(), buildTypeMismatchHint(valueDesc, targetDesc, "field assignment"), ErrorCode.TYPE_MISMATCH);
+                    }
+                    return valueDesc.toString();
+                }
+            }
             errorWithHint("Cannot assign to undefined variable '" + varName + "'.", expr.getSourceLocation(),
                          "Declare the variable first: num " + varName + " = 0; then assign: " + varName + " = value;", ErrorCode.UNDECLARED_IDENTIFIER);
             return "unknown"; 
@@ -1123,18 +1321,29 @@ public class TypeChecker {
     private String checkNewArray(NewArrayExpr expr, TypeEnvironment env) {
         String elementType = expr.getElementType();
         validateTypeReference(elementType, expr.getSourceLocation());
-        TypeDesc sizeDesc = checkExprDesc(expr.getSize(), env);
-        if (!sizeDesc.isNumeric()) {
-            errorWithHint("Array size must be numeric, got '" + sizeDesc + "'.", expr.getSourceLocation(),
-                    "Array size must be a number: new num[10] or new sab[count]", ErrorCode.BOUNDS_VIOLATION);
-        } else if (expr.getSize() instanceof LiteralExpr le) {
-            Object lit = le.getValue();
-            if (lit instanceof Number n && n.longValue() < 0) {
-                errorWithHint("Array size cannot be negative (" + n + ").", expr.getSourceLocation(),
-                        "Use a non-negative size: new num[0] for empty array", ErrorCode.BOUNDS_VIOLATION);
+        // Validate each dimension
+        List<Expression> dims = expr.getSizes();
+        if(dims==null || dims.isEmpty()){
+            errorWithHint("Array creation requires at least one dimension.", expr.getSourceLocation(),
+                          "Use: new num[capacity] or multi-d: new num[rows][cols]");
+            return elementType + "[]";
+        }
+        for(Expression dimExpr : dims){
+            TypeDesc sizeDesc = checkExprDesc(dimExpr, env);
+            if (!sizeDesc.isNumeric()) {
+                errorWithHint("Array size must be numeric, got '" + sizeDesc + "'.", expr.getSourceLocation(),
+                        "Array size must be a number: new num[10] or new sab[count]", ErrorCode.BOUNDS_VIOLATION);
+            } else if (dimExpr instanceof LiteralExpr le) {
+                Object lit = le.getValue();
+                if (lit instanceof Number n && n.longValue() < 0) {
+                    errorWithHint("Array size cannot be negative (" + n + ").", expr.getSourceLocation(),
+                            "Use a non-negative size: new num[0] for empty array", ErrorCode.BOUNDS_VIOLATION);
+                }
             }
         }
-        return elementType + "[]";
+        StringBuilder sb = new StringBuilder(elementType);
+        for(int i=0;i<dims.size();i++) sb.append("[]");
+        return sb.toString();
     }
     
     private void checkGenericConstructorCall(String className, FunctionDecl init, List<Expression> args, TypeEnvironment env, SourceLocation location) {
@@ -1496,6 +1705,13 @@ public class TypeChecker {
             if (!methodDecl.hasModifier(Modifier.STATIC)) {
                 errorWithHint("Cannot call non-static method '" + funcName + "' from static context.", call.getSourceLocation(),
                              "Add 'static' modifier to the method or create an instance to call it");
+                return "unknown";
+            }
+            // Enforce access modifiers for static methods as well (private/protected)
+            if (!isAccessible(currentClass, classDecl, methodDecl.getModifiers())) {
+                errorWithHint("Cannot access private/protected static method '" + funcName + "' from class '" + className + "'.",
+                              call.getSourceLocation(),
+                              "Use public static methods or access from within the same class / subclass");
                 return "unknown";
             }
             
@@ -2231,6 +2447,11 @@ public class TypeChecker {
                 errorWithHint("Class '" + baseType + "' is not generic but type arguments were provided.", location,
                              "Remove type arguments: " + baseType);
             }
+            return;
+        }
+        
+        // Allow references to current generic type parameters (e.g., 'T') inside generic classes/interfaces
+        if (currentTypeParameters != null && currentTypeParameters.contains(type)) {
             return;
         }
         

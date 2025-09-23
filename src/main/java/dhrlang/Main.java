@@ -33,7 +33,6 @@ public class Main {
             run(sourceCode);
         } catch (IOException e) {
             System.err.println("Error reading file: " + filePath);
-            e.printStackTrace();
             System.exit(1);
         }
 
@@ -64,7 +63,7 @@ public class Main {
                 errorReporter.printAllWarnings();
             }
             
-            System.exit(65);
+            System.exit(1);
         }
 
         if (errorReporter.hasWarnings()) {
@@ -107,10 +106,10 @@ public class Main {
             interpreter.execute(program);
         } catch (dhrlang.interpreter.DhrRuntimeException e) {
             printRuntimeError(e, sourceCode);
-            System.exit(70);
+            System.exit(2);
         } catch (RuntimeError e) {
             printSystemError(e);
-            System.exit(70);
+            System.exit(2);
         }
     }
     

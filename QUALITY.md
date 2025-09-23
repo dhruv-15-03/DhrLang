@@ -39,6 +39,12 @@ Current MAX_CALL_DEPTH = 1000 enforced per function call entry (`Function.call`)
 ## Access Control
 TypeChecker enforces private/protected for fields & methods on instance and static access.
 
+## Static Initialization Policy
+Enforced by TypeChecker at compile time to avoid fragile order-dependent bugs:
+- No same-class static forward reads in field initializers (diagnostic: STATIC_FORWARD_REFERENCE).
+- No static initializer dependency cycles within a class (diagnostic: STATIC_INIT_CYCLE).
+Rationale: keeps runtime initialization simple (source order) while ensuring determinism and debuggability.
+
 ## Error Messaging Philosophy
 Every user-facing error includes actionable hint (TypeChecker) or category (Runtime).
 

@@ -18,10 +18,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Comprehensive test suite for DhrLang compiler
- * Tests all major components: Lexer, Parser, TypeChecker, and Interpreter
- */
+
 class DhrLangCompilerTest {
 
     private ErrorReporter errorReporter;

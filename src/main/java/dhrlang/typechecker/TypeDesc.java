@@ -73,7 +73,23 @@ public final class TypeDesc {
         if(to.kind==TypeKind.WILDCARD || from.kind==TypeKind.WILDCARD) return true;
         return false;
     }
-    @Override public String toString(){return name;}
+    @Override public String toString(){
+        // Reconstruct full type name including generics and arrays
+        if(kind==TypeKind.ARRAY){
+            return (element!=null? element.toString(): "unknown") + "[]";
+        }
+        if(kind==TypeKind.CLASS && typeArgs!=null && !typeArgs.isEmpty()){
+            StringBuilder sb = new StringBuilder(name);
+            sb.append("<");
+            for(int i=0;i<typeArgs.size();i++){
+                if(i>0) sb.append(", ");
+                sb.append(typeArgs.get(i).toString());
+            }
+            sb.append(">");
+            return sb.toString();
+        }
+        return name;
+    }
     @Override public boolean equals(Object o){ if(this==o)return true; if(!(o instanceof TypeDesc t))return false; return kind==t.kind && Objects.equals(name,t.name) && Objects.equals(element,t.element) && Objects.equals(typeArgs,t.typeArgs);} 
     @Override public int hashCode(){return Objects.hash(kind,name,element,typeArgs);} 
 }

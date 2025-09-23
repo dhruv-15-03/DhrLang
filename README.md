@@ -5,23 +5,31 @@
 
 DhrLang is a modern, object-oriented programming language that combines familiar syntax with Hindi keywords, making programming more accessible to Hindi speakers while maintaining the power and flexibility of traditional programming languages.
 
+## Quick links
+- Install/Build: see Installation
+- Run a program: see Running DhrLang Programs
+- Language Spec: SPEC.md
+- Examples: input/
+
 ## Features
+
 
 - **Hindi Keywords**: Uses Hindi terms like `kaam`, `num`, `sab`, `kya` for a more localized programming experience
 - **Object-Oriented Programming**: Full support for classes, inheritance, and polymorphism
 - **Static Typing**: Strong type system with compile-time type checking
 - **Exception Handling**: Comprehensive try-catch-finally exception handling
-- **Array Support**: Built-in array operations with type safety
+- **Array Support**: Built-in array operations with type safety, including multi-dimensional arrays
+- **Generics**: Type parameter substitution and diagnostics for generic classes, fields, and methods
+- **Implicit Field Access**: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
 - **String Manipulation**: Rich string operations and methods
 - **Static Methods**: Support for utility functions and class-level operations
- - **Centralized Evaluator Architecture**: All expression/statement semantics consolidated in a dedicated Evaluator (Interpreter is now a thin orchestration layer)
+- **Centralized Evaluator Architecture**: All expression/statement semantics consolidated in a dedicated Evaluator (Interpreter is now a thin orchestration layer)
+- **Access Control**: Compile-time enforcement of private/protected/public for instance and static members
+- **Static Initialization Safety**: Same-class static forward references and cycles are rejected at compile time (see SPEC §6.4)
 
 ### Currently Unsupported / Partial Features
-These appear in some demonstration files for forward-looking purposes and may intentionally fail compilation until implemented:
-- True generic type checking & generic arrays
-- Multi-dimensional arrays (e.g. `num[][]`) 
-- Full access modifier enforcement semantics
-- Abstract method return type validation across interfaces (legacy mismatch examples remain in samples)
+
+See the full language specification in [SPEC.md](SPEC.md).
 
 ## Language Syntax
 
@@ -50,6 +58,7 @@ These appear in some demonstration files for forward-looking purposes and may in
 ### Prerequisites
 - Java 17 or higher
 - Gradle 8.0 or higher
+ - Tested on Java 17 and 21 in CI (Ubuntu); local development verified on Windows.
 
 ### Building from Source
 ```bash
@@ -66,6 +75,12 @@ cd DhrLang
 # Using Java directly
 java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
 ```
+
+### CLI exit codes
+Exit codes:
+- 0: success
+- 1: compile-time error(s)
+- 2: runtime/system error
 
 ## Quick Start
 
@@ -216,30 +231,41 @@ Check out the `input/` directory for comprehensive examples:
 - `test_exceptions.dhr` - Exception handling
 - `test_strings.dhr` - String manipulation
 - `test_static_methods.dhr` - Static methods and utilities
- - `advanced_features_test.dhr` - Shows generic syntax (may partially fail until generics implemented)
- - `complete_feature_demo.dhr` - Comprehensive showcase including forward-looking generics examples
- - `advanced_edge_cases.dhr` - Stress tests (multi-dimensional arrays commented out if unsupported)
+ - `advanced_features_test.dhr` - Demonstrates generics syntax and substitution (fully supported)
+ - `complete_feature_demo.dhr` - Comprehensive showcase including generics, multi-dimensional arrays, and implicit field access
+ - `advanced_edge_cases.dhr` - Stress tests for multi-dimensional arrays and generics
  - `duplicate_error_test.dhr`, `parser_error_test.dhr` - Intentional negative tests to verify diagnostics
 
 ## Roadmap
 
-### Short Term (v1.1)
-- [ ] Package management system
-- [ ] Standard library expansion
-- [ ] IDE support and language server
-- [ ] Debugging capabilities
+## Feature Status
+- Generics: Fully implemented, including type parameter substitution and diagnostics
+- Multi-dimensional arrays: Fully supported in parser, typechecker, and evaluator
+- Implicit field access: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
+- Comprehensive diagnostics: Structured error codes, JSON output, and actionable hints
+- CI/Quality: Jacoco, PIT, CodeQL, Dependabot integrated
 
-### Medium Term (v1.5)
-- [ ] Generic types implementation
-- [ ] Module system
-- [ ] Concurrency support
-- [ ] Foreign function interface
+## Diagnostics Quick Guide
+- Cannot access private/protected member → ACCESS_MODIFIER
+- Wrong number of generic type arguments → GENERIC_ARITY
+- Type doesn’t match expected (incl. after generic substitution) → TYPE_MISMATCH
+- Name not found (and static method context doesn’t resolve instance fields) → UNDECLARED_IDENTIFIER
+- Array index/size invalid or allocation too large → BOUNDS_VIOLATION
+- Static field reads a later-declared static field (same class) → STATIC_FORWARD_REFERENCE
+- Static field initializers form a dependency cycle → STATIC_INIT_CYCLE
 
-### Long Term (v2.0)
-- [ ] JIT compilation
-- [ ] WebAssembly target
-- [ ] Advanced optimization
-- [ ] Cross-platform GUI framework
+## Planned Features
+- Package management system
+- Standard library expansion
+- IDE support and language server
+- Debugging capabilities
+- Module system
+- Concurrency support
+- Foreign function interface
+- JIT compilation
+- WebAssembly target
+- Advanced optimization
+- Cross-platform GUI framework
 
 ## Performance
 

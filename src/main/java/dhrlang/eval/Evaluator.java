@@ -142,13 +142,42 @@ public class Evaluator implements ASTVisitor<Object> {
     // === Expressions migrated ===
     @Override public Object visitLiteralExpr(LiteralExpr literalExpr) { return literalExpr.getValue(); }
     @Override public Object visitVariableExpr(VariableExpr variableExpr) {
-        try { return env.get(variableExpr.getName().getLexeme()); }
-        catch (DhrRuntimeException e){ throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(variableExpr)); }
+        String name = variableExpr.getName().getLexeme();
+        try { return env.get(name); }
+        catch (DhrRuntimeException e){
+            // Implicit 'this' field access inside instance methods: allow unqualified reads
+            try {
+                Object maybeThis = env.get("this");
+                if(maybeThis instanceof Instance inst){
+                    dhrlang.interpreter.DhrClass declaring = inst.getKlass().findDeclaringClassForField(name);
+                    if(declaring!=null){
+                        AccessController.assertCanAccess(interpreter, declaring, name, true, false, inst, variableExpr);
+                        return inst.get(variableExpr.getName());
+                    }
+                }
+            } catch (DhrRuntimeException ignored) {}
+            throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(variableExpr));
+        }
     }
     @Override public Object visitAssignmentExpr(AssignmentExpr assignmentExpr) {
         Object value = assignmentExpr.getValue().accept(this);
-        try { env.assign(assignmentExpr.getName().getLexeme(), value); return value; }
-        catch (DhrRuntimeException e){ throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(assignmentExpr)); }
+        String name = assignmentExpr.getName().getLexeme();
+        try { env.assign(name, value); return value; }
+        catch (DhrRuntimeException e){
+            // Implicit 'this' field assignment inside instance methods
+            try {
+                Object maybeThis = env.get("this");
+                if(maybeThis instanceof Instance inst){
+                    dhrlang.interpreter.DhrClass declaring = inst.getKlass().findDeclaringClassForField(name);
+                    if(declaring!=null){
+                        AccessController.assertCanAccess(interpreter, declaring, name, true, false, inst, assignmentExpr);
+                        inst.set(assignmentExpr.getName(), value);
+                        return value;
+                    }
+                }
+            } catch (DhrRuntimeException ignored) {}
+            throw ErrorFactory.accessError(e.getMessage(), ErrorFactory.getLocation(assignmentExpr));
+        }
     }
     @Override public Object visitBinaryExpr(BinaryExpr binaryExpr) {
         // short-circuit AND / OR
@@ -255,7 +284,31 @@ public class Evaluator implements ASTVisitor<Object> {
     @Override public Object visitArrayExpr(ArrayExpr arrayExpr) {
         Object[] array = new Object[arrayExpr.getElements().size()]; for(int i=0;i<array.length;i++) array[i]=arrayExpr.getElements().get(i).accept(this); return array; }
     @Override public Object visitNewArrayExpr(NewArrayExpr newArrayExpr) {
-        Object sizeVal = newArrayExpr.getSize().accept(this); if(!(sizeVal instanceof Long)) throw ErrorFactory.typeError("Array size must be a number.", ErrorFactory.getLocation(newArrayExpr)); int size=((Long)sizeVal).intValue(); if(size<0) throw ErrorFactory.validationError("Array size cannot be negative.", ErrorFactory.getLocation(newArrayExpr)); if(size>1_000_000) throw ErrorFactory.validationError("Array size too large (max: 1,000,000).", ErrorFactory.getLocation(newArrayExpr)); Object[] arr = new Object[size]; Object def = dhrlang.runtime.RuntimeDefaults.getDefaultValue(newArrayExpr.getElementType()); java.util.Arrays.fill(arr, def); return arr; }
+        java.util.List<Expression> dims = newArrayExpr.getSizes();
+        if(dims==null || dims.isEmpty()) throw ErrorFactory.validationError("Array creation requires at least one dimension.", ErrorFactory.getLocation(newArrayExpr));
+        int[] sizes = new int[dims.size()];
+        for(int i=0;i<dims.size();i++){
+            Object v = dims.get(i).accept(this);
+            if(!(v instanceof Long)) throw ErrorFactory.typeError("Array size must be a number.", ErrorFactory.getLocation(newArrayExpr));
+            int s = ((Long)v).intValue();
+            if(s<0) throw ErrorFactory.validationError("Array size cannot be negative.", ErrorFactory.getLocation(newArrayExpr));
+            if(s>1_000_000) throw ErrorFactory.validationError("Array size too large (max: 1,000,000).", ErrorFactory.getLocation(newArrayExpr));
+            sizes[i]=s;
+        }
+        Object def = dhrlang.runtime.RuntimeDefaults.getDefaultValue(newArrayExpr.getElementType());
+        return allocateMultiDimArray(sizes, 0, def);
+    }
+
+    private Object allocateMultiDimArray(int[] sizes, int dim, Object def){
+        int n = sizes[dim];
+        Object[] arr = new Object[n];
+        if(dim == sizes.length-1){
+            java.util.Arrays.fill(arr, def);
+            return arr;
+        }
+        for(int i=0;i<n;i++) arr[i] = allocateMultiDimArray(sizes, dim+1, def);
+        return arr;
+    }
     @Override public Object visitIndexExpr(IndexExpr indexExpr) {
         Object object = indexExpr.getObject().accept(this); Object index = indexExpr.getIndex().accept(this);
         if(!(object instanceof Object[] arr)) throw ErrorFactory.typeError("Can only index arrays.", ErrorFactory.getLocation(indexExpr));
@@ -366,7 +419,13 @@ public class Evaluator implements ASTVisitor<Object> {
     private void validateNumberForIncrement(Object value, dhrlang.lexer.Token operator){ if(!(value instanceof Long)) throw ErrorFactory.typeError("Can only increment/decrement numbers, got: "+(value==null?"null": value.getClass().getSimpleName()), operator); }
     private void validateNumberOperands(dhrlang.lexer.Token operator, Object left, Object right){ if(left==null||right==null) throw ErrorFactory.typeError("Null operand for operator: "+operator.getLexeme(), operator); if(!(left instanceof Number && right instanceof Number)) throw ErrorFactory.typeError("Operands must be numbers for operator: "+operator.getLexeme()+", got: "+(left==null?"null":left.getClass().getSimpleName())+" and "+(right==null?"null":right.getClass().getSimpleName()), operator); }
     private Double toDouble(Object operand){ if(operand instanceof Double d) return d; if(operand instanceof Long l) return l.doubleValue(); throw ErrorFactory.typeError("Operand must be a number, got: "+(operand==null?"null": operand.getClass().getSimpleName()), (dhrlang.lexer.Token)null); }
-    private String stringify(Object value){ if(value==null) return "null"; if(value instanceof String s) return s; return value.toString(); }
+    private String stringify(Object value){
+        if(value==null) return "null";
+        if(value instanceof String s) return s;
+        // When printing exceptions (e.g., in catch blocks), show only the message to match golden outputs
+        if(value instanceof dhrlang.stdlib.exceptions.DhrException ex) return ex.getMessage();
+        return value.toString();
+    }
 
     private boolean isBuiltInStringMethod(String name){ return switch(name){ case "length","charAt","substring","indexOf","toUpperCase","toLowerCase","trim","startsWith","endsWith","equals","replace","split","repeat","contains" -> true; default -> false; }; }
     private NativeFunction createBuiltInStringMethod(String methodName, String value){

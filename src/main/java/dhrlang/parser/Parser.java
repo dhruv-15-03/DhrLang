@@ -387,14 +387,11 @@ public class Parser {
         }
         int lookAhead = current + 1;
         
-        // Handle array types: Type[]
-        if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.LBRACKET) {
-            lookAhead++;
-            if (lookAhead < tokens.size() && tokens.get(lookAhead).getType() == TokenType.RBRACKET) {
-                lookAhead++;
-            } else {
-                return false;
-            }
+        // Handle array types: Type[] and multi-dimensional Type[][]...
+        while (lookAhead + 1 < tokens.size()
+                && tokens.get(lookAhead).getType() == TokenType.LBRACKET
+                && tokens.get(lookAhead + 1).getType() == TokenType.RBRACKET) {
+            lookAhead += 2;
         }
         
         // Handle generic types: Type<T, U>
@@ -644,10 +641,15 @@ public class Parser {
             if (check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) || 
                 check(TokenType.SAB) || check(TokenType.KYA)) {
                 Token typeToken = advance(); 
-                consume(TokenType.LBRACKET, "Expected '[' after type for array creation.");
-                Expression size = parseExpression();
-                consume(TokenType.RBRACKET, "Expected ']' after array size.");
-                NewArrayExpr expr = new NewArrayExpr(typeToken.getLexeme(), size);
+                // Support multi-dimensional: new num[a][b][c]
+                List<Expression> sizes = new ArrayList<>();
+                do {
+                    consume(TokenType.LBRACKET, "Expected '[' after type for array creation.");
+                    Expression size = parseExpression();
+                    consume(TokenType.RBRACKET, "Expected ']' after array size.");
+                    sizes.add(size);
+                } while (check(TokenType.LBRACKET));
+                NewArrayExpr expr = new NewArrayExpr(typeToken.getLexeme(), sizes);
                 expr.setSourceLocation(newToken.getLocation());
                 return expr;
             } else {
@@ -915,9 +917,14 @@ public class Parser {
         Token baseType = advance();
 
         if (check(TokenType.LBRACKET)) {
-            advance();
-            consume(TokenType.RBRACKET, "Expected ']' after '[' in array type.");
-            return new Token(baseType.getType(), baseType.getLexeme() + "[]", baseType.getLine());
+            // Support multiple [] suffixes on types: num[][]
+            StringBuilder typeLex = new StringBuilder(baseType.getLexeme());
+            while (check(TokenType.LBRACKET)) {
+                advance();
+                consume(TokenType.RBRACKET, "Expected ']' after '[' in array type.");
+                typeLex.append("[]");
+            }
+            return new Token(baseType.getType(), typeLex.toString(), baseType.getLine());
         }
         
         if (check(TokenType.LESS)) {

@@ -76,6 +76,8 @@ public final class RuntimeTestUtil {
                 Interpreter interpreter = new Interpreter();
                 interpreter.execute(program);
             } catch (dhrlang.interpreter.DhrRuntimeException e) {
+                // Mirror CLI behavior: surface runtime error message on stderr for tests that scan stderr
+                new PrintStream(errBuf).println(e.getMessage());
                 return new Result(outBuf.toString().trim(), errBuf.toString(), compileError, true, e.getMessage(), e.getCategory().getDisplayName());
             }
             return new Result(outBuf.toString().trim(), errBuf.toString(), compileError, false);
