@@ -29,7 +29,7 @@ jobs:
       - name: Run PIT mutation tests
         run: ./gradlew pitest
       - name: Upload PIT reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pit-reports
