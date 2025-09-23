@@ -60,17 +60,51 @@ See the full language specification in [SPEC.md](SPEC.md).
 - Gradle 8.0 or higher
  - Tested on Java 17 and 21 in CI (Ubuntu); local development verified on Windows.
 
+### Install (Download Release)
+- Download the latest release ZIP from: https://github.com/dhruv-15-03/DhrLang/releases/latest
+- Extract the ZIP; inside `lib/` you’ll find a runnable fat JAR (shadow JAR) with `Main-Class` set.
+
+Linux/macOS:
+```bash
+cd path/to/DhrLang-<version>/lib
+java -jar DhrLang-<version>.jar input/sample.dhr
+```
+
+Windows (PowerShell):
+```powershell
+Set-Location path\to\DhrLang-<version>\lib
+java -jar DhrLang-<version>.jar input\sample.dhr
+```
+
 ### Building from Source
+Linux/macOS:
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew build
 ```
 
+Windows (PowerShell):
+```powershell
+git clone https://github.com/dhruv-15-03/DhrLang.git
+Set-Location DhrLang
+./gradlew.bat build
+```
+
 ### Running DhrLang Programs
+Linux/macOS:
 ```bash
 # Using Gradle
 ./gradlew run --args="path/to/your/file.dhr"
+
+# Using Java directly
+java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+```
+
+Windows (PowerShell):
+```powershell
+# Using Gradle
+./gradlew.bat run --args="path/to/your/file.dhr"
 
 # Using Java directly
 java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
@@ -155,10 +189,10 @@ class ErrorExample {
 
 ### Comprehensive Type System
 DhrLang features a strong static type system that catches errors at compile time:
-- Type inference for variable declarations
-- Generic type support (planned)
-- Array type safety
-- Method overloading resolution
+- Explicit static types for variable declarations (no local type inference yet)
+- Generics with type parameter substitution and clear diagnostics
+- Array type safety, including multi-dimensional arrays
+- Simple method model (no overloading; duplicate names are rejected)
 
 ### Rich Standard Library
 - String manipulation functions (`length()`, `charAt()`, `indexOf()`, `contains()`, `replace()`)
