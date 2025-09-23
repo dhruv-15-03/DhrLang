@@ -52,7 +52,7 @@ jobs:
         arguments: jacocoTestReport
     
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         file: ./build/reports/jacoco/test/jacocoTestReport.xml
     
