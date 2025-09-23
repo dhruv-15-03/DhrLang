@@ -44,5 +44,6 @@ jobs:
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
+      continue-on-error: true # Avoid failing CI if repository code scanning is disabled
       with:
         category: "/language:${{matrix.language}}"

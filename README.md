@@ -288,6 +288,9 @@ Check out the `input/` directory for comprehensive examples:
 - Static field reads a later-declared static field (same class) → STATIC_FORWARD_REFERENCE
 - Static field initializers form a dependency cycle → STATIC_INIT_CYCLE
 
+## CI Notes
+- CodeQL: If GitHub Code Scanning is not enabled for your repository, the CodeQL job will run but its upload step is marked non-blocking and won’t fail CI. To enable full CodeQL results (including alerts in the Security tab), turn on Code Scanning in your repository settings.
+
 ## Planned Features
 - Package management system
 - Standard library expansion
