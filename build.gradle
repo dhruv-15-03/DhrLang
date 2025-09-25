@@ -49,6 +49,9 @@ java {
 test {
     useJUnitPlatform()
     maxHeapSize = "1G"
+    // Force consistent encoding across platforms (Linux runners default to UTF-8; align Windows too)
+    systemProperty 'file.encoding', 'UTF-8'
+    jvmArgs '-Dfile.encoding=UTF-8'
     testLogging {
         events "passed", "skipped", "failed"
         exceptionFormat = 'full'

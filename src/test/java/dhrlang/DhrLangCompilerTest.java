@@ -10,6 +10,7 @@ import dhrlang.parser.Parser;
 import dhrlang.parser.ParseException;
 import dhrlang.typechecker.TypeChecker;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -36,6 +37,7 @@ class DhrLangCompilerTest {
         System.setErr(new PrintStream(outputStream));
     }
 
+    @AfterEach
     void tearDown() {
         System.setOut(originalOut);
         System.setErr(originalErr);
