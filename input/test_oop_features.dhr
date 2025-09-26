@@ -1,0 +1,57 @@
+// Test Case: Object-Oriented Programming Features
+class Animal {
+    protected sab name;
+    protected num age;
+    
+    kaam init(sab name, num age) {
+        this.name = name;
+        this.age = age;
+    }
+    
+    sab getName() {
+        return this.name;
+    }
+    
+    num getAge() {
+        return this.age;
+    }
+    
+    kaam makeSound() {
+        printLine(this.name + " makes a sound");
+    }
+}
+
+class Dog extends Animal {
+    private sab breed;
+    
+    kaam init(sab name, num age, sab breed) {
+        super.init(name, age);
+        this.breed = breed;
+    }
+    
+    kaam makeSound() {
+        printLine(this.name + " barks!");
+    }
+    
+    kaam getBreed() {
+        printLine("Breed: " + this.breed);
+    }
+}
+
+class ObjectOrientedTest {
+    static kaam main() {
+        // Create objects
+        Animal animal = new Animal("Generic Animal", 5);
+        Dog dog = new Dog("Buddy", 3, "Golden Retriever");
+        
+        // Test inheritance and polymorphism
+        animal.makeSound();
+        dog.makeSound();
+        
+        // Test method calls
+        printLine("Animal name: " + animal.getName());
+        printLine("Dog name: " + dog.getName());
+        printLine("Dog age: " + dog.getAge());
+        dog.getBreed();
+    }
+}

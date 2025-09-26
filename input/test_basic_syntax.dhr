@@ -1,0 +1,42 @@
+// Test Case: Basic Syntax and Language Features
+class BasicSyntaxTest {
+    static kaam main() {
+        // Variable declarations and basic types
+        num integer = 42;
+        duo decimal = 3.14159;
+        sab message = "Hello DhrLang!";
+        kya flag = true;
+        ek character = 'A';
+        
+        // Print statements
+        printLine("Integer: " + integer);
+        printLine("Decimal: " + decimal);
+        printLine("String: " + message);
+        printLine("Boolean: " + flag);
+        printLine("Character: " + character);
+        
+        // Arithmetic operations
+        num sum = integer + 10;
+        duo product = decimal * 2.0;
+        printLine("Sum: " + sum);
+        printLine("Product: " + product);
+        
+        // Conditional statements
+        if (flag) {
+            printLine("Flag is true");
+        } else {
+            printLine("Flag is false");
+        }
+        
+        // Loops
+        for (num i = 1; i <= 3; i++) {
+            printLine("Loop iteration: " + i);
+        }
+        
+        num count = 0;
+        while (count < 2) {
+            printLine("While loop: " + count);
+            count++;
+        }
+    }
+}

@@ -1,0 +1,1 @@
+class T { static kaam main(){ num i=0; while(i<3){ try { try { if(i==1) break; if(i==2) continue; } catch(any e){ printLine("inner"); } finally { printLine("innerF"); } } catch(any e){ printLine("outer"); } finally { printLine("outerF"); } i = i + 1; } } }

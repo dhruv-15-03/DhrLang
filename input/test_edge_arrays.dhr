@@ -1,0 +1,17 @@
+// Purpose: Array boundary, mutation, nested arrays (if supported)
+class ArrayEdgeCases {
+    static kaam main() {
+        num[] nums = [1,2,3];
+        printLine("len=" + arrayLength(nums));
+        printLine("first=" + nums[0]);
+        nums[0] = nums[0] + 10;
+        printLine("mutated first=" + nums[0]);
+        // Out-of-range
+        num oob = nums[10];      // expect runtime index error
+        nums[-1] = 5;            // negative index
+        // Assign wrong type
+        nums[1] = "hello";       // type error
+        // Multi index chain not supported? attempt to provoke error
+        num invalid = nums[1][0];
+    }
+}

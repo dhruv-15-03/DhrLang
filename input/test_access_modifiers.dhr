@@ -1,0 +1,11 @@
+class Base {
+	private num secret;
+	protected num semi;
+	public num open;
+	kaam init(){ this.secret = 7; this.semi = 3; this.open = 1; }
+	num getSecret(){ return this.secret; }
+}
+class Sub extends Base {
+	kaam init(){ super.init(); }
+	static kaam main(){ Sub s = new Sub(); printLine(s.getSecret()); printLine(s.open); printLine(s.semi); }
+}

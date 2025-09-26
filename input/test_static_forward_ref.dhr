@@ -1,0 +1,1 @@
+class F { static num a = 1; static num b = a + c; static num c = 5; static kaam main(){ printLine(F.b); } }

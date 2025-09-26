@@ -1,0 +1,34 @@
+// Purpose: Deeply nested try/catch/finally sequencing
+class ExceptionEdgeCases {
+    static kaam main() {
+        try {
+            printLine("Level 1 start");
+            try {
+                printLine("Level 2 start");
+                throw "boom2";
+            }
+            catch(e2) {
+                printLine("Caught inner: " + e2);
+                throw "rethrow-from-inner";
+            }
+            finally {
+                printLine("Inner finally");
+            }
+        }
+        catch(e1) {
+            printLine("Outer catch: " + e1);
+            try {
+                throw "second-layer";
+            }
+            catch(e3) {
+                printLine("Second catch: " + e3);
+            }
+            finally {
+                printLine("Second finally");
+            }
+        }
+        finally {
+            printLine("Outer finally");
+        }
+    }
+}

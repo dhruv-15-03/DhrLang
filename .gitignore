@@ -80,9 +80,6 @@ out/
 ehthumbs.db
 Thumbs.db
 
-# Test output files
-input/test_*.dhr
-
 # Temporary files
 *.tmp
 *.temp

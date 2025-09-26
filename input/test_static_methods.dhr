@@ -1,0 +1,83 @@
+// Test Case: Static Methods and Class-Level Operations
+class MathUtils {
+    static num add(num a, num b) {
+        return a + b;
+    }
+    
+    static num multiply(num a, num b) {
+        return a * b;
+    }
+    
+    static num factorial(num n) {
+        if (n <= 1) {
+            return 1;
+        }
+        return n * MathUtils.factorial(n - 1);
+    }
+    
+    static kya isPrime(num n) {
+        if (n <= 1) {
+            return false;
+        }
+        for (num i = 2; i * i <= n; i++) {
+            if (n % i == 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+class StringUtils {
+    static sab reverse(sab input) {
+        // Simple reverse implementation
+        sab result = "";
+        for (num i = input.length() - 1; i >= 0; i--) {
+            result = result + input.charAt(i);
+        }
+        return result;
+    }
+    
+    static num countVowels(sab input) {
+        num count = 0;
+        for (num i = 0; i < input.length(); i++) {
+            sab ch = input.charAt(i);
+            if (ch.equals("a") || ch.equals("e") || ch.equals("i") || ch.equals("o") || ch.equals("u") ||
+                ch.equals("A") || ch.equals("E") || ch.equals("I") || ch.equals("O") || ch.equals("U")) {
+                count++;
+            }
+        }
+        return count;
+    }
+}
+
+class StaticMethodsTest {
+    static kaam main() {
+        // Test math utilities
+        printLine("Addition: " + MathUtils.add(15, 25));
+        printLine("Multiplication: " + MathUtils.multiply(7, 8));
+        printLine("Factorial of 5: " + MathUtils.factorial(5));
+        
+        // Test prime checking
+        for (num i = 1; i <= 10; i++) {
+            if (MathUtils.isPrime(i)) {
+                printLine(i + " is prime");
+            } else {
+                printLine(i + " is not prime");
+            }
+        }
+        
+        // Test string utilities
+        sab testString = "Hello World";
+        printLine("Original: " + testString);
+        printLine("Reversed: " + StringUtils.reverse(testString));
+        printLine("Vowel count: " + StringUtils.countVowels(testString));
+        
+        // Test with different strings
+        sab[] testStrings = ["Programming", "DhrLang", "Compiler", "Algorithm"];
+        for (num i = 0; i < arrayLength(testStrings); i++) {
+            sab str = testStrings[i];
+            printLine(str + " has " + StringUtils.countVowels(str) + " vowels");
+        }
+    }
+}
