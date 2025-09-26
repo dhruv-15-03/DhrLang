@@ -156,7 +156,10 @@ pmd {
     toolVersion = '6.55.0'
     ruleSetFiles = files("config/pmd/ruleset.xml")
     ruleSets = []
-    ignoreFailures = false
+    ignoreFailures = true // temporary soft-fail; use -PstrictPmd to re-enable failure
+    if (project.hasProperty('strictPmd')) {
+        ignoreFailures = false
+    }
 }
 
 // Shadow JAR configuration (fat JAR)

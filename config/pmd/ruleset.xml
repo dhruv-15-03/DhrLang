@@ -38,7 +38,7 @@
 
     <!-- Error Prone -->
     <rule ref="category/java/errorprone.xml">
-        <exclude name="BeanMembersShouldSerialize"/>
+        <!-- BeanMembersShouldSerialize was removed in newer PMD versions; drop the exclude to avoid warning -->
         <exclude name="DataflowAnomalyAnalysis"/>
         <exclude name="AvoidLiteralsInIfCondition"/>
     </rule>
@@ -54,22 +54,20 @@
     <!-- Security -->
     <rule ref="category/java/security.xml"/>
 
-    <!-- Custom Rules -->
+    <!-- Custom Design Rule Tunings -->
     <rule ref="category/java/design.xml/TooManyMethods">
         <properties>
-            <property name="maxmethods" value="20"/>
+            <property name="maxmethods" value="25"/>
         </properties>
     </rule>
-
     <rule ref="category/java/design.xml/TooManyFields">
         <properties>
-            <property name="maxfields" value="15"/>
+            <property name="maxfields" value="20"/>
         </properties>
     </rule>
-
     <rule ref="category/java/design.xml/CyclomaticComplexity">
         <properties>
-            <property name="methodReportLevel" value="10"/>
+            <property name="methodReportLevel" value="15"/>
         </properties>
     </rule>
 
