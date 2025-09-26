@@ -39,10 +39,7 @@
         <module name="RedundantImport"/>
         <module name="UnusedImports"/>
         
-        <!-- Checks for Size Violations -->
-        <module name="LineLength">
-            <property name="max" value="120"/>
-        </module>
+        <!-- Checks for Size Violations (TreeWalker-scoped) -->
         <module name="MethodLength">
             <property name="max" value="150"/>
         </module>
@@ -100,5 +97,11 @@
         <module name="FinalParameters"/>
         <module name="TodoComment"/>
         <module name="UpperEll"/>
+    </module>
+
+    <!-- FileSet check (must be directly under Checker, not under TreeWalker) -->
+    <module name="LineLength">
+        <property name="max" value="120"/>
+        <!-- You can add an 'ignorePattern' if long URLs or import lines create noise -->
     </module>
 </module>
