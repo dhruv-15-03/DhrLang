@@ -1,0 +1,185 @@
+{
+  "Main Function": {
+    "prefix": ["main", "मुख्य"],
+    "body": [
+      "मुख्य() {",
+      "\t$1",
+      "}"
+    ],
+    "description": "Main function template"
+  },
+  "Print Statement": {
+    "prefix": ["print", "प्रिंट"],
+    "body": [
+      "प्रिंट(\"$1\");"
+    ],
+    "description": "Print statement"
+  },
+  "If Statement": {
+    "prefix": ["if", "अगर"],
+    "body": [
+      "अगर ($1) {",
+      "\t$2",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "If-Else Statement": {
+    "prefix": ["ifelse", "अगर-नहीं तो"],
+    "body": [
+      "अगर ($1) {",
+      "\t$2",
+      "} नहीं तो {",
+      "\t$3",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "While Loop": {
+    "prefix": ["while", "जबकि"],
+    "body": [
+      "जबकि ($1) {",
+      "\t$2",
+      "}"
+    ],
+    "description": "While loop"
+  },
+  "For Loop": {
+    "prefix": ["for", "के लिए"],
+    "body": [
+      "के लिए (संख्या ${1:i} = ${2:0}; ${1:i} ${3:<} ${4:10}; ${1:i}++) {",
+      "\t$5",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "Enhanced For Loop": {
+    "prefix": ["foreach", "के लिए हर"],
+    "body": [
+      "के लिए (${1:type} ${2:item} : ${3:collection}) {",
+      "\t$4",
+      "}"
+    ],
+    "description": "Enhanced for loop"
+  },
+  "Try-Catch": {
+    "prefix": ["try", "कोशिश"],
+    "body": [
+      "कोशिश {",
+      "\t$1",
+      "} पकड़ना (${2:Exception} ${3:e}) {",
+      "\t$4",
+      "}"
+    ],
+    "description": "Try-catch block"
+  },
+  "Try-Catch-Finally": {
+    "prefix": ["tryfinally", "कोशिश-अंततः"],
+    "body": [
+      "कोशिश {",
+      "\t$1",
+      "} पकड़ना (${2:Exception} ${3:e}) {",
+      "\t$4",
+      "} अंततः {",
+      "\t$5",
+      "}"
+    ],
+    "description": "Try-catch-finally block"
+  },
+  "Class Definition": {
+    "prefix": ["class", "क्लास"],
+    "body": [
+      "क्लास ${1:ClassName} {",
+      "\t$2",
+      "}"
+    ],
+    "description": "Class definition"
+  },
+  "Method Definition": {
+    "prefix": ["method", "मेथड"],
+    "body": [
+      "${1:public} ${2:void} ${3:methodName}(${4:parameters}) {",
+      "\t$5",
+      "}"
+    ],
+    "description": "Method definition"
+  },
+  "Variable Declaration - Number": {
+    "prefix": ["num", "संख्या"],
+    "body": [
+      "संख्या ${1:variableName} = ${2:0};"
+    ],
+    "description": "Number variable declaration"
+  },
+  "Variable Declaration - String": {
+    "prefix": ["str", "स्ट्रिंग"],
+    "body": [
+      "स्ट्रिंग ${1:variableName} = \"${2:value}\";"
+    ],
+    "description": "String variable declaration"
+  },
+  "Variable Declaration - Boolean": {
+    "prefix": ["bool", "बूलियन"],
+    "body": [
+      "बूलियन ${1:variableName} = ${2:true};"
+    ],
+    "description": "Boolean variable declaration"
+  },
+  "Variable Declaration - Decimal": {
+    "prefix": ["decimal", "दशमलव"],
+    "body": [
+      "दशमलव ${1:variableName} = ${2:0.0};"
+    ],
+    "description": "Decimal variable declaration"
+  },
+  "Array Declaration": {
+    "prefix": ["array", "सरणी"],
+    "body": [
+      "${1:संख्या}[] ${2:arrayName} = new ${1:संख्या}[${3:size}];"
+    ],
+    "description": "Array declaration"
+  },
+  "Switch Statement": {
+    "prefix": ["switch", "स्विच"],
+    "body": [
+      "स्विच (${1:variable}) {",
+      "\tकेस ${2:value1}:",
+      "\t\t$3",
+      "\t\tbreak;",
+      "\tकेस ${4:value2}:",
+      "\t\t$5",
+      "\t\tbreak;",
+      "\tडिफ़ॉल्ट:",
+      "\t\t$6",
+      "}"
+    ],
+    "description": "Switch statement"
+  },
+  "Return Statement": {
+    "prefix": ["return", "वापसी"],
+    "body": [
+      "वापसी $1;"
+    ],
+    "description": "Return statement"
+  },
+  "Constructor": {
+    "prefix": ["constructor", "कंस्ट्रक्टर"],
+    "body": [
+      "सार्वजनिक ${1:ClassName}(${2:parameters}) {",
+      "\t$3",
+      "}"
+    ],
+    "description": "Constructor definition"
+  },
+  "Hello World": {
+    "prefix": ["hello", "नमस्ते"],
+    "body": [
+      "// DhrLang Hello World Program",
+      "मुख्य() {",
+      "\tप्रिंट(\"नमस्ते, DhrLang!\");",
+      "\tप्रिंट(\"Hello, World!\");",
+      "}"
+    ],
+    "description": "Hello World program template"
+  }
+}

@@ -1,0 +1,529 @@
+name: Create Distribution Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to package (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  create-homebrew-tap:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Get version and download info
+        id: release_info
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+          fi
+          
+          # Remove 'v' prefix if present
+          VERSION_CLEAN=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+          
+          # Download the JAR to calculate SHA256
+          wget -O DhrLang.jar "https://github.com/${{ github.repository }}/releases/download/$VERSION/DhrLang.jar"
+          SHA256=$(sha256sum DhrLang.jar | cut -d' ' -f1)
+          echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
+          
+      - name: Create Homebrew formula
+        run: |
+          mkdir -p homebrew-tap/Formula
+          cat > homebrew-tap/Formula/dhrlang.rb << 'EOF'
+          class Dhrlang < Formula
+            desc "Programming language with Hindi keywords - हिंदी में प्रोग्रामिंग भाषा"
+            homepage "https://github.com/${{ github.repository }}"
+            url "https://github.com/${{ github.repository }}/releases/download/${{ steps.release_info.outputs.VERSION }}/DhrLang.jar"
+            sha256 "${{ steps.release_info.outputs.SHA256 }}"
+            license "MIT"
+            version "${{ steps.release_info.outputs.VERSION_CLEAN }}"
+
+            depends_on "openjdk@17"
+
+            def install
+              libexec.install "DhrLang.jar"
+              (bin/"dhrlang").write <<~EOS
+                #!/bin/bash
+                exec "#{Formula["openjdk@17"].opt_bin}/java" -jar "#{libexec}/DhrLang.jar" "$@"
+              EOS
+            end
+
+            test do
+              (testpath/"test.dhr").write <<~EOS
+                मुख्य() {
+                    प्रिंट("नमस्ते DhrLang!");
+                }
+              EOS
+              assert_match "नमस्ते DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
+            end
+          end
+          EOF
+          
+          # Create tap README
+          cat > homebrew-tap/README.md << 'EOF'
+          # Homebrew Tap for DhrLang
+
+          This is the official Homebrew tap for DhrLang - a programming language with Hindi keywords.
+
+          ## Installation
+
+          ```bash
+          brew tap dhruv-15-03/dhrlang
+          brew install dhrlang
+          ```
+
+          ## Usage
+
+          ```bash
+          dhrlang your_program.dhr
+          ```
+
+          ## About DhrLang
+
+          DhrLang is a programming language that allows you to write code using Hindi keywords, making programming more accessible to Hindi speakers.
+
+          ### Example Program
+
+          ```dhrlang
+          मुख्य() {
+              स्ट्रिंग name = "राहुल";
+              संख्या age = 25;
+              
+              प्रिंट("नाम: " + name);
+              प्रिंट("उम्र: " + age);
+              
+              अगर (age >= 18) {
+                  प्रिंट("आप वयस्क हैं!");
+              }
+          }
+          ```
+
+          ## Links
+
+          - [GitHub Repository](https://github.com/${{ github.repository }})
+          - [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
+          - [Tutorials](https://github.com/${{ github.repository }}/blob/main/TUTORIALS.md)
+          - [Examples](https://github.com/${{ github.repository }}/blob/main/EXAMPLES.md)
+          EOF
+          
+      - name: Upload Homebrew tap
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-tap
+          path: homebrew-tap/
+
+  create-chocolatey-package:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Get version
+        id: version
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.event.release.tag_name }}"
+          }
+          $versionClean = $version -replace '^v', ''
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "VERSION_CLEAN=$versionClean" >> $env:GITHUB_OUTPUT
+          
+      - name: Download JAR and calculate checksum
+        shell: powershell
+        run: |
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar"
+          Invoke-WebRequest -Uri $url -OutFile "DhrLang.jar"
+          $checksum = Get-FileHash -Path "DhrLang.jar" -Algorithm SHA256
+          echo "CHECKSUM=$($checksum.Hash)" >> $env:GITHUB_OUTPUT
+        id: checksum
+        
+      - name: Create Chocolatey package
+        shell: powershell
+        run: |
+          mkdir chocolatey-package
+          
+          # Create nuspec file
+          @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+            <metadata>
+              <id>dhrlang</id>
+              <version>${{ steps.version.outputs.VERSION_CLEAN }}</version>
+              <packageSourceUrl>https://github.com/${{ github.repository }}</packageSourceUrl>
+              <owners>dhruv-15-03</owners>
+              <title>DhrLang</title>
+              <authors>Dhruv Patel</authors>
+              <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
+              <copyright>2024 Dhruv Patel</copyright>
+              <licenseUrl>https://github.com/${{ github.repository }}/blob/main/LICENSE</licenseUrl>
+              <requireLicenseAcceptance>false</requireLicenseAcceptance>
+              <projectSourceUrl>https://github.com/${{ github.repository }}</projectSourceUrl>
+              <bugTrackerUrl>https://github.com/${{ github.repository }}/issues</bugTrackerUrl>
+              <tags>programming-language hindi java compiler dhrlang</tags>
+              <summary>Programming language with Hindi keywords - हिंदी में प्रोग्रामिंग भाषा</summary>
+              <description>DhrLang is a programming language that uses Hindi keywords, making programming accessible to Hindi speakers. Features include object-oriented programming, generics, exception handling, and seamless Java interoperability.</description>
+              <dependencies>
+                <dependency id="openjdk17" version="17.0.0" />
+              </dependencies>
+            </metadata>
+            <files>
+              <file src="tools\**" target="tools" />
+            </files>
+          </package>
+          "@ | Out-File -FilePath "chocolatey-package\dhrlang.nuspec" -Encoding UTF8
+          
+          # Create tools directory and install script
+          mkdir "chocolatey-package\tools"
+          
+          @"
+          `$ErrorActionPreference = 'Stop'
+          `$toolsDir = "`$(Split-Path -parent `$MyInvocation.MyCommand.Definition)"
+          `$url64 = 'https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar'
+
+          `$packageArgs = @{
+            packageName   = `$env:ChocolateyPackageName
+            unzipLocation = `$toolsDir
+            url64bit      = `$url64
+            softwareName  = 'DhrLang*'
+            checksum64    = '${{ steps.checksum.outputs.CHECKSUM }}'
+            checksumType64= 'sha256'
+            fileFullPath  = "`$toolsDir\DhrLang.jar"
+          }
+
+          Get-ChocolateyWebFile @packageArgs
+
+          # Create dhrlang.bat wrapper
+          `$batchFile = @"
+          @echo off
+          java -jar "`$toolsDir\DhrLang.jar" %*
+          "@
+
+          `$batchFile | Out-File -FilePath "`$toolsDir\dhrlang.bat" -Encoding ASCII
+
+          # Add to PATH
+          Install-ChocolateyPath "`$toolsDir" 'Machine'
+          "@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
+          
+      - name: Upload Chocolatey package
+        uses: actions/upload-artifact@v4
+        with:
+          name: chocolatey-package
+          path: chocolatey-package/
+
+  create-docker-images:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+          fi
+          VERSION_CLEAN=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+          
+      - name: Download DhrLang JAR
+        run: |
+          wget -O DhrLang.jar "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar"
+          
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        if: github.event_name != 'workflow_dispatch'
+        
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM openjdk:17-jre-slim
+
+          LABEL maintainer="Dhruv Patel <dhruv@example.com>"
+          LABEL description="DhrLang - Programming language with Hindi keywords"
+          LABEL version="${{ steps.version.outputs.VERSION_CLEAN }}"
+
+          # Install DhrLang
+          COPY DhrLang.jar /usr/local/lib/DhrLang.jar
+
+          # Create wrapper script
+          RUN echo '#!/bin/bash\njava -jar /usr/local/lib/DhrLang.jar "$@"' > /usr/local/bin/dhrlang && \
+              chmod +x /usr/local/bin/dhrlang
+
+          # Set working directory
+          WORKDIR /workspace
+
+          # Default command
+          ENTRYPOINT ["dhrlang"]
+          CMD ["--help"]
+          EOF
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'workflow_dispatch' }}
+          tags: |
+            dhrlang/dhrlang:latest
+            dhrlang/dhrlang:${{ steps.version.outputs.VERSION_CLEAN }}
+          platforms: linux/amd64,linux/arm64
+          
+      - name: Create Docker usage instructions
+        run: |
+          mkdir -p docker-package
+          cat > docker-package/README.md << 'EOF'
+          # DhrLang Docker Image
+
+          Official Docker image for DhrLang - Programming language with Hindi keywords.
+
+          ## Usage
+
+          ### Run a DhrLang program
+          ```bash
+          docker run -v $(pwd):/workspace dhrlang/dhrlang:latest myprogram.dhr
+          ```
+
+          ### Interactive shell
+          ```bash
+          docker run -it -v $(pwd):/workspace dhrlang/dhrlang:latest bash
+          ```
+
+          ### Quick test
+          ```bash
+          echo 'मुख्य() { प्रिंट("नमस्ते Docker!"); }' > test.dhr
+          docker run -v $(pwd):/workspace dhrlang/dhrlang:latest test.dhr
+          ```
+
+          ## Available Tags
+
+          - `latest` - Latest stable release
+          - `${{ steps.version.outputs.VERSION_CLEAN }}` - Specific version
+
+          ## Image Details
+
+          - **Base**: OpenJDK 17 JRE Slim
+          - **Size**: ~200MB
+          - **Platforms**: linux/amd64, linux/arm64
+          - **Working Directory**: `/workspace`
+          - **Entrypoint**: `dhrlang`
+
+          ## Examples
+
+          Mount your project directory and run DhrLang programs:
+
+          ```bash
+          # Create a simple program
+          cat > hello.dhr << 'EOL'
+          मुख्य() {
+              स्ट्रिंग name = "विश्व";
+              प्रिंट("नमस्ते, " + name + "!");
+          }
+          EOL
+
+          # Run with Docker
+          docker run --rm -v $(pwd):/workspace dhrlang/dhrlang:latest hello.dhr
+          ```
+
+          ## Links
+
+          - [DhrLang Repository](https://github.com/${{ github.repository }})
+          - [Docker Hub](https://hub.docker.com/r/dhrlang/dhrlang)
+          - [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
+          EOF
+          
+      - name: Upload Docker package info
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-package
+          path: docker-package/
+
+  create-snap-package:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+          fi
+          VERSION_CLEAN=${VERSION#v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+          
+      - name: Create Snap package configuration
+        run: |
+          mkdir -p snap-package/snap
+          
+          cat > snap-package/snap/snapcraft.yaml << 'EOF'
+          name: dhrlang
+          version: '${{ steps.version.outputs.VERSION_CLEAN }}'
+          summary: Programming language with Hindi keywords
+          description: |
+            DhrLang is a programming language that uses Hindi keywords, making 
+            programming accessible to Hindi speakers. Features include object-oriented 
+            programming, generics, exception handling, and seamless Java interoperability.
+
+            Usage:
+            $ dhrlang your_program.dhr
+            
+            Example program:
+            मुख्य() {
+                प्रिंट("नमस्ते, DhrLang!");
+            }
+
+          grade: stable
+          confinement: strict
+          base: core22
+          license: MIT
+
+          apps:
+            dhrlang:
+              command: bin/dhrlang
+              plugs:
+                - home
+                - network
+                - network-bind
+
+          parts:
+            dhrlang:
+              plugin: dump
+              source: https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar
+              source-type: file
+              stage-packages:
+                - openjdk-17-jre-headless
+              override-build: |
+                snapcraftctl build
+                mkdir -p $SNAPCRAFT_PART_INSTALL/bin
+                cp $SNAPCRAFT_PART_SRC $SNAPCRAFT_PART_INSTALL/bin/DhrLang.jar
+                cat > $SNAPCRAFT_PART_INSTALL/bin/dhrlang << 'SCRIPT_EOF'
+          #!/bin/bash
+          exec java -jar $SNAP/bin/DhrLang.jar "$@"
+          SCRIPT_EOF
+                chmod +x $SNAPCRAFT_PART_INSTALL/bin/dhrlang
+          EOF
+          
+          # Create snap README
+          cat > snap-package/README.md << 'EOF'
+          # DhrLang Snap Package
+
+          This directory contains the configuration for building a Snap package of DhrLang.
+
+          ## Installation
+
+          ```bash
+          sudo snap install dhrlang
+          ```
+
+          ## Usage
+
+          ```bash
+          dhrlang your_program.dhr
+          ```
+
+          ## Building from source
+
+          1. Install snapcraft: `sudo snap install snapcraft --classic`
+          2. Build: `snapcraft`
+          3. Install: `sudo snap install --dangerous dhrlang_*.snap`
+
+          ## Permissions
+
+          The snap has access to:
+          - Home directory (read/write DhrLang programs)
+          - Network (for potential future features)
+
+          ## Example
+
+          ```bash
+          echo 'मुख्य() { प्रिंट("Snap में नमस्ते!"); }' > test.dhr
+          dhrlang test.dhr
+          ```
+          EOF
+          
+      - name: Upload Snap package
+        uses: actions/upload-artifact@v4
+        with:
+          name: snap-package
+          path: snap-package/
+
+  summary:
+    needs: [create-homebrew-tap, create-chocolatey-package, create-docker-images, create-snap-package]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ github.event.release.tag_name }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Distribution Summary
+        run: |
+          echo "# 📦 DhrLang ${{ steps.version.outputs.VERSION }} Distribution Packages Created"
+          echo ""
+          echo "## Available Packages:"
+          echo ""
+          echo "### 🍺 Homebrew (macOS/Linux)"
+          echo "```bash"
+          echo "brew tap dhruv-15-03/dhrlang"
+          echo "brew install dhrlang"
+          echo "```"
+          echo ""
+          echo "### 🍫 Chocolatey (Windows)"
+          echo "```powershell"
+          echo "choco install dhrlang"
+          echo "```"
+          echo ""
+          echo "### 🐳 Docker"
+          echo "```bash"
+          echo "docker run -v \$(pwd):/workspace dhrlang/dhrlang:latest program.dhr"
+          echo "```"
+          echo ""
+          echo "### 📦 Snap (Linux)"
+          echo "```bash"
+          echo "sudo snap install dhrlang"
+          echo "```"
+          echo ""
+          echo "### 💾 Direct Download"
+          echo "Download DhrLang.jar from: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.VERSION }}"
+          echo ""
+          echo "## Status:"
+          echo "- Homebrew tap: ${{ needs.create-homebrew-tap.result }}"
+          echo "- Chocolatey package: ${{ needs.create-chocolatey-package.result }}"
+          echo "- Docker images: ${{ needs.create-docker-images.result }}"
+          echo "- Snap package: ${{ needs.create-snap-package.result }}"

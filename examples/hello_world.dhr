@@ -1,0 +1,30 @@
+// Simple Hello World program in DhrLang
+// DhrLang में सरल हैलो वर्ल्ड प्रोग्राम
+
+मुख्य() {
+    // Greet in Hindi
+    प्रिंट("नमस्ते, DhrLang!");
+    प्रिंट("Hello, World!");
+    
+    // Show some basic operations
+    संख्या number1 = 10;
+    संख्या number2 = 20;
+    संख्या sum = number1 + number2;
+    
+    प्रिंट("First number / पहली संख्या: " + number1);
+    प्रिंट("Second number / दूसरी संख्या: " + number2);
+    प्रिंट("Sum / योग: " + sum);
+    
+    // String operations
+    स्ट्रिंग name = "राहुल";
+    स्ट्रिंग greeting = "नमस्ते, " + name + "!";
+    प्रिंट(greeting);
+    
+    // Boolean operations
+    बूलियन isHindi = true;
+    अगर (isHindi) {
+        प्रिंट("यह हिंदी में प्रोग्रामिंग है!");
+    } नहीं तो {
+        प्रिंट("This is programming in Hindi!");
+    }
+}

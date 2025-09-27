@@ -48,6 +48,12 @@ replay_pid*
 .idea/
 *.iws
 *.iml
+.vscode/
+
+# VS Code extension development
+vscode-extension/node_modules/
+vscode-extension/out/
+vscode-extension/*.vsix
 *.ipr
 out/
 .vscode/

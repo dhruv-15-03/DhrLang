@@ -1,0 +1,76 @@
+// Test program for DhrLang VS Code Extension
+// यह DhrLang VS Code Extension के लिए परीक्षण प्रोग्राम है
+
+मुख्य() {
+    // Variable declarations - चर घोषणाएं
+    संख्या age = 25;
+    स्ट्रिंग name = "राहुल";
+    दशमलव salary = 50000.50;
+    बूलियन isEmployed = true;
+    
+    // Print statements - प्रिंट स्टेटमेंट्स
+    प्रिंट("=== DhrLang VS Code Extension Test ===");
+    प्रिंट("नाम: " + name);
+    प्रिंट("उम्र: " + age);
+    प्रिंट("वेतन: ₹" + salary);
+    
+    // Conditional statements - शर्तीय कथन
+    अगर (age >= 18) {
+        प्रिंट("आप वयस्क हैं!");
+        
+        अगर (isEmployed) {
+            प्रिंट("आप कार्यरत हैं।");
+        } नहीं तो {
+            प्रिंट("आप बेरोजगार हैं।");
+        }
+    } नहीं तो {
+        प्रिंट("आप नाबालिग हैं।");
+    }
+    
+    // Loop example - लूप उदाहरण
+    प्रिंट("\nसंख्या गिनती:");
+    के लिए (संख्या i = 1; i <= 5; i++) {
+        प्रिंट("संख्या: " + i);
+    }
+    
+    // Array example - सरणी उदाहरण
+    संख्या[] numbers = {10, 20, 30, 40, 50};
+    प्रिंट("\nसरणी के तत्व:");
+    के लिए (संख्या num : numbers) {
+        प्रिंट("तत्व: " + num);
+    }
+    
+    // Exception handling example - अपवाद हैंडलिंग उदाहरण
+    कोशिश {
+        संख्या result = 100 / 0; // This will cause an error
+        प्रिंट("परिणाम: " + result);
+    } पकड़ना (ArithmeticException e) {
+        प्रिंट("गणित त्रुटि: शून्य से भाग नहीं दे सकते!");
+    } अंततः {
+        प्रिंट("प्रोग्राम समाप्त।");
+    }
+    
+    // Function call - फ़ंक्शन कॉल
+    संख्या sum = addNumbers(10, 20);
+    प्रिंट("योग: " + sum);
+}
+
+// Function definition - फ़ंक्शन परिभाषा
+संख्या addNumbers(संख्या a, संख्या b) {
+    वापसी a + b;
+}
+
+// Class example - क्लास उदाहरण
+क्लास Person {
+    निजी स्ट्रिंग name;
+    निजी संख्या age;
+    
+    सार्वजनिक Person(स्ट्रिंग name, संख्या age) {
+        this.name = name;
+        this.age = age;
+    }
+    
+    सार्वजनिक void introduce() {
+        प्रिंट("मेरा नाम " + name + " है और मैं " + age + " साल का हूं।");
+    }
+}

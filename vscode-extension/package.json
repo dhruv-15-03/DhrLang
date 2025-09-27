@@ -1,0 +1,169 @@
+{
+  "name": "dhrlang-vscode",
+  "displayName": "DhrLang Support",
+  "description": "Syntax highlighting and language support for DhrLang - हिंदी प्रोग्रामिंग भाषा",
+  "version": "1.0.0",
+  "publisher": "dhruv-15-03",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Language Packs",
+    "Other"
+  ],
+  "keywords": [
+    "dhrlang",
+    "hindi",
+    "programming",
+    "language",
+    "india",
+    "हिंदी"
+  ],
+  "galleryBanner": {
+    "color": "#FF6B35",
+    "theme": "light"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dhruv-15-03/DhrLang.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dhruv-15-03/DhrLang/issues"
+  },
+  "homepage": "https://github.com/dhruv-15-03/DhrLang#readme",
+  "activationEvents": [
+    "onLanguage:dhrlang"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "dhrlang",
+        "aliases": [
+          "DhrLang",
+          "dhrlang",
+          "Hindi Programming"
+        ],
+        "extensions": [
+          ".dhr"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/file-icon-light.svg",
+          "dark": "./images/file-icon-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dhrlang",
+        "scopeName": "source.dhrlang",
+        "path": "./syntaxes/dhrlang.tmGrammar.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "dhrlang.runFile",
+        "title": "Run DhrLang File",
+        "icon": "$(play)",
+        "category": "DhrLang"
+      },
+      {
+        "command": "dhrlang.compileFile",
+        "title": "Compile DhrLang File",
+        "icon": "$(gear)",
+        "category": "DhrLang"
+      },
+      {
+        "command": "dhrlang.showHelp",
+        "title": "Show DhrLang Help",
+        "icon": "$(question)",
+        "category": "DhrLang"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "dhrlang.runFile",
+        "key": "ctrl+f5",
+        "mac": "cmd+f5",
+        "when": "editorTextFocus && resourceExtname == .dhr"
+      },
+      {
+        "command": "dhrlang.compileFile",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "editorTextFocus && resourceExtname == .dhr"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceExtname == .dhr",
+          "command": "dhrlang.runFile",
+          "group": "navigation@1"
+        },
+        {
+          "when": "resourceExtname == .dhr",
+          "command": "dhrlang.compileFile",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == .dhr",
+          "command": "dhrlang.runFile",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "DhrLang Configuration",
+      "properties": {
+        "dhrlang.jarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to DhrLang.jar file. If empty, will try to find in PATH or use 'java -jar DhrLang.jar'"
+        },
+        "dhrlang.javaPath": {
+          "type": "string",
+          "default": "java",
+          "description": "Path to Java executable"
+        },
+        "dhrlang.enableAutoCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable auto-completion for DhrLang keywords"
+        },
+        "dhrlang.enableErrorSquiggles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable error highlighting in editor"
+        },
+        "dhrlang.outputEncoding": {
+          "type": "string",
+          "default": "utf8",
+          "enum": ["utf8", "utf16"],
+          "description": "Character encoding for program output"
+        }
+      }
+    },
+    "snippets": [
+      {
+        "language": "dhrlang",
+        "path": "./snippets/dhrlang.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  }
+}

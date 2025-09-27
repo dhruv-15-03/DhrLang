@@ -1,0 +1,26 @@
+# VS Code Extension ignore file
+
+# Compiled JavaScript files
+out/
+
+# Source maps
+*.map
+
+# Node modules
+node_modules/
+
+# TypeScript source files (include only compiled JS)
+src/
+
+# Development files
+.vscode/
+.vscode-test/
+*.vsix
+test/
+
+# Build files
+tsconfig.json
+.eslintrc.json
+
+# Images not needed in package (keep only the ones referenced in package.json)
+images/icon.svg
