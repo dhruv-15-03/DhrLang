@@ -1,0 +1,67 @@
+class DhrLangTest {
+    static kaam main() {
+        // Variable declarations - DhrLang style
+        num age = 25;
+        sab name = "TestUser";
+        duo salary = 50000.50;
+        kya isEmployed = true;
+        
+        // Print statements
+        printLine("=== DhrLang VS Code Extension Test ===");
+        printLine("Name: " + name);
+        printLine("Age: " + age);
+        printLine("Salary: $" + salary);
+        
+        // Conditional statements
+        if (age >= 18) {
+            printLine("You are an adult!");
+            
+            if (isEmployed) {
+                printLine("You are employed.");
+            } else {
+                printLine("You are unemployed.");
+            }
+        } else {
+            printLine("You are a minor.");
+        }
+        
+        // Loop example
+        printLine("Counting from 1 to 5:");
+        for (num i = 1; i <= 5; i++) {
+            printLine("Count: " + i);
+        }
+        
+        // Array example
+        num[] numbers = [10, 20, 30, 40, 50];
+        printLine("Array elements:");
+        for (num j = 0; j < 5; j++) {
+            printLine("Element " + j + ": " + numbers[j]);
+        }
+        
+        // Function call
+        num sum = DhrLangTest.addNumbers(10, 20);
+        printLine("Sum: " + sum);
+        
+        return;
+    }
+    
+    // Function definition
+    static num addNumbers(num a, num b) {
+        return a + b;
+    }
+}
+
+// Class example
+class Person {
+    public sab name;
+    public num age;
+    
+    kaam init(sab name, num age) {
+        this.name = name;
+        this.age = age;
+    }
+    
+    public kaam introduce() {
+        printLine("Hello, my name is " + this.name + " and I am " + this.age + " years old.");
+    }
+}

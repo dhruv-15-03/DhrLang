@@ -1,0 +1,119 @@
+// Professional DhrLang Example - Complete Feature Demo
+// This demonstrates the actual syntax and capabilities
+
+class BankAccount {
+    private duo balance;
+    private sab accountHolder;
+    private num accountNumber;
+    
+    kaam init(sab holder, duo initialBalance, num accNum) {
+        this.accountHolder = holder;
+        this.balance = initialBalance;
+        this.accountNumber = accNum;
+        printLine("✅ Account created for " + holder);
+        printLine("   Account Number: " + accNum);
+        printLine("   Initial Balance: $" + initialBalance);
+    }
+    
+    public kaam deposit(duo amount) {
+        if (amount > 0) {
+            this.balance = this.balance + amount;
+            printLine("💰 Deposited $" + amount);
+            printLine("   New Balance: $" + this.balance);
+        } else {
+            printLine("❌ Invalid deposit amount!");
+        }
+    }
+    
+    public kaam withdraw(duo amount) {
+        if (amount > 0 && amount <= this.balance) {
+            this.balance = this.balance - amount;
+            printLine("💸 Withdrew $" + amount);
+            printLine("   New Balance: $" + this.balance);
+        } else {
+            printLine("❌ Invalid withdrawal or insufficient funds!");
+        }
+    }
+    
+    public duo getBalance() {
+        return this.balance;
+    }
+    
+    public kaam showInfo() {
+        printLine("👤 Account Holder: " + this.accountHolder);
+        printLine("🏦 Account Number: " + this.accountNumber);
+        printLine("💵 Current Balance: $" + this.balance);
+    }
+}
+
+class DhrLangDemo {
+    static kaam main() {
+        printLine("🚀 ============================================");
+        printLine("   Welcome to DhrLang v1.0.0 - Professional Demo");
+        printLine("🚀 ============================================");
+        printLine("");
+        
+        // Type system demonstration
+        num userId = 12345;
+        sab userName = "Sarah Johnson";
+        duo salary = 75000.50;
+        kya isActive = true;
+        
+        printLine("📊 DhrLang Type System Demo:");
+        printLine("   num (integer): " + userId);
+        printLine("   sab (string): " + userName);
+        printLine("   duo (decimal): " + salary);
+        printLine("   kya (boolean): " + isActive);
+        printLine("");
+        
+        // Object creation and method calls
+        printLine("🏦 Banking System Demo:");
+        BankAccount account = new BankAccount("Sarah Johnson", 1000.0, 12345);
+        printLine("");
+        
+        // Method demonstrations
+        account.deposit(250.75);
+        printLine("");
+        
+        account.withdraw(100.25);
+        printLine("");
+        
+        account.withdraw(2000.0); // Should fail
+        printLine("");
+        
+        account.showInfo();
+        printLine("");
+        
+        // Control flow demonstration
+        printLine("🔄 Control Flow Demo:");
+        duo currentBalance = account.getBalance();
+        
+        if (currentBalance > 1000.0) {
+            printLine("💎 Premium account status!");
+        } else if (currentBalance > 500.0) {
+            printLine("⭐ Standard account status");
+        } else {
+            printLine("📈 Growing account - keep saving!");
+        }
+        printLine("");
+        
+        // Loop demonstration
+        printLine("🔢 Transaction History Simulation:");
+        duo[] transactions = [50.0, -25.0, 100.0, -75.0, 200.0];
+        
+        for (num i = 0; i < 5; i++) {
+            duo amount = transactions[i];
+            if (amount > 0) {
+                printLine("   Day " + (i + 1) + ": +$" + amount + " (Deposit)");
+            } else {
+                printLine("   Day " + (i + 1) + ": $" + amount + " (Withdrawal)");
+            }
+        }
+        
+        printLine("");
+        printLine("✨ DhrLang Demo Complete!");
+        printLine("   Language features working perfectly! 🎉");
+        
+        return;
+    }
+}

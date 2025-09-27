@@ -1,0 +1,15 @@
+// Test to verify actual working DhrLang syntax
+class HelloWorldTest {
+    static kaam main() {
+        printLine("नमस्ते, DhrLang!");
+        
+        // Variables with actual DhrLang keywords
+        num age = 25;
+        sab name = "राहुल";
+        
+        printLine("नाम: " + name);
+        printLine("उम्र: " + age);
+        
+        return;
+    }
+}

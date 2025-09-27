@@ -22,15 +22,19 @@ java -jar build/libs/DhrLang-1.0.0.jar input/sample.dhr
 Create a file `hello.dhr`:
 ```dhrlang
 // नमस्ते दुनिया!
-मुख्य() {
-    प्रिंट("नमस्ते, DhrLang!");
-    
-    // Variables with Hindi keywords
-    संख्या age = 25;
-    स्ट्रिंग name = "राहुल";
-    
-    प्रिंट("नाम: " + name);
-    प्रिंट("उम्र: " + age);
+class HelloWorld {
+    static kaam main() {
+        printLine("नमस्ते, DhrLang!");
+        
+        // Variables with DhrLang keywords
+        num age = 25;
+        sab name = "राहुल";
+        
+        printLine("नाम: " + name);
+        printLine("उम्र: " + age);
+        
+        return;
+    }
 }
 ```
 
@@ -41,77 +45,98 @@ java -jar DhrLang-1.0.0.jar hello.dhr
 
 ## Language Features
 
-### 🌍 **Hindi Keywords & English Support**
+### 🌍 **DhrLang Keywords & Type System**
 ```dhrlang
-// Hindi style
-क्लास Person {
-    निजी स्ट्रिंग name;
-    सार्वजनिक Person(स्ट्रिंग n) { this.name = n; }
+// DhrLang syntax with special keywords
+class Person {
+    private sab name;        // sab = string
+    public kaam init(sab n) { this.name = n; }  // kaam = function
 }
 
-// English style also supported
+// Full type system
 class Student {
-    private string course;
-    public Student(string c) { this.course = c; }
+    private sab course;      // sab = string
+    private num grade;       // num = integer 
+    private duo gpa;         // duo = decimal
+    private kya graduated;   // kya = boolean
 }
 ```
 
-### 🔧 **Generics & Type Safety**
+### 🔧 **Object-Oriented Features**
 ```dhrlang
-क्लास Container<T> {
-    निजी T value;
-    सार्वजनिक void set(T val) { this.value = val; }
-    सार्वजनिक T get() { return this.value; }
+class Container {
+    private sab value;
+    
+    public kaam init(sab val) { 
+        this.value = val; 
+    }
+    
+    public sab getValue() { 
+        return this.value; 
+    }
 }
 
-Container<संख्या> numbers = new Container<संख्या>();
-numbers.set(42);
+class NumberContainer {
+    private num value;
+    public kaam setValue(num val) { this.value = val; }
+    public num getValue() { return this.value; }
+}
 ```
 
 ### 🛡️ **Access Control**
 ```dhrlang
-क्लास BankAccount {
-    निजी दशमलव balance = 0.0;     // Private - only class access
-    संरक्षित स्ट्रिंग accountType;    // Protected - subclass access  
-    सार्वजनिक स्ट्रिंग accountNumber; // Public - everywhere access
+class BankAccount {
+    private duo balance = 0.0;        // Private - only class access
+    protected sab accountType;        // Protected - subclass access  
+    public sab accountNumber;         // Public - everywhere access
+    
+    public kaam deposit(duo amount) {
+        this.balance = this.balance + amount;
+    }
 }
 ```
 
 ### 🎯 **Exception Handling**
 ```dhrlang
-कोशिश {
-    संख्या result = 10 / 0;
-} पकड़ना (RuntimeException e) {
-    प्रिंट("Error: " + e.getMessage());
-} अंततः {
-    प्रिंट("Cleanup complete");
+try {
+    num result = 10 / 0;
+    printLine("Result: " + result);
+} catch (RuntimeException e) {
+    printLine("Error caught: Division by zero");
+} finally {
+    printLine("Cleanup complete");
 }
 ```
 
 ### 🔄 **Control Flow**
 ```dhrlang
-// Loops with Hindi keywords
-के लिए (संख्या i = 0; i < 5; i++) {
-    प्रिंट("Iteration: " + i);
+// Loops and conditionals
+for (num i = 0; i < 5; i++) {
+    printLine("Iteration: " + i);
 }
 
-जबकि (condition) {
-    // do something
+num counter = 0;
+while (counter < 3) {
+    printLine("Counter: " + counter);
+    counter++;
 }
 
-अगर (age >= 18) {
-    प्रिंट("Adult");
-} नहीं तो {
-    प्रिंट("Minor");
+if (age >= 18) {
+    printLine("Adult");
+} else {
+    printLine("Minor");
 }
 ```
 
 ## IDE Setup
 
-### VS Code (Recommended)
-1. Install the DhrLang extension (coming soon)
-2. Open any `.dhr` file
-3. Get syntax highlighting, error detection, and auto-completion
+### VS Code (Recommended) ✅
+1. Install the DhrLang extension: `code --install-extension dhrlang-vscode-1.0.0.vsix`
+2. Open any `.dhr` file to get:
+   - Syntax highlighting for DhrLang keywords
+   - IntelliSense auto-completion
+   - Run commands (Ctrl+F5 to run, Ctrl+Shift+B to compile)
+   - Code snippets for common patterns
 
 ### IntelliJ IDEA
 1. Configure file association: `.dhr` → Text files

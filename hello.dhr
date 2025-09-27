@@ -1,0 +1,15 @@
+// नमस्ते दुनिया!
+class HelloWorld {
+    static kaam main() {
+        printLine("नमस्ते, DhrLang!");
+        
+        // Variables with DhrLang keywords
+        num age = 25;
+        sab name = "राहुल";
+        
+        printLine("नाम: " + name);
+        printLine("उम्र: " + age);
+        
+        return;
+    }
+}
