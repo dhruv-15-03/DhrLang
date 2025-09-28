@@ -40,14 +40,17 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            RAW="${GITHUB_REF#refs/tags/}"
           fi
+          CLEAN=${RAW#v}
+          echo "RAW_TAG=$RAW" >> $GITHUB_OUTPUT
+            echo "VERSION=$CLEAN" >> $GITHUB_OUTPUT
           
       - name: Build JAR
-        run: ./gradlew clean shadowJar
+        run: ./gradlew clean shadowJar distZip distTar
         
       - name: Run tests
         run: ./gradlew test
@@ -64,7 +67,16 @@ jobs:
       - name: Prepare release artifacts
         run: |
           mkdir -p release
-          cp build/libs/DhrLang-*-all.jar release/DhrLang.jar
+          # Prefer shadow (fat) jar if present; fallback to any jar
+          JAR=$(ls build/libs/*-all.jar 2>/dev/null | head -n1)
+          if [ -z "$JAR" ]; then
+            JAR=$(ls build/libs/*.jar | head -n1)
+          fi
+          if [ -z "$JAR" ]; then
+            echo "No JAR found in build/libs" >&2
+            exit 1
+          fi
+          cp "$JAR" release/DhrLang.jar
           cp README.md release/
           cp LICENSE release/
           cp GETTING_STARTED.md release/
@@ -77,7 +89,7 @@ jobs:
           cp examples/* release/examples/ 2>/dev/null || true
           
           # Create release info
-          echo "# DhrLang ${{ steps.get_version.outputs.VERSION }}" > release/RELEASE_NOTES.md
+          echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}" > release/RELEASE_NOTES.md
           echo "" >> release/RELEASE_NOTES.md
           echo "## Installation" >> release/RELEASE_NOTES.md
           echo "" >> release/RELEASE_NOTES.md
@@ -95,7 +107,7 @@ jobs:
           echo "" >> release/RELEASE_NOTES.md
           echo "See the [changelog](CHANGELOG.md) for detailed release notes." >> release/RELEASE_NOTES.md
           
-      - name: Create release tarball
+      - name: Create release archives
         run: |
           cd release
           tar -czf ../DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz *
@@ -109,8 +121,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          name: DhrLang ${{ steps.get_version.outputs.VERSION }}
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: DhrLang v${{ steps.get_version.outputs.VERSION }}
           body_path: release/RELEASE_NOTES.md
           draft: false
           prerelease: false
@@ -123,7 +135,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Publish to GitHub Packages
-        run: ./gradlew publish
+        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           

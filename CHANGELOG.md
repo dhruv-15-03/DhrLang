@@ -7,6 +7,20 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ## [Unreleased]
 _No unreleased changes yet_
 
+## [1.1.0] - 2025-09-28
+
+### Changed
+- VS Code extension: grammar overhauled to reflect current core language tokens (num, duo, sab, kya, kaam, any) and remove obsolete Hindi-only keyword set.
+- Completion provider rebuilt with modern snippet set (class/static kaam main(), primitives, control flow, printLine, exception handling blocks).
+- Hover help content updated to concise spec-aligned descriptions.
+- Help webview replaced with streamlined HTML reflecting actual entry point and stdlib functions.
+
+### Added
+- Built-in function highlighting (printLine, substring, replace, arrayFill, arraySlice, arrayIndexOf, range, charAt).
+
+### Removed
+- Legacy Hindi keyword completions and highlighting (अगर, जबकि, आदि) to prevent confusion with unsupported syntax in the compiler.
+
 ## [1.0.0] - 2025-09-23
 
 ### Added

@@ -2,7 +2,7 @@
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting and language support for DhrLang - हिंदी प्रोग्रामिंग भाषा",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "dhruv-15-03",
   "engines": {
     "vscode": "^1.74.0"

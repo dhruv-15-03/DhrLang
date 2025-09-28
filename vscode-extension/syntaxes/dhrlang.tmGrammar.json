@@ -107,23 +107,15 @@
       "patterns": [
         {
           "name": "keyword.control.dhrlang",
-          "match": "\\b(अगर|नहीं तो अगर|नहीं तो|जबकि|के लिए|करो|जबतक|स्विच|केस|डिफ़ॉल्ट|break|continue|if|else if|else|while|for|do|until|switch|case|default)\\b"
+          "match": "\\b(if|else|while|for|return|break|continue|try|catch|finally|throw)\\b"
         },
         {
-          "name": "keyword.control.flow.dhrlang",
-          "match": "\\b(वापसी|return|throw|कोशिश|try|पकड़ना|catch|अंततः|finally)\\b"
-        },
-        {
-          "name": "keyword.other.dhrlang",
-          "match": "\\b(नया|new|यह|this|सुपर|super|null|instanceof|extends|implements|abstract|final|static|synchronized|volatile|transient|native|strictfp)\\b"
+          "name": "keyword.declaration.dhrlang",
+          "match": "\\b(class|static|new|extends|implements)\\b"
         },
         {
           "name": "keyword.other.dhrlang",
-          "match": "\\b(स्टैटिक|static|अंतिम|final|सार|abstract|निजी|private|संरक्षित|protected|सार्वजनिक|public)\\b"
-        },
-        {
-          "name": "keyword.other.package.dhrlang",
-          "match": "\\b(import|package)\\b"
+          "match": "\\b(this|super|null)\\b"
         }
       ]
     },
@@ -131,11 +123,11 @@
       "patterns": [
         {
           "name": "storage.type.primitive.dhrlang",
-          "match": "\\b(संख्या|int|integer|दशमलव|float|double|बूलियन|boolean|चार|char|स्ट्रिंग|string|byte|short|long)\\b"
+          "match": "\\b(num|duo|kya|sab|kaam|any)\\b"
         },
         {
           "name": "storage.type.object.dhrlang",
-          "match": "\\b(क्लास|class|इंटरफेस|interface|एनम|enum|void)\\b"
+          "match": "\\b(class|interface|enum|void)\\b"
         },
         {
           "name": "storage.type.generic.dhrlang",
@@ -175,11 +167,11 @@
       "patterns": [
         {
           "name": "entity.name.function.main.dhrlang",
-          "match": "\\b(मुख्य|main)\\s*(?=\\()"
+          "match": "\\b(main)\\s*(?=\\()"
         },
         {
-          "name": "entity.name.function.builtin.dhrlang",
-          "match": "\\b(प्रिंट|print|println|System\\.out\\.print|System\\.out\\.println)\\s*(?=\\()"
+          "name": "support.function.builtin.dhrlang",
+          "match": "\\b(printLine|substring|replace|arrayFill|arraySlice|arrayIndexOf|range|charAt)\\s*(?=\\()"
         },
         {
           "name": "entity.name.function.dhrlang",
@@ -191,7 +183,7 @@
       "patterns": [
         {
           "name": "constant.language.dhrlang",
-          "match": "\\b(true|false|null|सही|गलत|खाली)\\b"
+          "match": "\\b(true|false|null)\\b"
         },
         {
           "name": "constant.other.dhrlang",
