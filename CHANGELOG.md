@@ -9,6 +9,13 @@ _No unreleased changes yet_
 
 ## [1.0.3] - 2025-09-28
 ## [1.0.4] - 2025-09-28
+## [1.0.5] - 2025-09-28
+
+### Fixed
+- GitHub Packages publish failing with 422 Unprocessable Entity: switched Maven `artifactId` to lowercase `dhrlang` and bumped version.
+
+### Changed
+- Version bumped to 1.0.5 to retry package publication.
 
 ### Fixed
 - GitHub Packages publishing failed due to unset credentials; build now falls back to `gpr.user/gpr.key` Gradle props, then `GPR_USER/GPR_TOKEN`, then `GITHUB_ACTOR/GITHUB_TOKEN` (Actions default), finally `USERNAME/TOKEN`.
