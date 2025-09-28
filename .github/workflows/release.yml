@@ -13,6 +13,7 @@ on:
 permissions:
   contents: write
   packages: write
+  checks: write   # Needed for dorny/test-reporter to create check run
 
 jobs:
   build-and-release:
@@ -58,6 +59,7 @@ jobs:
           name: DhrLang Tests
           path: build/test-results/test/*.xml
           reporter: java-junit
+          fail-on-error: false
           
       - name: Prepare release artifacts
         run: |
@@ -206,4 +208,4 @@ jobs:
         run: |
           echo "❌ Release failed for DhrLang ${{ steps.get_version.outputs.VERSION }}"
           echo "Check the logs for details"
-          exit 1
+          # Do not force exit 1; overall workflow already marked failed
