@@ -15,7 +15,7 @@ We take security vulnerabilities seriously. If you discover a security vulnerabi
 
 ### How to Report
 
-1. **Email**: Send details to dhruv.rastogi@example.com with subject "SECURITY: DhrLang Vulnerability"
+1. **Email**: Send details to dhruvrastogi2004@gmail.com with subject "SECURITY: DhrLang Vulnerability"
 2. **GitHub**: Use GitHub's private vulnerability reporting feature
 3. **Include**: 
    - Description of the vulnerability
