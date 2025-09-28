@@ -10,6 +10,13 @@ _No unreleased changes yet_
 ## [1.0.3] - 2025-09-28
 ## [1.0.4] - 2025-09-28
 ## [1.0.5] - 2025-09-28
+## [1.0.6] - 2025-09-28
+
+### Fixed
+- Homebrew formula job failed (404) when downloading JAR from release; workflow now uses build artifact transfer instead of immediate release download to compute checksum.
+
+### Changed
+- Added debug listing of release directory and artifact upload step for reliability.
 
 ### Fixed
 - GitHub Packages publish failing with 422 Unprocessable Entity: switched Maven `artifactId` to lowercase `dhrlang` and bumped version.

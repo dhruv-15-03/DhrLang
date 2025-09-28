@@ -106,6 +106,15 @@ jobs:
           echo "## What's New" >> release/RELEASE_NOTES.md
           echo "" >> release/RELEASE_NOTES.md
           echo "See the [changelog](CHANGELOG.md) for detailed release notes." >> release/RELEASE_NOTES.md
+      - name: List release directory (debug)
+        run: ls -l release
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhrlang-jar
+          path: release/DhrLang.jar
+          retention-days: 2
           
       - name: Create release archives
         run: |
@@ -152,9 +161,15 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
-      - name: Download release assets
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dhrlang-jar
+          path: .
+
+      - name: Compute checksum
         run: |
-          wget -O DhrLang.jar https://github.com/${{ github.repository }}/releases/download/v${{ steps.vars.outputs.VERSION }}/DhrLang.jar
+          test -f DhrLang.jar || { echo 'DhrLang.jar missing'; ls -al; exit 1; }
           SHA256=$(sha256sum DhrLang.jar | cut -d' ' -f1)
           echo "SHA256=$SHA256" >> $GITHUB_ENV
           
