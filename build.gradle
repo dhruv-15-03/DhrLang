@@ -12,7 +12,7 @@ plugins {
 }
 
 group 'com.dhrlang'
-version '1.0.2'
+version '1.0.3'
 description 'DhrLang Programming Language - A modern language with Hindi keywords'
 
 application {

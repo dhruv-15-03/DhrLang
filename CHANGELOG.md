@@ -7,6 +7,16 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ## [Unreleased]
 _No unreleased changes yet_
 
+## [1.0.3] - 2025-09-28
+
+### Fixed
+- Release workflow: robust artifact discovery (fallback when *-all.jar naming differs) and proper tag version parsing (strip leading 'v').
+- Distribution archives now reliably built (added distZip/distTar to release build step) preventing missing `build/distributions/*.zip` errors.
+- Core version alignment with latest tag sequence; preparing for next feature iteration.
+
+### Changed
+- Internal CI: simplified release notes generation and consistent version propagation to publish task.
+
 ## [1.1.0] - 2025-09-28
 
 ### Changed
