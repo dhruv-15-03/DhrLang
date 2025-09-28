@@ -135,9 +135,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Publish to GitHub Packages
-        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish
+        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
           
   create-homebrew-formula:
     needs: build-and-release

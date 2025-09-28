@@ -12,7 +12,7 @@ plugins {
 }
 
 group 'com.dhrlang'
-version '1.0.3'
+version '1.0.4'
 description 'DhrLang Programming Language - A modern language with Hindi keywords'
 
 application {
@@ -233,8 +233,14 @@ publishing {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/dhruv-15-03/DhrLang")
             credentials {
-                username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-                password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+                // Priority: explicit gradle props > dedicated env vars > GitHub Actions defaults
+                def user = project.findProperty("gpr.user") ?: System.getenv("GPR_USER") ?: System.getenv("GITHUB_ACTOR") ?: System.getenv("USERNAME")
+                def token = project.findProperty("gpr.key")  ?: System.getenv("GPR_TOKEN") ?: System.getenv("GITHUB_TOKEN") ?: System.getenv("TOKEN")
+                if(!user || !token) {
+                    logger.lifecycle("[publish] Missing credentials (user=${user}, tokenPresent=${token!=null}). Publishing will fail unless provided.")
+                }
+                username = user
+                password = token
             }
         }
     }

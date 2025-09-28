@@ -8,6 +8,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 _No unreleased changes yet_
 
 ## [1.0.3] - 2025-09-28
+## [1.0.4] - 2025-09-28
+
+### Fixed
+- GitHub Packages publishing failed due to unset credentials; build now falls back to `gpr.user/gpr.key` Gradle props, then `GPR_USER/GPR_TOKEN`, then `GITHUB_ACTOR/GITHUB_TOKEN` (Actions default), finally `USERNAME/TOKEN`.
+
+### Changed
+- Version bumped to 1.0.4 to re-trigger release after credential fix.
 
 ### Fixed
 - Release workflow: robust artifact discovery (fallback when *-all.jar naming differs) and proper tag version parsing (strip leading 'v').
