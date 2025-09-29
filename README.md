@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/dhruv-15-03/DhrLang/actions/workflows/ci.yml/badge.svg)](https://github.com/dhruv-15-03/DhrLang/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DhrLang is a modern, object-oriented programming language that combines familiar syntax with Hindi keywords, making programming more accessible to Hindi speakers while maintaining the power and flexibility of traditional programming languages.
+DhrLang is a modern, statically typed, object-oriented programming language with a concise English‑core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. The current focus is clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
 
 ## Quick links
 - Install/Build: see Installation
@@ -13,23 +13,19 @@ DhrLang is a modern, object-oriented programming language that combines familiar
 
 ## Features
 
+- **Concise Core Tokens**: Minimal memorable keywords: `num` (int), `duo` (float), `sab` (string), `kya` (boolean), `ek` (char), `kaam` (function/method)
+- **Object-Oriented Programming**: Classes, inheritance (`extends`), access control, static members
+- **Static Typing**: Strong compile-time type checking with generic substitution
+- **Arrays**: Multi-dimensional arrays with bounds & type safety
+- **Generics**: Type parameters on classes/methods with full substitution + diagnostics
+- **Implicit Field Access**: Instance method identifier resolution falls back to fields safely
+- **String & Array Utilities**: Core built-ins (`printLine`, `arrayLength`, substring helpers, etc.)
+- **Structured Error Handling**: `try/catch/finally` (experimental advanced patterns documented separately)
+- **Evaluator Architecture**: Central semantic executor for maintainability & clear runtime rules
+- **Static Initialization Safety**: Detects forward references & dependency cycles early
 
-- **Hindi Keywords**: Uses Hindi terms like `kaam`, `num`, `sab`, `kya` for a more localized programming experience
-- **Object-Oriented Programming**: Full support for classes, inheritance, and polymorphism
-- **Static Typing**: Strong type system with compile-time type checking
-- **Exception Handling**: Comprehensive try-catch-finally exception handling
-- **Array Support**: Built-in array operations with type safety, including multi-dimensional arrays
-- **Generics**: Type parameter substitution and diagnostics for generic classes, fields, and methods
-- **Implicit Field Access**: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
-- **String Manipulation**: Rich string operations and methods
-- **Static Methods**: Support for utility functions and class-level operations
-- **Centralized Evaluator Architecture**: All expression/statement semantics consolidated in a dedicated Evaluator (Interpreter is now a thin orchestration layer)
-- **Access Control**: Compile-time enforcement of private/protected/public for instance and static members
-- **Static Initialization Safety**: Same-class static forward references and cycles are rejected at compile time (see SPEC §6.4)
-
-### Currently Unsupported / Partial Features
-
-See the full language specification in [SPEC.md](SPEC.md).
+### Currently Unsupported / Experimental
+Some constructs (advanced exception types, modules, concurrency) are either experimental or not implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers.
 
 ## Language Syntax
 
@@ -167,19 +163,17 @@ class Dog extends Animal {
 }
 ```
 
-### Exception Handling
+### Exception Handling (Basic)
 ```dhrlang
 class ErrorExample {
     static kaam main() {
         try {
             // Risky operation
-            throw "Something went wrong";
-        }
-        catch(error) {
-            printLine("Caught: " + error);
-        }
-        finally {
-            printLine("Cleanup completed");
+            throw "boom";
+        } catch(err) {
+            printLine("Caught: " + err);
+        } finally {
+            printLine("Cleanup");
         }
     }
 }
@@ -194,17 +188,16 @@ DhrLang features a strong static type system that catches errors at compile time
 - Array type safety, including multi-dimensional arrays
 - Simple method model (no overloading; duplicate names are rejected)
 
-### Rich Standard Library
-- String manipulation functions (`length()`, `charAt()`, `indexOf()`, `contains()`, `replace()`)
-- Array operations (`arrayLength()`, indexing, iteration)
-- Built-in I/O operations (`print()`, `printLine()`)
-- Mathematical operations with proper type handling
+### Core Built-ins
+- String utilities (selected: `charAt`, `replace`, `substring` – scope documented in SPEC)
+- Array operations (`arrayLength`, indexing, iteration patterns)
+- Output (`print`, `printLine`)
+- Basic math / operator semantics via core evaluator
 
-### Advanced Error Handling
-- Detailed error messages with source location
-- Helpful hints for common mistakes
-- Colored terminal output for better readability
-- Comprehensive error reporting system
+### Diagnostics
+- Source-mapped error messages with codes & hints
+- Colorized terminal output (ANSI) for clarity
+- Categories: parser, typechecker, runtime (documented in `ERROR_CODES.md`)
 
 ## Development
 
@@ -320,7 +313,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Inspired by modern language design principles
 - Built with Java for cross-platform compatibility
-- Designed to make programming accessible to Hindi speakers
+- Inspired by earlier efforts to make programming approachable with culturally resonant naming
 - Community-driven development approach
 
 ## Contact
@@ -330,4 +323,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DhrLang - Making programming accessible in your native language* 🚀
+*DhrLang - A compact, statically typed educational & exploratory language* 🚀
