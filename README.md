@@ -324,6 +324,25 @@ Settings preview (add to `settings.json` as needed):
 
 If auto detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
 
+## Command Line Interface
+
+After building, run programs via:
+```bash
+java -jar DhrLang-<version>.jar path/to/file.dhr
+```
+
+Flags:
+| Flag | Description |
+|------|-------------|
+| `--help` / `-h` | Print usage and exit |
+| `--version` / `-v` | Print version (from manifest) |
+| `--json` | Emit diagnostics JSON (errors + warnings) |
+
+Behavior:
+* If no file is specified, defaults to `input/sample.dhr`.
+* Exit codes: `0` success or warnings only, `1` compile error, `2` runtime/system error, `65` JSON diagnostics emission with errors.
+* Future: `--time`, `--no-color` (tracked via issue templates).
+
 
 DhrLang is designed for:
 - **Fast compilation**: Efficient lexing, parsing, and type checking

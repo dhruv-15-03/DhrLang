@@ -7,6 +7,16 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ## [Unreleased]
 _No unreleased changes yet_
 
+## [1.1.3] - Unreleased
+
+### Added
+- CLI flags: `--help`, `--version`, improved `--json` path (structured usage output).
+- CLI smoke tests (`CliSmokeTest`) exercising flags & JSON diagnostics.
+
+### Planned (Not Implemented Yet)
+- `--time` phase timing output.
+- `--no-color` ANSI suppression.
+
 ## [1.0.3] - 2025-09-28
 ## [1.0.4] - 2025-09-28
 ## [1.0.5] - 2025-09-28
