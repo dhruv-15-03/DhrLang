@@ -23,6 +23,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(runCommand, compileCommand, helpCommand);
 
+    // Initialize status bar early
+    ensureStatusBar();
+
     // Register completion provider
     const completionProvider = vscode.languages.registerCompletionItemProvider(
         'dhrlang',
@@ -49,7 +52,38 @@ export function activate(context: vscode.ExtensionContext) {
     });
 }
 
+let statusItem: vscode.StatusBarItem | undefined;
+
+async function ensureStatusBar() {
+    if (!statusItem) {
+        statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+        statusItem.command = 'dhrlang.showHelp';
+        statusItem.show();
+    }
+    const jar = await resolveJarPath();
+    statusItem.text = jar ? 'DhrLang: JAR OK' : 'DhrLang: JAR MISSING';
+    statusItem.tooltip = jar ? jar : 'Place DhrLang.jar in workspace root or set dhrlang.jarPath';
+}
+
+async function resolveJarPath(): Promise<string | null> {
+    const cfg = vscode.workspace.getConfiguration('dhrlang');
+    const explicit = (cfg.get<string>('jarPath', '') || '').trim();
+    if (explicit) return explicit;
+    if (!cfg.get<boolean>('autoDetectJar', true)) return null;
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders) return null;
+    for (const f of folders) {
+        const rootJar = vscode.Uri.joinPath(f.uri, 'DhrLang.jar');
+        try { await vscode.workspace.fs.stat(rootJar); return rootJar.fsPath; } catch { /* ignore */ }
+    const libPattern = new vscode.RelativePattern(f, 'lib/DhrLang-*.jar');
+    const libJars = await vscode.workspace.findFiles(libPattern, undefined, 1);
+        if (libJars.length) return libJars[0].fsPath;
+    }
+    return null;
+}
+
 async function runDhrLangFile() {
+    await ensureStatusBar();
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         vscode.window.showErrorMessage('No DhrLang file is open!');
@@ -63,16 +97,19 @@ async function runDhrLangFile() {
     await document.save();
     const config = vscode.workspace.getConfiguration('dhrlang');
     const javaPath = config.get<string>('javaPath', 'java');
-    const jarPath = config.get<string>('jarPath', '');
-    const cmd = jarPath && jarPath.trim() !== ''
-        ? `"${javaPath}" -jar "${jarPath}" "${document.fileName}"`
-        : `"${javaPath}" -jar DhrLang.jar "${document.fileName}"`;
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        vscode.window.showErrorMessage('Cannot locate DhrLang.jar. Set dhrlang.jarPath or enable autoDetectJar.');
+        return;
+    }
+    const cmd = `"${javaPath}" -jar "${jarResolved}" "${document.fileName}"`;
     const terminal = vscode.window.createTerminal({ name: 'DhrLang Output', cwd: path.dirname(document.fileName) });
     terminal.show();
     terminal.sendText(cmd);
 }
 
 async function compileDhrLangFile() {
+    await ensureStatusBar();
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
         vscode.window.showErrorMessage('No DhrLang file is open!');
@@ -86,10 +123,12 @@ async function compileDhrLangFile() {
     await document.save();
     const config = vscode.workspace.getConfiguration('dhrlang');
     const javaPath = config.get<string>('javaPath', 'java');
-    const jarPath = config.get<string>('jarPath', '');
-    const cmd = jarPath && jarPath.trim() !== ''
-        ? `"${javaPath}" -jar "${jarPath}" --check "${document.fileName}"`
-        : `"${javaPath}" -jar DhrLang.jar --check "${document.fileName}"`;
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        vscode.window.showErrorMessage('Cannot locate DhrLang.jar. Set dhrlang.jarPath or enable autoDetectJar.');
+        return;
+    }
+    const cmd = `"${javaPath}" -jar "${jarResolved}" --check "${document.fileName}"`;
     try {
         const { stdout, stderr } = await execAsync(cmd, { cwd: path.dirname(document.fileName), encoding: 'utf8' });
         if (stderr) {

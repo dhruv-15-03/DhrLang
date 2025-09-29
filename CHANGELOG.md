@@ -11,6 +11,31 @@ _No unreleased changes yet_
 ## [1.0.4] - 2025-09-28
 ## [1.0.5] - 2025-09-28
 ## [1.0.6] - 2025-09-28
+## [1.0.7] - 2025-09-29
+## [1.0.8] - 2025-09-29
+
+### Changed
+- Rewrote `EXAMPLES.md` calculator & removed Hindi keyword-based legacy examples; added minimal modern examples.
+- Updated `GETTING_STARTED.md` to clarify English-core tokens and adjust control-flow/error handling sections.
+- Updated `INSTALL.md` quick init command to use valid syntax (`class Main { static kaam main() { ... } }`).
+- Cleaned VS Code snippets: removed unsupported Hindi keyword bodies & switch; added entry class, printLine, init pattern.
+
+### Removed
+- Snippet bilingual prefixes & legacy Hindi keyword constructs (मुख्य, प्रिंट, अगर, जबकि, के लिए, switch Hindi forms).
+- Legacy bilingual calculator example with Java interop and Hindi keywords.
+
+### Added
+- Experimental placeholders for try/catch blocks labeled clearly.
+- Simplified Hello World and array/OOP examples matching implemented feature set.
+
+### Changed
+- TUTORIALS.md rewritten to reflect actual implemented syntax (removed unsupported Hindi keywords & Java-only libraries; added accurate primitives, arrays, OOP, built-ins, experimental disclaimers).
+
+### Removed
+- Legacy tutorial sections relying on Java collections, StringBuilder, advanced exceptions, switch-case, static init blocks (unimplemented or unstable).
+
+### Added
+- Quick reference table, clarified best practices, experimental placeholders for generics & errors.
 
 ### Fixed
 - Homebrew formula job failed (404) when downloading JAR from release; workflow now uses build artifact transfer instead of immediate release download to compute checksum.
@@ -51,6 +76,19 @@ _No unreleased changes yet_
 
 ### Removed
 - Legacy Hindi keyword completions and highlighting (अगर, जबकि, आदि) to prevent confusion with unsupported syntax in the compiler.
+
+## [1.1.2] - 2025-09-29
+
+### Changed
+- VS Code extension `package.json` metadata: clarified description to emphasize English-core tokens; pruned outdated Hindi-focused keywords.
+- Extension README fully rewritten to match current language syntax (num/duo/sab/kya/kaam) and modern snippet set; removed legacy Hindi keyword tables.
+- Bumped extension package version to 1.1.2 (was 1.1.1) in preparation for repackaging / publish.
+
+### Removed
+- Stale VSIX usage instructions referencing `dhrlang-vscode-1.0.0.vsix`; replaced with guidance aligned with new version.
+
+### Added
+- Packaging / publishing guidance (vsce package & publish steps) and troubleshooting matrix in extension README.
 
 ## [1.0.0] - 2025-09-23
 

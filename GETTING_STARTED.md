@@ -1,6 +1,6 @@
 # Getting Started with DhrLang
 
-DhrLang is a modern programming language with Hindi keywords, designed to make programming more accessible to Hindi speakers while maintaining powerful features like generics, access control, and comprehensive error handling.
+DhrLang currently ships with an **English-core token set** (`class`, `static`, `kaam`, `num`, `sab`, `duo`, `kya`, `ek`, `any`, etc.). Earlier experimental drafts referenced direct Hindi keywords (e.g. `मुख्य`, `प्रिंट`, `अगर`) but those are **not accepted by the present compiler**. Future bilingual support may re‑introduce them behind a compatibility flag. This guide reflects the syntax that actually parses today.
 
 ## Quick Start
 
@@ -21,19 +21,15 @@ java -jar build/libs/DhrLang-1.0.0.jar input/sample.dhr
 
 Create a file `hello.dhr`:
 ```dhrlang
-// नमस्ते दुनिया!
-class HelloWorld {
+// Hello World (Hindi text allowed inside strings)
+class Main {
     static kaam main() {
-        printLine("नमस्ते, DhrLang!");
-        
-        // Variables with DhrLang keywords
+        printLine("Hello, DhrLang!");
         num age = 25;
-        sab name = "राहुल";
-        
-        printLine("नाम: " + name);
-        printLine("उम्र: " + age);
-        
-        return;
+        sab name = "Rahul";
+        printLine("Name: " + name);
+        printLine("Age: " + age);
+        return; // optional
     }
 }
 ```
@@ -96,16 +92,12 @@ class BankAccount {
 }
 ```
 
-### 🎯 **Exception Handling**
+### 🎯 **Error Handling (Experimental)**
+Full exception semantics are still evolving; treat advanced patterns cautiously.
 ```dhrlang
-try {
-    num result = 10 / 0;
-    printLine("Result: " + result);
-} catch (RuntimeException e) {
-    printLine("Error caught: Division by zero");
-} finally {
-    printLine("Cleanup complete");
-}
+// Pseudo-only – may change
+kaam risky() { /* ... */ }
+class Demo { static kaam main() { /* try { risky(); } catch (SomeError e) { printLine("err"); } */ } }
 ```
 
 ### 🔄 **Control Flow**
@@ -121,6 +113,7 @@ while (counter < 3) {
     counter++;
 }
 
+num age = 20;
 if (age >= 18) {
     printLine("Adult");
 } else {

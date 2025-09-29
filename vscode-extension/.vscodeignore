@@ -1,7 +1,6 @@
 # VS Code Extension ignore file
 
-# Compiled JavaScript files
-out/
+# NOTE: Removed 'out/' ignore so compiled extension code is included in VSIX
 
 # Source maps
 *.map
@@ -9,7 +8,7 @@ out/
 # Node modules
 node_modules/
 
-# TypeScript source files (include only compiled JS)
+# Keep TypeScript sources out (only ship compiled JS)
 src/
 
 # Development files

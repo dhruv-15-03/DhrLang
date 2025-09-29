@@ -12,8 +12,8 @@ plugins {
 }
 
 group 'com.dhrlang'
-version '1.0.6'
-description 'DhrLang Programming Language - A modern language with Hindi keywords'
+version '1.1.2'
+description 'DhrLang Programming Language - Modern static language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
 
 application {
     mainClass = 'dhrlang.Main'
@@ -204,7 +204,7 @@ publishing {
             
             pom {
                 name = 'DhrLang'
-                description = 'A modern programming language with Hindi keywords'
+                description = 'Modern statically typed programming language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
                 url = 'https://github.com/dhruv-15-03/DhrLang'
                 
                 licenses {

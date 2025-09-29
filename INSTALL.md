@@ -118,7 +118,7 @@ cd my-dhrlang-project
 
 # Create basic structure
 mkdir src examples
-echo 'मुख्य() { प्रिंट("Hello DhrLang!"); }' > src/main.dhr
+echo "class Main { static kaam main() { printLine(\"Hello DhrLang!\"); } }" > src/main.dhr
 ```
 
 ### Shell Integration

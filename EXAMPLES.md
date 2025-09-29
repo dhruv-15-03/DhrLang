@@ -53,106 +53,76 @@ import java.util.Scanner;
             
             कोशिश {
                 दशमलव result = evaluateExpression(input);
-                प्रिंट("Result / परिणाम: " + result);
-            } पकड़ना (Exception e) {
-                प्रिंट("Error / त्रुटि: " + e.getMessage());
-            }
-        }
-    }
-    
-    निजी दशमलव evaluateExpression(स्ट्रिंग expression) throws Exception {
-        // Handle special functions
-        अगर (expression.startsWith("sqrt ")) {
-            स्ट्रिंग numberStr = expression.substring(5).trim();
-            दशमलव number = Double.parseDouble(numberStr);
-            अगर (number < 0) {
-                throw new Exception("Cannot calculate square root of negative number");
-            }
-            वापसी Math.sqrt(number);
-        }
-        
-        // Parse basic expressions
-        expression = expression.replaceAll("\\s+", "");
-        
-        // Handle power operation
-        अगर (expression.contains("^")) {
-            स्ट्रिंग[] parts = expression.split("\\^");
-            अगर (parts.length != 2) {
-                throw new Exception("Invalid power expression");
-            }
-            दशमलव base = Double.parseDouble(parts[0]);
-            दशमलव exponent = Double.parseDouble(parts[1]);
-            वापसी Math.pow(base, exponent);
-        }
-        
-        // Handle basic arithmetic
-        के लिए (संख्या i = expression.length() - 1; i >= 0; i--) {
-            चार operator = expression.charAt(i);
-            
-            अगर (operator == '+' || operator == '-' || 
-                operator == '*' || operator == '/' || operator == '%') {
-                
-                अगर (i == 0) continue; // Skip negative sign at start
-                
-                स्ट्रिंग leftStr = expression.substring(0, i);
-                स्ट्रिंग rightStr = expression.substring(i + 1);
-                
-                दशमलव left = Double.parseDouble(leftStr);
-                दशमलव right = Double.parseDouble(rightStr);
-                
-                switch (operator) {
-                    case '+': वापसी left + right;
-                    case '-': वापसी left - right;
-                    case '*': वापसी left * right;
-                    case '/': 
-                        अगर (right == 0) throw new Exception("Division by zero not allowed");
-                        वापसी left / right;
-                    case '%': वापसी left % right;
+                ## Calculator (Rewritten for Current Syntax)
+
+                The previous example used unsupported Hindi keywords. Below is a simplified expression evaluator using only implemented tokens. (Scanning/parsing logic written in pseudo – adapt as needed.)
+
+                ```dhrlang
+                class Calculator {
+                    sab expr;
+                    kaam init(sab e) { this.expr = e; }
+
+                    duo eval() { // VERY naive; split by '+' only for demo
+                        sab e = this.expr;
+                        duo total = 0.0;
+                        num start = 0;
+                        // Pseudo loop over characters
+                        // (Real implementation would iterate and parse numbers)
+                        return 0.0; // placeholder
+                    }
                 }
-            }
-        }
-        
-        // If no operator found, it's a simple number
-        वापसी Double.parseDouble(expression);
-    }
-}
 
-मुख्य() {
-    Calculator calc = new Calculator();
-    calc.start();
-}
-```
+                class Main {
+                    static kaam main() {
+                        Calculator c = new Calculator("1+2+3");
+                        duo r = c.eval();
+                        printLine("Result: " + r);
+                    }
+                }
+                ```
 
-**Features:**
-- Basic arithmetic (+, -, *, /, %)
-- Power operations (^)
-- Square root function
-- Error handling for invalid operations
-- Hindi/English mixed interface
+                > For full arithmetic, implement a tokenizer + recursive descent or shunting-yard; out of scope here.
 
----
+                ---
 
-## Student Records
+                ## Minimal OOP Example
 
-Complete student management system with grade tracking.
+                ```dhrlang
+                class User {
+                    private sab name;
+                    private num id;
+                    kaam init(sab name, num id) { this.name = name; this.id = id; }
+                    sab getName() { return this.name; }
+                }
 
-**File: `examples/student_records.dhr`**
+                class Demo {
+                    static kaam main() {
+                        User u = new User("Alice", 1);
+                        printLine("User: " + u.getName());
+                    }
+                }
+                ```
 
-```dhrlang
-import java.util.*;
+                ---
 
-क्लास Student {
-    निजी स्ट्रिंग name;
-    निजी संख्या rollNumber;
-    निजी स्ट्रिंग course;
-    निजी ArrayList<संख्या> grades;
-    
-    सार्वजनिक Student(स्ट्रिंग name, संख्या rollNumber, स्ट्रिंग course) {
-        this.name = name;
-        this.rollNumber = rollNumber;
-        this.course = course;
-        this.grades = new ArrayList<>();
-    }
+                ## Array Processing
+
+                ```dhrlang
+                class ArraysDemo {
+                    static kaam main() {
+                        num[] data = [3,5,7,9];
+                        num sum = 0;
+                        for (num i = 0; i < arrayLength(data); i++) {
+                            sum = sum + data[i];
+                        }
+                        printLine("Sum: " + sum);
+                    }
+                }
+                ```
+
+                ---
+
+                Old bilingual / Java-interoperability heavy examples were removed to prevent confusion. Refer to `input/` programs and `TUTORIALS.md` for authoritative, runnable patterns.
     
     सार्वजनिक void addGrade(संख्या grade) {
         अगर (grade >= 0 && grade <= 100) {

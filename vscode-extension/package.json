@@ -1,8 +1,8 @@
 {
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
-  "description": "Syntax highlighting and language support for DhrLang - हिंदी प्रोग्रामिंग भाषा",
-  "version": "1.1.0",
+  "description": "Syntax highlighting, snippets, run/compile helpers for the DhrLang language (num/duo/sab/kya/kaam)",
+  "version": "1.1.2",
   "publisher": "dhruv-15-03",
   "engines": {
     "vscode": "^1.74.0"
@@ -14,11 +14,11 @@
   ],
   "keywords": [
     "dhrlang",
-    "hindi",
-    "programming",
     "language",
-    "india",
-    "हिंदी"
+    "programming",
+    "compiler",
+    "num",
+    "kaam"
   ],
   "galleryBanner": {
     "color": "#FF6B35",
@@ -33,7 +33,10 @@
   },
   "homepage": "https://github.com/dhruv-15-03/DhrLang#readme",
   "activationEvents": [
-    "onLanguage:dhrlang"
+    "onLanguage:dhrlang",
+    "onCommand:dhrlang.runFile",
+    "onCommand:dhrlang.compileFile",
+    "onCommand:dhrlang.showHelp"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -140,6 +143,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable error highlighting in editor"
+        },
+        "dhrlang.autoDetectJar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically search workspace (root and lib/) for DhrLang.jar if jarPath is empty"
         },
         "dhrlang.outputEncoding": {
           "type": "string",
