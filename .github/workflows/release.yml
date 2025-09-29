@@ -106,6 +106,15 @@ jobs:
           echo "## What's New" >> release/RELEASE_NOTES.md
           echo "" >> release/RELEASE_NOTES.md
           echo "See the [changelog](CHANGELOG.md) for detailed release notes." >> release/RELEASE_NOTES.md
+      - name: Package VS Code extension (vsix)
+        run: |
+          echo "Packaging VS Code extension..."
+          pushd vscode-extension
+          npm ci --no-audit --no-fund
+          npx vsce package --no-yarn || (npm install -g @vscode/vsce && vsce package --no-yarn)
+          cp *.vsix ../release/ || true
+          popd
+
       - name: List release directory (debug)
         run: ls -l release
 
@@ -140,6 +149,7 @@ jobs:
             DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz
             DhrLang-${{ steps.get_version.outputs.VERSION }}-windows.zip
             checksums.txt
+            release/*.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           

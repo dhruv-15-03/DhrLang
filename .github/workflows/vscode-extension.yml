@@ -92,30 +92,34 @@ jobs:
           body: |
             # DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
             
-            ## Features
-            - 🎨 Syntax highlighting for .dhr files
-            - 📝 Code completion with Hindi keywords
-            - 🚀 Run and compile DhrLang programs (Ctrl+F5)
-            - 💡 Hover information and IntelliSense
-            - 🛠️ Customizable settings
+            ## Features (English-core token set)
+            - 🎨 Updated grammar for `num`, `duo`, `sab`, `kya`, `ek`, `kaam`
+            - 🧠 Snippets: main class, methods, loops, conditionals, printLine
+            - 🚀 Run & compile commands (Ctrl+F5 / Ctrl+Shift+B)
+            - � Hover + basic diagnostics surfacing compiler output
+            - ⚙️ Auto JAR detection & configurable settings
             
             ## Installation
-            1. Download the `.vsix` file from this release
-            2. Open VS Code
-            3. Go to Extensions → Install from VSIX
-            4. Select the downloaded file
-            
-            Or install from VS Code Marketplace: [DhrLang Support](https://marketplace.visualstudio.com/items?itemName=dhruv-15-03.dhrlang-vscode)
+            1. Download the `.vsix` from this release OR install from Marketplace (when published)
+            2. VS Code Command Palette: "Extensions: Install from VSIX..."
+            3. Select the downloaded file
+            4. Open a `.dhr` file to activate
             
             ## Requirements
-            - VS Code 1.74.0 or higher
-            - Java 17+ and DhrLang.jar
+            - VS Code 1.74.0+
+            - Java 17+
+            - `DhrLang.jar` accessible (auto-detected or configure setting)
             
             ## Quick Start
-            1. Create a new file with `.dhr` extension
-            2. Type `main` and press Tab
-            3. Write your DhrLang code
-            4. Press Ctrl+F5 to run
+            ```dhrlang
+            class Main {
+                static kaam main() { printLine("Hello, DhrLang!"); }
+            }
+            ```
+            Press Ctrl+F5 to run.
+            
+            ## Notes
+            Legacy Hindi keyword forms are no longer part of the advertised grammar; docs now reflect current language direction.
           draft: false
           prerelease: false
           files: |

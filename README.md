@@ -10,6 +10,7 @@ DhrLang is a modern, statically typed, object-oriented programming language with
 - Run a program: see Running DhrLang Programs
 - Language Spec: SPEC.md
 - Examples: input/
+ - Editor Integration: see VS Code Extension section
 
 ## Features
 
@@ -298,6 +299,31 @@ Check out the `input/` directory for comprehensive examples:
 - Cross-platform GUI framework
 
 ## Performance
+## VS Code Extension (Editor Integration)
+
+The official VS Code extension (version aligned with core releases) provides:
+* Syntax highlighting for current English-core tokens
+* Snippets (main class, loops, methods, printLine, experimental try/catch skeleton)
+* Run / Compile commands with status bar JAR detection
+* Optional inline diagnostics (enable via settings)
+
+Manual install (until marketplace listing active):
+1. Download the latest `dhrlang-vscode-<version>.vsix` from the release assets
+2. In VS Code: Command Palette → "Extensions: Install from VSIX..."
+3. Select the file; open a `.dhr` file to activate
+
+Settings preview (add to `settings.json` as needed):
+```jsonc
+{
+    "dhrlang.autoDetectJar": true,
+    "dhrlang.jarPath": "",
+    "dhrlang.enableAutoCompletion": true,
+    "dhrlang.enableErrorSquiggles": true
+}
+```
+
+If auto detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
+
 
 DhrLang is designed for:
 - **Fast compilation**: Efficient lexing, parsing, and type checking
