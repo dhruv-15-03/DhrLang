@@ -52,7 +52,9 @@ public class CliSmokeTest {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
         String result = runProcess(JAVA, "-jar", jarName, "--json", tmp.getAbsolutePath());
-        assertTrue(result.contains("\"diagnostics\""), "JSON output should contain diagnostics array. Got: " + result);
+    // Current JSON structure uses top-level 'errors' and 'warnings' arrays
+    assertTrue(result.contains("\"errors\"") && result.contains("\"warnings\""),
+        "JSON output should contain 'errors' and 'warnings'. Got: " + result);
     }
 
     private String locateJar() {
