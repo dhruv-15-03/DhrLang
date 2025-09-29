@@ -83,10 +83,10 @@ jobs:
           cp INSTALL.md release/
           cp TUTORIALS.md release/
           cp EXAMPLES.md release/
-          
-          # Create examples directory in release
+
+          # Create examples directory in release (using current input/ folder as canonical sample programs)
           mkdir -p release/examples
-          cp examples/* release/examples/ 2>/dev/null || true
+          cp input/* release/examples/ 2>/dev/null || true
           
           # Create release info
           echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}" > release/RELEASE_NOTES.md
@@ -191,7 +191,7 @@ jobs:
             const fs = require('fs');
             
             const formula = `class Dhrlang < Formula
-              desc "Programming language with Hindi keywords - हिंदी में प्रोग्रामिंग भाषा"
+              desc "DhrLang programming language (English-core tokens: num/duo/sab/kya/ek/kaam)"
               homepage "https://github.com/${{ github.repository }}"
               url "https://github.com/${{ github.repository }}/releases/download/v${{ steps.vars.outputs.VERSION }}/DhrLang.jar"
               sha256 "${{ env.SHA256 }}"
@@ -210,11 +210,13 @@ jobs:
 
               test do
                 (testpath/"test.dhr").write <<~EOS
-                  मुख्य() {
-                      प्रिंट("नमस्ते DhrLang!");
+                  class Main {
+                    static kaam main() {
+                      printLine("Hello DhrLang!");
+                    }
                   }
                 EOS
-                assert_match "नमस्ते DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
+                assert_match "Hello DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
               end
             end`;
             
