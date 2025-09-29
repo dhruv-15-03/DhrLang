@@ -21,23 +21,31 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
-        boolean jsonMode = false;
-        String filePath = null;
-        for(String a: args){
-            if("--json".equals(a)) jsonMode = true; else filePath = a; }
-        if(filePath==null) filePath = "input/sample.dhr";
+        CliOptions options = parseArgs(args);
 
+        if (options.showHelp) {
+            printHelp();
+            return;
+        }
+        if (options.showVersion) {
+            printVersion();
+            return;
+        }
+
+        String filePath = options.filePath != null ? options.filePath : "input/sample.dhr";
+        String sourceCode;
         try {
-            String sourceCode = Files.readString(Path.of(filePath));
-            errorReporter.setSource(filePath, sourceCode);
-            run(sourceCode);
+            sourceCode = Files.readString(Path.of(filePath));
         } catch (IOException e) {
             System.err.println("Error reading file: " + filePath);
             System.exit(1);
+            return; // unreachable but keeps compiler happy
         }
+        errorReporter.setSource(filePath, sourceCode);
+        run(sourceCode);
 
         if (errorReporter.hasErrors()) {
-            if(jsonMode){
+            if(options.jsonMode){
                 System.out.println(errorReporter.toJson());
                 System.exit(65);
             }
@@ -67,7 +75,7 @@ public class Main {
         }
 
         if (errorReporter.hasWarnings()) {
-            if(jsonMode){
+            if(options.jsonMode){
                 System.out.println(errorReporter.toJson());
                 return; }
             System.err.println();
@@ -77,6 +85,56 @@ public class Main {
             System.err.println();
             errorReporter.printAllWarnings();
         }
+    }
+
+    private static void printVersion() {
+        // Version is embedded at build time via manifest Implementation-Version if available
+        String version = Main.class.getPackage() != null ? Main.class.getPackage().getImplementationVersion() : null;
+        if (version == null) version = "(development)";
+        System.out.println("DhrLang version " + version);
+    }
+
+    private static void printHelp() {
+        System.out.println("DhrLang - a compact statically typed language (num/duo/sab/kya/ek/kaam)\n");
+        System.out.println("Usage: java -jar DhrLang.jar [options] <file.dhr>\n");
+        System.out.println("Options:");
+        System.out.println("  --help           Show this help and exit");
+        System.out.println("  --version        Print version and exit");
+        System.out.println("  --json           Emit diagnostics as JSON (errors/warnings)");
+        System.out.println();
+        System.out.println("If no file is provided, defaults to input/sample.dhr");
+    }
+
+    private static class CliOptions {
+        boolean showHelp;
+        boolean showVersion;
+        boolean jsonMode;
+        String filePath;
+    }
+
+    private static CliOptions parseArgs(String[] args) {
+        CliOptions opts = new CliOptions();
+        for (String a : args) {
+            switch (a) {
+                case "--help":
+                case "-h":
+                    opts.showHelp = true; break;
+                case "--version":
+                case "-v":
+                    opts.showVersion = true; break;
+                case "--json":
+                    opts.jsonMode = true; break;
+                default:
+                    // First non-flag is treated as file path
+                    if (!a.startsWith("-")) {
+                        opts.filePath = a;
+                    } else {
+                        System.err.println("Unknown option: " + a);
+                        opts.showHelp = true;
+                    }
+            }
+        }
+        return opts;
     }
 
     private static void run(String sourceCode) {
