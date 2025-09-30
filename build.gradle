@@ -464,3 +464,48 @@ tasks.register('bench') {
     }
 }
 
+// Ensure Spec version header matches project version (best-effort simple check)
+tasks.register('verifySpecVersion') {
+    group = 'verification'
+    description = 'Verifies SPEC.md Version line matches project.version'
+    doLast {
+        def spec = file('SPEC.md')
+        if(!spec.exists()) { throw new GradleException('SPEC.md not found') }
+        def line = spec.readLines().find { it =~ /^Version:/ }
+        if(!line) throw new GradleException('Version line not found in SPEC.md')
+        def ver = (line.replaceFirst(/Version:\s*/, '').trim())
+        if(!ver.startsWith(project.version.toString())) {
+            throw new GradleException("SPEC.md version '${ver}' does not start with project version '${project.version}'")
+        }
+        println "[specVersion] SPEC.md version OK (${ver})"
+    }
+}
+check.dependsOn 'verifySpecVersion'
+
+// Generate SVG coverage badge from Jacoco XML (Instruction coverage)
+tasks.register('generateCoverageBadge') {
+    group = 'verification'
+    description = 'Generates docs/badges/coverage.svg based on Jacoco instruction coverage.'
+    dependsOn 'jacocoTestReport'
+    doLast {
+        def jacocoXml = file("build/reports/jacoco/test/jacocoTestReport.xml")
+        if(!jacocoXml.exists()) { println "[coverageBadge] Jacoco report missing"; return }
+        def text = jacocoXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
+        def xml = new XmlParser(false,false).parseText(text)
+        def counter = xml.counter.find { it.'@type'.toString() == 'INSTRUCTION' }
+        if(!counter){ println "[coverageBadge] Instruction counter missing"; return }
+        def cov = (counter.'@covered'.toString().toBigDecimal())
+        def miss = (counter.'@missed'.toString().toBigDecimal())
+        def pct = miss + cov > 0 ? (cov * 100) / (cov + miss) : 0
+        def pctStr = String.format('%.1f', pct)
+        String color = pct >= 80 ? '#4c1' : (pct >= 50 ? '#dfb317' : '#e05d44')
+        def svg = """
+<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"125\" height=\"20\" role=\"img\" aria-label=\"coverage:${pctStr}%\">\n  <linearGradient id=\"s\" x2=\"0\" y2=\"100%\"><stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/><stop offset=\"1\" stop-opacity=\".1\"/></linearGradient>\n  <mask id=\"m\"><rect width=\"125\" height=\"20\" rx=\"3\" fill=\"#fff\"/></mask>\n  <g mask=\"url(#m)\"><rect width=\"70\" height=\"20\" fill=\"#555\"/><rect x=\"70\" width=\"55\" height=\"20\" fill=\"${color}\"/><rect width=\"125\" height=\"20\" fill=\"url(#s)\"/></g>\n  <g fill=\"#fff\" text-anchor=\"middle\" font-family=\"Verdana,Geneva,DejaVu Sans,sans-serif\" text-rendering=\"geometricPrecision\" font-size=\"110\">\n    <text aria-hidden=\"true\" x=\"355\" y=\"150\" fill=\"#010101\" fill-opacity=\".3\" transform=\"scale(.1)\" textLength=\"600\">coverage</text>\n    <text x=\"355\" y=\"140\" transform=\"scale(.1)\" fill=\"#fff\" textLength=\"600\">coverage</text>\n    <text aria-hidden=\"true\" x=\"965\" y=\"150\" fill=\"#010101\" fill-opacity=\".3\" transform=\"scale(.1)\" textLength=\"450\">${pctStr}%</text>\n    <text x=\"965\" y=\"140\" transform=\"scale(.1)\" fill=\"#fff\" textLength=\"450\">${pctStr}%</text>\n  </g>\n</svg>\n""".stripIndent()
+        def outFile = file('docs/badges/coverage.svg')
+        outFile.parentFile.mkdirs()
+        outFile.text = svg
+        println "[coverageBadge] Updated ${outFile} -> ${pctStr}%"
+    }
+}
+
+

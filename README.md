@@ -265,6 +265,7 @@ Generates: `build/bench/bench-results.json` containing per-program captured phas
 
 Notes:
 - These are NOT stable performance metrics; use them only for rough regression spotting.
+- CI job (Bench & Coverage Badge) runs `bench` on each push to main and publishes artifact.
 - Future phases will add statistical runs & variance tracking.
 
 ## Examples
