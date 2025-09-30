@@ -1,6 +1,7 @@
 # DhrLang Programming Language
 
 [![Build Status](https://github.com/dhruv-15-03/DhrLang/actions/workflows/ci.yml/badge.svg)](https://github.com/dhruv-15-03/DhrLang/actions)
+[![Coverage](docs/badges/coverage.svg)](#test-coverage)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 DhrLang is a modern, statically typed, object-oriented programming language with a concise English‑core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. The current focus is clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
@@ -249,6 +250,22 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 5. Commit your changes (`git commit -am 'Add amazing feature'`)
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Benchmarks
+
+Lightweight interpretation benchmarks (micro – not a performance suite) are provided in `bench/`:
+
+Run:
+
+```bash
+./gradlew bench
+```
+
+Generates: `build/bench/bench-results.json` containing per-program captured phase timings when invoked with `--time`.
+
+Notes:
+- These are NOT stable performance metrics; use them only for rough regression spotting.
+- Future phases will add statistical runs & variance tracking.
 
 ## Examples
 

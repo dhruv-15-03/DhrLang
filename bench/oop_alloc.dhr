@@ -1,0 +1,24 @@
+class Node {
+    num v;
+    Node next;
+    kaam init(num v, Node next) { this.v = v; this.next = next; }
+}
+
+class Main {
+    static kaam main() {
+        Node head = null;
+        for (num i = 0; i < 5000; i = i + 1) {
+            Node n = new Node();
+            n.init(i, head);
+            head = n;
+        }
+        // Traverse and sum
+        num sum = 0;
+        Node cur = head;
+        while (cur != null) {
+            sum = sum + cur.v;
+            cur = cur.next;
+        }
+        printLine("sum=" + sum);
+    }
+}

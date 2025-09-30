@@ -5,9 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
-_No unreleased changes yet_
+### Added
+- Benchmark harness (`bench/` + `gradlew bench`) producing aggregated `bench-results.json` with phase timings.
+- Diagnostics schema contract test ensuring JSON output structure matches `diagnostics.schema.json` (errors/warnings/timings/schemaVersion).
+- SPEC version synchronized with implementation version line.
 
-## [1.1.3] - Unreleased
+### Changed
+- README: added Benchmarks section and coverage badge placeholder.
+
+### Pending
+- Automate coverage badge generation commit via CI (currently manual/local task only).
+
+## [1.1.3] - 2025-09-30
 
 ### Added
 - CLI flags: `--help`, `--version`, improved `--json` path (structured usage output).
@@ -16,9 +25,9 @@ _No unreleased changes yet_
 - `--time` phase timing support (lex/parse/type/exec) with merged JSON object (`schemaVersion`=1).
 - `--no-color` flag to disable ANSI sequences for CI/plain log environments.
 
-### Planned (Not Implemented Yet)
-- `--time` phase timing output.
-- `--no-color` ANSI suppression.
+### Changed
+- Updated CHANGELOG and README to reflect implemented timing & color suppression (removed planned placeholder items).
+
 
 ## [1.0.3] - 2025-09-28
 ## [1.0.4] - 2025-09-28

@@ -30,6 +30,10 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.5.0'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.5.0'
     
+    // JSON & schema validation for diagnostics contract test
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+    testImplementation 'com.networknt:json-schema-validator:1.4.0'
+    
     // Code quality tools
     spotbugs 'com.github.spotbugs:spotbugs:4.8.3'
     spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.12.0'
@@ -420,3 +424,43 @@ def qualityEnabled = project.hasProperty('enableQuality') && project.property('e
 tasks.withType(Checkstyle).configureEach { onlyIf { qualityEnabled } }
 tasks.withType(Pmd).configureEach { onlyIf { qualityEnabled } }
 tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach { onlyIf { qualityEnabled } }
+
+// --- Benchmark harness (lightweight) ---
+// Usage: ./gradlew bench  (produces build/bench/bench-results.json)
+tasks.register('bench') {
+    group = 'verification'
+    description = 'Runs micro benchmarks (interpreted) with --time and aggregates timings.'
+    dependsOn 'build'
+    doLast {
+        def benchDir = file('bench')
+        if(!benchDir.exists()) {
+            println "No bench/ directory present; skipping benchmarks"
+            return
+        }
+        def resultDir = file('build/bench'); resultDir.mkdirs()
+        def results = []
+        def shadowJar = file("build/libs/DhrLang-${project.version}.jar")
+        benchDir.listFiles(new FilenameFilter(){ boolean accept(File d,String n){ n.endsWith('.dhr') } })?.each { f ->
+            println "[bench] Running ${f.name}"
+            def proc = ["java", "-jar", shadowJar.absolutePath, "--json", "--time", f.absolutePath].execute()
+            def out = new StringWriter(); proc.waitForProcessOutput(out, System.err)
+            def text = out.toString()
+            // Extract JSON (first line that looks like JSON object)
+            def jsonLine = text.readLines().find { it.trim().startsWith('{') && it.contains('"errors"') }
+            if(!jsonLine) {
+                println "[bench] WARN: No JSON line found for ${f.name}; raw output:\n${text}"
+            } else {
+                try {
+                    def parsed = new groovy.json.JsonSlurper().parseText(jsonLine)
+                    results << [file: f.name, timings: parsed.timings ?: [:], errorCount: (parsed.errors?.size() ?: 0)]
+                } catch(Exception e) {
+                    println "[bench] ERROR parsing JSON for ${f.name}: ${e.message}"
+                }
+            }
+        }
+        def outFile = new File(resultDir, 'bench-results.json')
+        outFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(results))
+        println "Benchmark results written to ${outFile}"
+    }
+}
+

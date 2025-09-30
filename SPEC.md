@@ -6,7 +6,7 @@
 
 # DhrLang Language Specification
 
-Version: 1.0.0
+Version: 1.1.3 (Spec synchronized with latest implemented feature set / CLI enhancements)
 Stability: Stable – subject to semantic versioning.
 Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth.
 

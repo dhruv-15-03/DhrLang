@@ -1,0 +1,9 @@
+class Main {
+    static kaam main() {
+        num acc = 0;
+        for (num i = 0; i < 20000; i = i + 1) {
+            acc = acc + i - (i / 3) + (i % 7);
+        }
+        printLine("acc=" + acc);
+    }
+}

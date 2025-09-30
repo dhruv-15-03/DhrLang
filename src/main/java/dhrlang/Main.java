@@ -46,7 +46,8 @@ public class Main {
 
     if (errorReporter.hasErrors()) {
             if(options.jsonMode){
-                System.out.println(buildJsonOutput(options, null));
+                // Provide partial timings (may be zero for phases not reached) and always schemaVersion
+                System.out.println(buildJsonOutput(options, timings));
                 System.exit(65);
             }
             System.err.println();
@@ -94,24 +95,21 @@ public class Main {
     }
 
     private static String buildJsonOutput(CliOptions opts, PhaseTimings timings){
-        if(!opts.timeMode || timings==null){
-            return errorReporter.toJson();
-        }
-        // Merge timings + diagnostics into single JSON object
         StringBuilder sb = new StringBuilder();
         sb.append('{');
-        sb.append("\"schemaVersion\":1,");
-        sb.append("\"timings\":{");
-        sb.append("\"lexMs\":").append(timings.lexMs).append(',');
-        sb.append("\"parseMs\":").append(timings.parseMs).append(',');
-        sb.append("\"typeMs\":").append(timings.typeMs).append(',');
-        sb.append("\"execMs\":").append(timings.execMs).append(',');
-        sb.append("\"totalMs\":").append(timings.totalMs);
-        sb.append("},");
+        sb.append("\"schemaVersion\":1");
+        if(opts.timeMode && timings != null){
+            sb.append(",\"timings\":{");
+            sb.append("\"lexMs\":").append(timings.lexMs).append(',');
+            sb.append("\"parseMs\":").append(timings.parseMs).append(',');
+            sb.append("\"typeMs\":").append(timings.typeMs).append(',');
+            sb.append("\"execMs\":").append(timings.execMs).append(',');
+            sb.append("\"totalMs\":").append(timings.totalMs).append('}');
+        }
         // Append diagnostics core (errors+warnings) stripping outer braces
         String core = errorReporter.toJson();
-        if(core.startsWith("{")) core = core.substring(1);
-        sb.append(core); // includes errors/warnings and closing brace
+        if(core.startsWith("{")) core = core.substring(1); // remove leading '{'
+        sb.append(',').append(core); // core ends with '}'
         return sb.toString();
     }
 
