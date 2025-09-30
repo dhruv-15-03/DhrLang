@@ -12,6 +12,9 @@ _No unreleased changes yet_
 ### Added
 - CLI flags: `--help`, `--version`, improved `--json` path (structured usage output).
 - CLI smoke tests (`CliSmokeTest`) exercising flags & JSON diagnostics.
+- Diagnostics JSON schema file (`diagnostics.schema.json`).
+- `--time` phase timing support (lex/parse/type/exec) with merged JSON object (`schemaVersion`=1).
+- `--no-color` flag to disable ANSI sequences for CI/plain log environments.
 
 ### Planned (Not Implemented Yet)
 - `--time` phase timing output.

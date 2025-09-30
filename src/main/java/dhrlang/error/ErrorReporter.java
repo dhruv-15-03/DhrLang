@@ -91,6 +91,12 @@ public class ErrorReporter {
         return warnings.size();
     }
 
+    private boolean colorEnabled = true;
+
+    public void setColorEnabled(boolean enabled){
+        this.colorEnabled = enabled;
+    }
+
     public void printAllErrors() {
         for (DhrError error : errors) {
             printError(error);
@@ -108,8 +114,7 @@ public class ErrorReporter {
     private void printError(DhrError error) {
         // Format the error with professional styling
         String formattedError = formatError(error);
-        
-    System.err.println(formattedError);
+        System.err.println(formattedError);
         
         // Show source context for better debugging
         if (sourceCode != null && !sourceCode.isEmpty()) {
@@ -121,7 +126,10 @@ public class ErrorReporter {
         
         // Show helpful hints
         if (error.hasHint()) {
-            System.err.println("\u001B[93m💡 Hint: " + error.getHint() + "\u001B[0m");
+            if(colorEnabled)
+                System.err.println("\u001B[93m💡 Hint: " + error.getHint() + "\u001B[0m");
+            else
+                System.err.println("Hint: " + error.getHint());
         }
         System.err.println();
     }
@@ -131,14 +139,14 @@ public class ErrorReporter {
         
         // Professional error formatting with clear categorization
         if (error.getType() == ErrorType.ERROR) {
-            sb.append("\u001B[91m❌ Error:\u001B[0m ");
+            if(colorEnabled) sb.append("\u001B[91m❌ Error:\u001B[0m "); else sb.append("Error: ");
         } else { // WARNING
-            sb.append("\u001B[93m⚠️  Warning:\u001B[0m ");
+            if(colorEnabled) sb.append("\u001B[93m⚠️  Warning:\u001B[0m "); else sb.append("Warning: ");
         }
         
         // Location information
         if (error.getLocation() != null) {
-            sb.append("\u001B[36m").append(error.getLocation().toString()).append("\u001B[0m");
+            if(colorEnabled) sb.append("\u001B[36m").append(error.getLocation().toString()).append("\u001B[0m"); else sb.append(error.getLocation().toString());
             sb.append(" - ");
         }
         
@@ -167,7 +175,7 @@ public class ErrorReporter {
         }
 
         StringBuilder context = new StringBuilder();
-        context.append("\u001B[2m"); // Dim text
+    if(colorEnabled) context.append("\u001B[2m");
         
         int startLine = Math.max(1, lineNum - 2);
         int endLine = Math.min(lines.length, lineNum + 2);
@@ -179,26 +187,31 @@ public class ErrorReporter {
             String lineNumStr = String.format("%" + maxLineNumWidth + "d", i);
             
             if (i == lineNum) {
-                context.append("\u001B[0m"); 
-                context.append("\u001B[91m→ ").append(lineNumStr).append(" │ \u001B[0m");
-                context.append("\u001B[1m").append(line).append("\u001B[0m\n");
+                if(colorEnabled){
+                    context.append("\u001B[0m");
+                    context.append("\u001B[91m→ ").append(lineNumStr).append(" │ \u001B[0m");
+                    context.append("\u001B[1m").append(line).append("\u001B[0m\n");
+                } else {
+                    context.append("→ ").append(lineNumStr).append(" │ ").append(line).append("\n");
+                }
                 
                 if (location.getColumn() > 0) {
-                    context.append("\u001B[91m");
+                    if(colorEnabled) context.append("\u001B[91m");
                     for (int j = 0; j < maxLineNumWidth + 3; j++) context.append(" ");
                     context.append("│ ");
                     for (int j = 0; j < location.getColumn() - 1; j++) {
                         context.append(" ");
                     }
-                    context.append("^\u001B[0m\n");
+                    context.append("^");
+                    if(colorEnabled) context.append("\u001B[0m");
+                    context.append("\n");
                 }
-                context.append("\u001B[2m");
+                if(colorEnabled) context.append("\u001B[2m");
             } else {
                 context.append("  ").append(lineNumStr).append(" │ ").append(line).append("\n");
             }
         }
-        
-        context.append("\u001B[0m"); 
+        if(colorEnabled) context.append("\u001B[0m"); 
         return context.toString();
     }
 

@@ -337,11 +337,14 @@ Flags:
 | `--help` / `-h` | Print usage and exit |
 | `--version` / `-v` | Print version (from manifest) |
 | `--json` | Emit diagnostics JSON (errors + warnings) |
+| `--time` | Also show phase timings (and embed in JSON with schemaVersion) |
+| `--no-color` | Disable ANSI color output |
 
 Behavior:
 * If no file is specified, defaults to `input/sample.dhr`.
 * Exit codes: `0` success or warnings only, `1` compile error, `2` runtime/system error, `65` JSON diagnostics emission with errors.
 * Future: `--time`, `--no-color` (tracked via issue templates).
+* Diagnostics schema: see `diagnostics.schema.json` (timings included when `--time`).
 
 
 DhrLang is designed for:

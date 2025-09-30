@@ -21,7 +21,7 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
-        CliOptions options = parseArgs(args);
+    CliOptions options = parseArgs(args);
 
         if (options.showHelp) {
             printHelp();
@@ -42,11 +42,11 @@ public class Main {
             return; // unreachable but keeps compiler happy
         }
         errorReporter.setSource(filePath, sourceCode);
-        run(sourceCode);
+    PhaseTimings timings = executePipeline(sourceCode, options);
 
-        if (errorReporter.hasErrors()) {
+    if (errorReporter.hasErrors()) {
             if(options.jsonMode){
-                System.out.println(errorReporter.toJson());
+                System.out.println(buildJsonOutput(options, null));
                 System.exit(65);
             }
             System.err.println();
@@ -76,7 +76,7 @@ public class Main {
 
         if (errorReporter.hasWarnings()) {
             if(options.jsonMode){
-                System.out.println(errorReporter.toJson());
+                System.out.println(buildJsonOutput(options, timings));
                 return; }
             System.err.println();
             System.err.println("\u001B[93m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
@@ -85,6 +85,43 @@ public class Main {
             System.err.println();
             errorReporter.printAllWarnings();
         }
+        if(options.timeMode && !options.jsonMode){
+            printTimings(timings);
+        } else if(options.timeMode && options.jsonMode && !errorReporter.hasErrors()) {
+            // If no errors, emit JSON with timings (success case)
+            System.out.println(buildJsonOutput(options, timings));
+        }
+    }
+
+    private static String buildJsonOutput(CliOptions opts, PhaseTimings timings){
+        if(!opts.timeMode || timings==null){
+            return errorReporter.toJson();
+        }
+        // Merge timings + diagnostics into single JSON object
+        StringBuilder sb = new StringBuilder();
+        sb.append('{');
+        sb.append("\"schemaVersion\":1,");
+        sb.append("\"timings\":{");
+        sb.append("\"lexMs\":").append(timings.lexMs).append(',');
+        sb.append("\"parseMs\":").append(timings.parseMs).append(',');
+        sb.append("\"typeMs\":").append(timings.typeMs).append(',');
+        sb.append("\"execMs\":").append(timings.execMs).append(',');
+        sb.append("\"totalMs\":").append(timings.totalMs);
+        sb.append("},");
+        // Append diagnostics core (errors+warnings) stripping outer braces
+        String core = errorReporter.toJson();
+        if(core.startsWith("{")) core = core.substring(1);
+        sb.append(core); // includes errors/warnings and closing brace
+        return sb.toString();
+    }
+
+    private static void printTimings(PhaseTimings t){
+        System.out.println("Timings (ms):");
+        System.out.println("  lex   : " + t.lexMs);
+        System.out.println("  parse : " + t.parseMs);
+        System.out.println("  type  : " + t.typeMs);
+        System.out.println("  exec  : " + t.execMs);
+        System.out.println("  total : " + t.totalMs);
     }
 
     private static void printVersion() {
@@ -97,10 +134,12 @@ public class Main {
     private static void printHelp() {
         System.out.println("DhrLang - a compact statically typed language (num/duo/sab/kya/ek/kaam)\n");
         System.out.println("Usage: java -jar DhrLang.jar [options] <file.dhr>\n");
-        System.out.println("Options:");
-        System.out.println("  --help           Show this help and exit");
-        System.out.println("  --version        Print version and exit");
-        System.out.println("  --json           Emit diagnostics as JSON (errors/warnings)");
+    System.out.println("Options:");
+    System.out.println("  --help           Show this help and exit");
+    System.out.println("  --version        Print version and exit");
+    System.out.println("  --json           Emit diagnostics as JSON (errors/warnings)");
+    System.out.println("  --time           Show phase timings (lex/parse/type/exec)");
+    System.out.println("  --no-color       Disable ANSI colors in diagnostics");
         System.out.println();
         System.out.println("If no file is provided, defaults to input/sample.dhr");
     }
@@ -110,6 +149,8 @@ public class Main {
         boolean showVersion;
         boolean jsonMode;
         String filePath;
+        boolean timeMode;
+        boolean noColor;
     }
 
     private static CliOptions parseArgs(String[] args) {
@@ -124,6 +165,10 @@ public class Main {
                     opts.showVersion = true; break;
                 case "--json":
                     opts.jsonMode = true; break;
+                case "--time":
+                    opts.timeMode = true; break;
+                case "--no-color":
+                    opts.noColor = true; break;
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
@@ -136,29 +181,30 @@ public class Main {
         }
         return opts;
     }
-
-    private static void run(String sourceCode) {
-        
+    private static PhaseTimings executePipeline(String sourceCode, CliOptions opts){
+        long tStart = System.nanoTime();
+        errorReporter.setColorEnabled(!opts.noColor);
+        PhaseTimings pt = new PhaseTimings();
+        long s = System.nanoTime();
         Lexer lexer = new Lexer(sourceCode, errorReporter);
         List<Token> tokens = lexer.scanTokens();
+        pt.lexMs = msSince(s);
+        if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
 
-        if (errorReporter.hasErrors()) return;
-
+        s = System.nanoTime();
         Parser parser = new Parser(tokens, errorReporter);
         Program program = null;
+        try { program = parser.parse(); } catch (ParseException ignored) {}
+        pt.parseMs = msSince(s);
+        if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
 
-        try {
-            program = parser.parse();
-        } catch (ParseException e) {
-        }
-
-        if (errorReporter.hasErrors()) return;
-
+        s = System.nanoTime();
         TypeChecker typeChecker = new TypeChecker(errorReporter);
         typeChecker.check(program);
-        
-        if (errorReporter.hasErrors()) return;
-        
+        pt.typeMs = msSince(s);
+        if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
+
+        s = System.nanoTime();
         try {
             Interpreter interpreter = new Interpreter();
             interpreter.execute(program);
@@ -169,6 +215,15 @@ public class Main {
             printSystemError(e);
             System.exit(2);
         }
+        pt.execMs = msSince(s);
+        pt.totalMs = msSince(tStart);
+        return pt;
+    }
+
+    private static long msSince(long start){ return (System.nanoTime()-start)/1_000_000L; }
+
+    private static class PhaseTimings {
+        long lexMs, parseMs, typeMs, execMs, totalMs;
     }
     
     private static void printRuntimeError(dhrlang.interpreter.DhrRuntimeException e, String sourceCode) {
