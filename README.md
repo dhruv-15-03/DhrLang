@@ -1,17 +1,21 @@
 # DhrLang Programming Language
 
 [![Build Status](https://github.com/dhruv-15-03/DhrLang/actions/workflows/ci.yml/badge.svg)](https://github.com/dhruv-15-03/DhrLang/actions)
-[![Coverage](docs/badges/coverage.svg)](#test-coverage)
+[![Coverage](docs/badges/coverage.svg)](#test-coverage) [![Mutation](docs/badges/mutation.svg)](#mutation-testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DhrLang is a modern, statically typed, object-oriented programming language with a concise English‑core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. The current focus is clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
+DhrLang is a modern, statically typed, object-oriented programming language with a concise English‑core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
 
-## Quick links
-- Install/Build: see Installation
-- Run a program: see Running DhrLang Programs
+## Quick Links
+- Getting Started: docs/GETTING_STARTED.md
+- Installation: see Installation
+- Run a program: Running DhrLang Programs
 - Language Spec: SPEC.md
+- Standard Library: STDLIB.md
 - Examples: input/
- - Editor Integration: see VS Code Extension section
+- Bytecode / IR Plan: design/bytecode-roadmap.md
+ - Bytecode Format: design/bytecode-format.md
+- Editor Integration: VS Code Extension section
 
 ## Features
 
@@ -27,7 +31,7 @@ DhrLang is a modern, statically typed, object-oriented programming language with
 - **Static Initialization Safety**: Detects forward references & dependency cycles early
 
 ### Currently Unsupported / Experimental
-Some constructs (advanced exception types, modules, concurrency) are either experimental or not implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers.
+Some constructs (advanced exception types, modules, concurrency) are either experimental or not implemented yet. See SPEC.md for authoritative status markers; see design/bytecode-roadmap.md for backend evolution.
 
 ## Language Syntax
 
@@ -74,6 +78,43 @@ Set-Location path\to\DhrLang-<version>\lib
 java -jar DhrLang-<version>.jar input\sample.dhr
 ```
 
+Alternatively, download just the JAR directly from Releases and run:
+```powershell
+# Windows
+java -jar DhrLang-1.1.3.jar path\to\program.dhr
+
+# Linux/macOS
+java -jar DhrLang-1.1.3.jar path/to/program.dhr
+```
+
+### CLI Options
+```bash
+--help           Show usage and options
+--version        Print version (e.g., "DhrLang version 1.1.3")
+--json           Output diagnostics as JSON (see JSON Diagnostics below)
+--time           Show phase timings (lex/parse/type/exec)
+--no-color       Disable ANSI colors in diagnostics
+--backend=ast|ir|bytecode  (experimental: IR and bytecode backends)
+```
+
+### JSON Diagnostics
+DhrLang can emit machine-readable diagnostics in JSON format for tooling integration:
+
+```powershell
+java -jar DhrLang-1.1.3.jar --json --time program.dhr
+```
+
+Output conforms to `diagnostics.schema.json` (JSON Schema v7) with:
+- `schemaVersion`: Currently `1` (stable contract)
+- `timings`: Phase timings in milliseconds (lex, parse, type, exec, total)
+- `errors`: Array of error objects with file, line, column, type, message, hint, sourceLine
+- `warnings`: Array of warning objects with the same structure
+
+Exit codes with `--json`:
+- 0: success (or warnings only)
+- 1 (or 65): compile-time errors
+- 2: runtime/system errors
+
 ### Building from Source
 Linux/macOS:
 ```bash
@@ -89,14 +130,23 @@ Set-Location DhrLang
 ./gradlew.bat build
 ```
 
+To build the production fat JAR:
+```powershell
+./gradlew.bat shadowJar
+# Output: build/libs/DhrLang-1.1.3.jar
+```
+
 ### Running DhrLang Programs
 Linux/macOS:
 ```bash
 # Using Gradle
 ./gradlew run --args="path/to/your/file.dhr"
 
-# Using Java directly
+# Using Java directly (after build)
 java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+
+# Using the fat JAR
+java -jar build/libs/DhrLang-1.1.3.jar path/to/your/file.dhr
 ```
 
 Windows (PowerShell):
@@ -104,8 +154,11 @@ Windows (PowerShell):
 # Using Gradle
 ./gradlew.bat run --args="path/to/your/file.dhr"
 
-# Using Java directly
+# Using Java directly (after build)
 java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+
+# Using the fat JAR
+java -jar build\libs\DhrLang-1.1.3.jar path\to\your\file.dhr
 ```
 
 ### CLI exit codes
@@ -164,6 +217,34 @@ class Dog extends Animal {
     }
 }
 ```
+
+### Multi-dimensional Arrays
+```dhrlang
+class NDArrayDemo {
+    static kaam main(){
+        // Allocate a 2D array 3x4 of num
+        num[][] m = new num[3][4];
+        // Set a few elements
+        m[0][0] = 1; m[2][3] = 7;
+        // Nested iteration
+        for(num i=0; i<3; i++){
+            for(num j=0; j<4; j++){
+                print(" "+m[i][j]);
+            }
+            printLine("");
+        }
+        // Jagged arrays are supported (rows can differ in length)
+        num[][] jag = new num[2][];
+        jag[0] = new num[1];
+        jag[1] = new num[3];
+        printLine(arrayLength(jag)); // prints 2
+    }
+}
+```
+Notes:
+- Indexing is bounds-checked: negative or >= length raises an index error.
+- Allocation requires non-negative sizes; very large sizes are rejected.
+- Element defaults follow type defaults (numbers→0, duo→0.0, kya→false, references→null).
 
 ### Exception Handling (Basic)
 ```dhrlang
@@ -230,8 +311,13 @@ src/
 ./gradlew test --tests "dhrlang.DhrLangCompilerTest"
 ```
 
-### Test Coverage
-The project includes comprehensive test coverage for:
+### Test Coverage & Mutation Testing
+Jacoco + PIT run in CI. Badges reflect instruction coverage & mutation kill ratio. Thresholds will ratchet upwards over time.
+
+### Performance Baselines
+Micro-benchmarks in `bench/` execute with `--time` capturing phase timings. `bench/baseline.json` stores calibrated totals; `benchCompare` fails the build if any benchmark regresses by >50% (tolerance may tighten). Bench runs are advisory (micro scale, not full perf suite).
+
+The project includes coverage for:
 - Lexical analysis (tokenization)
 - Parsing (syntax analysis)
 - Type checking (semantic analysis)
@@ -252,21 +338,28 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 7. Open a Pull Request
 
 ## Benchmarks
-
-Lightweight interpretation benchmarks (micro – not a performance suite) are provided in `bench/`:
-
-Run:
-
+Run micro benchmarks:
 ```bash
 ./gradlew bench
 ```
-
-Generates: `build/bench/bench-results.json` containing per-program captured phase timings when invoked with `--time`.
-
-Notes:
-- These are NOT stable performance metrics; use them only for rough regression spotting.
-- CI job (Bench & Coverage Badge) runs `bench` on each push to main and publishes artifact.
-- Future phases will add statistical runs & variance tracking.
+Outputs `build/bench/bench-results.json` (JSON array). Each entry:
+```jsonc
+{
+    "file": "fib.dhr",
+    "timings": { "lexMs": <n>, "parseMs": <n>, "typeMs": <n>, "execMs": <n>, "totalMs": <n> },
+    "errorCount": 0,
+    "warningCount": 0
+}
+```
+Compare with baseline:
+```bash
+./gradlew benchCompare
+```
+Add / update baseline after validating stability:
+```bash
+cp build/bench/bench-results.json bench/baseline.json
+```
+Bench harness is deterministic and multi-line JSON robust; future: add variance & dual-backend (AST vs IR) measurements.
 
 ## Examples
 
@@ -282,7 +375,11 @@ Check out the `input/` directory for comprehensive examples:
  - `advanced_edge_cases.dhr` - Stress tests for multi-dimensional arrays and generics
  - `duplicate_error_test.dhr`, `parser_error_test.dhr` - Intentional negative tests to verify diagnostics
 
-## Roadmap
+## Roadmap & Backend
+High-level roadmap lives in design/bytecode-roadmap.md (IR + bytecode path). Current stable runtime: AST interpreter. IR and bytecode backends are experimental but functional for a substantial subset:
+- Implemented (IR/Bytecode): literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=), if/else, while, short-circuit `&&`/`||`, `break`/`continue`, print/printLine, return (with/without value), unary minus/! and postfix ++/-- on locals, arrays (literal/new/load/store/`arrayLength`), static function calls with return values.
+- Pending: objects/fields (instance/static get/set), exceptions (throw, try/catch/finally) in IR/Bytecode.
+Use `--backend=ir` or `--backend=bytecode` to try them. During the experimental phase, the CLI also runs the AST backend to preserve ground-truth behavior.
 
 ## Feature Status
 - Generics: Fully implemented, including type parameter substitution and diagnostics
@@ -316,7 +413,6 @@ Check out the `input/` directory for comprehensive examples:
 - Advanced optimization
 - Cross-platform GUI framework
 
-## Performance
 ## VS Code Extension (Editor Integration)
 
 The official VS Code extension (version aligned with core releases) provides:
@@ -352,17 +448,20 @@ java -jar DhrLang-<version>.jar path/to/file.dhr
 Flags:
 | Flag | Description |
 |------|-------------|
-| `--help` / `-h` | Print usage and exit |
-| `--version` / `-v` | Print version (from manifest) |
-| `--json` | Emit diagnostics JSON (errors + warnings) |
-| `--time` | Also show phase timings (and embed in JSON with schemaVersion) |
+| `--help`, `-h` | Print usage and exit |
+| `--version`, `-v` | Print version (manifest Implementation-Version) |
+| `--json` | Emit diagnostics JSON (always includes `schemaVersion` and `timings` when `--time`) |
+| `--time` | Show phase timings and embed timings in JSON |
 | `--no-color` | Disable ANSI color output |
+| `--backend=ast|ir|bytecode` | Select execution backend (IR and bytecode are experimental) |
+| `--emit-ir` | Dump lowered IR (JSON) for debugging |
+| `--emit-bc` | Write compiled bytecode to build/bytecode/Main.dbc |
 
 Behavior:
 * If no file is specified, defaults to `input/sample.dhr`.
 * Exit codes: `0` success or warnings only, `1` compile error, `2` runtime/system error, `65` JSON diagnostics emission with errors.
-* Future: `--time`, `--no-color` (tracked via issue templates).
-* Diagnostics schema: see `diagnostics.schema.json` (timings included when `--time`).
+* Future flags under design: `--backend`, `--emit-ir`.
+* Diagnostics schema: see `diagnostics.schema.json` (always includes `schemaVersion` and timings object; timings may be zero if error short-circuits).
 
 
 DhrLang is designed for:

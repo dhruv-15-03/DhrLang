@@ -5,23 +5,35 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 ## Quick Start
 
 ### Option 1: Download Release (Recommended)
-1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases)
-2. Download the latest `DhrLang-x.x.x-distribution.zip`
-3. Extract and run: `java -jar lib/DhrLang-1.0.0.jar examples/sample.dhr`
+1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
+2. Download `DhrLang-1.1.3.jar` (fat JAR with all dependencies)
+3. Run: `java -jar DhrLang-1.1.3.jar examples/sample.dhr`
+
+**Requirements**: Java 17 or higher
 
 ### Option 2: Build from Source
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
-./gradlew build
-java -jar build/libs/DhrLang-1.0.0.jar input/sample.dhr
+./gradlew shadowJar
+java -jar build/libs/DhrLang-1.1.3.jar input/sample.dhr
+```
+
+### CLI Options
+```bash
+--help           Show usage and options
+--version        Print version (e.g., "DhrLang version 1.1.3")
+--json           Output diagnostics as JSON (machine-readable)
+--time           Show phase timings (lex/parse/type/exec)
+--no-color       Disable ANSI colors in diagnostics
+--backend=ast|ir|bytecode  (experimental backends)
 ```
 
 ## Your First DhrLang Program
 
 Create a file `hello.dhr`:
 ```dhrlang
-// Hello World (Hindi text allowed inside strings)
+// Hello World
 class Main {
     static kaam main() {
         printLine("Hello, DhrLang!");
@@ -29,14 +41,20 @@ class Main {
         sab name = "Rahul";
         printLine("Name: " + name);
         printLine("Age: " + age);
-        return; // optional
     }
 }
 ```
 
 Run it:
 ```bash
-java -jar DhrLang-1.0.0.jar hello.dhr
+java -jar DhrLang-1.1.3.jar hello.dhr
+```
+
+Output:
+```
+Hello, DhrLang!
+Name: Rahul
+Age: 25
 ```
 
 ## Language Features
@@ -92,12 +110,34 @@ class BankAccount {
 }
 ```
 
-### 🎯 **Error Handling (Experimental)**
-Full exception semantics are still evolving; treat advanced patterns cautiously.
+### 🎯 **Exception Handling**
 ```dhrlang
-// Pseudo-only – may change
-kaam risky() { /* ... */ }
-class Demo { static kaam main() { /* try { risky(); } catch (SomeError e) { printLine("err"); } */ } }
+class ErrorDemo {
+    static kaam main() {
+        try {
+            throw "Something went wrong";
+        } catch(err) {
+            printLine("Caught: " + err);
+        } finally {
+            printLine("Cleanup");
+        }
+    }
+}
+```
+
+Typed catches:
+```dhrlang
+class TypedCatchDemo {
+    static kaam main() {
+        try {
+            num x = 10 / 0;  // Will throw division by zero
+        } catch(Error e) {
+            printLine("Error caught: " + e);
+        } catch(any e) {
+            printLine("Fallback: " + e);
+        }
+    }
+}
 ```
 
 ### 🔄 **Control Flow**

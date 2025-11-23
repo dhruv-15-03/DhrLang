@@ -1,24 +1,25 @@
+// Object allocation & simple linked structure build.
 class Node {
     num v;
     Node next;
-    kaam init(num v, Node next) { this.v = v; this.next = next; }
 }
 
 class Main {
     static kaam main() {
-        Node head = null;
+        Node head; // implicitly default (null)
         for (num i = 0; i < 5000; i = i + 1) {
             Node n = new Node();
-            n.init(i, head);
+            n.v = i;
+            n.next = head;
             head = n;
         }
-        // Traverse and sum
+        // Consume list by iterating exactly the number of inserted nodes (i count ended at 5000)
         num sum = 0;
         Node cur = head;
-        while (cur != null) {
+        for (num j = 0; j < 5000; j = j + 1) {
             sum = sum + cur.v;
-            cur = cur.next;
+            cur = cur.next; // last iteration will read next of final node (implicitly default); ignored
         }
-        printLine("sum=" + sum);
+        printLine("sum=" + sum); // ensures traversal effects not optimized out
     }
 }

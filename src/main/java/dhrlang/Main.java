@@ -21,16 +21,9 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
-    CliOptions options = parseArgs(args);
-
-        if (options.showHelp) {
-            printHelp();
-            return;
-        }
-        if (options.showVersion) {
-            printVersion();
-            return;
-        }
+        CliOptions options = parseArgs(args);
+        if (options.showHelp) { printHelp(); return; }
+        if (options.showVersion) { printVersion(); return; }
 
         String filePath = options.filePath != null ? options.filePath : "input/sample.dhr";
         String sourceCode;
@@ -39,14 +32,13 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Error reading file: " + filePath);
             System.exit(1);
-            return; // unreachable but keeps compiler happy
+            return;
         }
         errorReporter.setSource(filePath, sourceCode);
-    PhaseTimings timings = executePipeline(sourceCode, options);
+        PhaseTimings timings = executePipeline(sourceCode, options);
 
-    if (errorReporter.hasErrors()) {
+        if (errorReporter.hasErrors()) {
             if(options.jsonMode){
-                // Provide partial timings (may be zero for phases not reached) and always schemaVersion
                 System.out.println(buildJsonOutput(options, timings));
                 System.exit(65);
             }
@@ -55,30 +47,23 @@ public class Main {
             System.err.println("\u001B[91m║                    COMPILATION FAILED                       ║\u001B[0m");
             System.err.println("\u001B[91m╚══════════════════════════════════════════════════════════════╝\u001B[0m");
             System.err.println();
-            
             int errorCount = errorReporter.getErrorCount();
             int warningCount = errorReporter.getWarningCount();
-            
             if (errorCount > 0) {
                 System.err.println("\u001B[91m❌ " + errorCount + " error" + (errorCount > 1 ? "s" : "") + " found:\u001B[0m");
                 System.err.println();
             }
-            
             errorReporter.printAllErrors();
-            
             if (warningCount > 0) {
                 System.err.println("\u001B[93m⚠️  " + warningCount + " warning" + (warningCount > 1 ? "s" : "") + " found:\u001B[0m");
                 System.err.println();
                 errorReporter.printAllWarnings();
             }
-            
             System.exit(1);
         }
 
         if (errorReporter.hasWarnings()) {
-            if(options.jsonMode){
-                System.out.println(buildJsonOutput(options, timings));
-                return; }
+            if(options.jsonMode){ System.out.println(buildJsonOutput(options, timings)); return; }
             System.err.println();
             System.err.println("\u001B[93m╔══════════════════════════════════════════════════════════════╗\u001B[0m");
             System.err.println("\u001B[93m║                        WARNINGS                             ║\u001B[0m");
@@ -89,27 +74,25 @@ public class Main {
         if(options.timeMode && !options.jsonMode){
             printTimings(timings);
         } else if(options.timeMode && options.jsonMode && !errorReporter.hasErrors()) {
-            // If no errors, emit JSON with timings (success case)
             System.out.println(buildJsonOutput(options, timings));
         }
     }
 
     private static String buildJsonOutput(CliOptions opts, PhaseTimings timings){
+        // Always emit schemaVersion and timings object (timings may be zero if early error)
+        if(timings == null) timings = new PhaseTimings();
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         sb.append("\"schemaVersion\":1");
-        if(opts.timeMode && timings != null){
-            sb.append(",\"timings\":{");
-            sb.append("\"lexMs\":").append(timings.lexMs).append(',');
-            sb.append("\"parseMs\":").append(timings.parseMs).append(',');
-            sb.append("\"typeMs\":").append(timings.typeMs).append(',');
-            sb.append("\"execMs\":").append(timings.execMs).append(',');
-            sb.append("\"totalMs\":").append(timings.totalMs).append('}');
-        }
-        // Append diagnostics core (errors+warnings) stripping outer braces
+        sb.append(",\"timings\":{");
+        sb.append("\"lexMs\":").append(timings.lexMs).append(',');
+        sb.append("\"parseMs\":").append(timings.parseMs).append(',');
+        sb.append("\"typeMs\":").append(timings.typeMs).append(',');
+        sb.append("\"execMs\":").append(timings.execMs).append(',');
+        sb.append("\"totalMs\":").append(timings.totalMs).append('}');
         String core = errorReporter.toJson();
-        if(core.startsWith("{")) core = core.substring(1); // remove leading '{'
-        sb.append(',').append(core); // core ends with '}'
+        if(core.startsWith("{")) core = core.substring(1);
+        sb.append(',').append(core);
         return sb.toString();
     }
 
@@ -149,6 +132,9 @@ public class Main {
         String filePath;
         boolean timeMode;
         boolean noColor;
+        String backend = "ast"; // ast | ir | bytecode
+        boolean emitIr;
+        boolean emitBc;
     }
 
     private static CliOptions parseArgs(String[] args) {
@@ -167,10 +153,22 @@ public class Main {
                     opts.timeMode = true; break;
                 case "--no-color":
                     opts.noColor = true; break;
+                case "--emit-ir":
+                    opts.emitIr = true; break;
+                case "--emit-bc":
+                    opts.emitBc = true; break;
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
                         opts.filePath = a;
+                    } else if(a.startsWith("--backend=")) {
+                        String val = a.substring("--backend=".length());
+                        if(val.equals("ast") || val.equals("ir") || val.equals("bytecode")) {
+                            opts.backend = val;
+                        } else {
+                            System.err.println("Unknown backend '"+val+"' (supported: ast, ir, bytecode)");
+                            opts.showHelp = true;
+                        }
                     } else {
                         System.err.println("Unknown option: " + a);
                         opts.showHelp = true;
@@ -204,13 +202,44 @@ public class Main {
 
         s = System.nanoTime();
         try {
-            Interpreter interpreter = new Interpreter();
-            interpreter.execute(program);
+            if("ir".equalsIgnoreCase(opts.backend)) {
+                System.out.println("[experimental] IR backend selected (lowering subset active)\n");
+                dhrlang.ir.AstToIrLowerer lowerer = new dhrlang.ir.AstToIrLowerer(errorReporter);
+                dhrlang.ir.IrProgram irProgram = lowerer.lower(program);
+                if(opts.emitIr){
+                    System.out.println(serializeIr(irProgram));
+                }
+                // Execute IR (subset) then fall back to AST for full semantics until parity
+                new dhrlang.ir.IrInterpreter().execute(irProgram);
+                Interpreter fallback = new Interpreter();
+                fallback.execute(program);
+            } else if("bytecode".equalsIgnoreCase(opts.backend)) {
+                System.out.println("[experimental] Bytecode backend selected (alpha)\n");
+                dhrlang.ir.AstToIrLowerer lowerer = new dhrlang.ir.AstToIrLowerer(errorReporter);
+                dhrlang.ir.IrProgram irProgram = lowerer.lower(program);
+                dhrlang.bytecode.BytecodeWriter writer = new dhrlang.bytecode.BytecodeWriter();
+                byte[] bc = writer.write(irProgram);
+                if(opts.emitBc){
+                    try{
+                        java.nio.file.Path outPath = java.nio.file.Paths.get("build","bytecode","Main.dbc");
+                        java.nio.file.Files.createDirectories(outPath.getParent());
+                        java.nio.file.Files.write(outPath, bc);
+                        System.out.println("[bytecode] wrote "+outPath.toAbsolutePath());
+                    } catch(Exception ex){ System.err.println("Failed to write bytecode: "+ex); }
+                }
+                new dhrlang.bytecode.BytecodeVM().execute(bc);
+                // Fallback to AST for correctness until full parity
+                Interpreter fallback = new Interpreter();
+                fallback.execute(program);
+            } else {
+                Interpreter interpreter = new Interpreter();
+                interpreter.execute(program);
+            }
         } catch (dhrlang.interpreter.DhrRuntimeException e) {
-            printRuntimeError(e, sourceCode);
+                printRuntimeError(e, sourceCode);
             System.exit(2);
         } catch (RuntimeError e) {
-            printSystemError(e);
+                printSystemError(e);
             System.exit(2);
         }
         pt.execMs = msSince(s);
@@ -222,6 +251,23 @@ public class Main {
 
     private static class PhaseTimings {
         long lexMs, parseMs, typeMs, execMs, totalMs;
+    }
+
+    private static String serializeIr(dhrlang.ir.IrProgram p){
+        StringBuilder sb = new StringBuilder();
+        sb.append('{').append("\"irSchemaVersion\":1,\"functions\":[");
+        for(int i=0;i<p.functions.size();i++){
+            var f = p.functions.get(i);
+            if(i>0) sb.append(',');
+            sb.append('{').append("\"name\":\"").append(f.name).append("\",\"instructions\":[");
+            for(int j=0;j<f.instructions.size();j++){
+                if(j>0) sb.append(',');
+                sb.append('"').append(f.instructions.get(j).toString().replace("\"","\\\"")).append('"');
+            }
+            sb.append("]}");
+        }
+        sb.append("]}");
+        return sb.toString();
     }
     
     private static void printRuntimeError(dhrlang.interpreter.DhrRuntimeException e, String sourceCode) {

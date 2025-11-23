@@ -8,15 +8,16 @@
 
 Version: 1.1.3 (Spec synchronized with latest implemented feature set / CLI enhancements)
 Stability: Stable – subject to semantic versioning.
-Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth.
+Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth. As of v1.1.3 (Nov 2025), experimental IR and bytecode backends are available via `--backend=ir|bytecode` flags.
 
 ## 0. Overview (Informative)
 DhrLang is a statically checked, interpreted, object‑oriented language with:
 - Single inheritance (classes) & multiple interface implementation
 - Primitive + reference types, arrays, basic generics (syntactic; limited enforcement in 0.1)
-- Structured control flow, exceptions, static members, increment/decrement, basic standard library.
+- Structured control flow, exceptions (with typed catches), static members, increment/decrement, basic standard library
+- Experimental IR and bytecode execution backends (as of v1.1.3)
 
-This spec targets the current implementation; future enhancements (bytecode VM, full generics) are noted as FUTURE.
+This spec targets the current implementation; future enhancements (full bytecode VM optimization, advanced generics) are noted as FUTURE.
 
 ## 1. Lexical Structure (Normative)
 
@@ -191,7 +192,24 @@ Classes, interfaces, arrays, and parameterized forms (syntactic generics). All n
 
 ### 4.3 Arrays
 Type `T[]` where `T` is any type (primitive or reference). Arrays are covariant at runtime (Java array semantics). (FUTURE: specify invariance for safety.)
-Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported: parser, typechecker, and evaluator allow creation, assignment, and access for arrays of any dimension. Nested array allocation via `new T[m][n]` and higher is implemented; elements are initialized recursively to type default (§4.1 or null).
+
+Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported across parser, typechecker, and evaluator. Allocation and access semantics:
+- Allocation: `new T[d1][d2]...[dk]` creates a k‑dimensional array; each dimension size expression must be `num (Long)` and non‑negative. Overly large sizes are rejected.
+- Jagged arrays: Inner dimensions may be unspecified or allocated to different lengths later (e.g., `new T[2][]; arr[0] = new T[3];`).
+- Defaults: Elements are initialized to type defaults recursively: numbers→0, duo→0.0, kya→false, references→null.
+- Access: Indexing `arr[i]` is bounds-checked for each dimension; negative or `i >= length` raises an index error.
+
+Examples:
+```
+num[][] m = new num[3][4];
+m[0][1] = 5;
+num[] row = m[2];
+num x = m[2][3];
+
+num[][] jag = new num[2][];
+jag[0] = new num[1];
+jag[1] = new num[3];
+```
 
 ### 4.4 Class & Interface Types
 Single class inheritance; multiple interfaces. Abstract classes may declare abstract methods (no body). Interfaces declare signatures only.
@@ -394,12 +412,38 @@ A program conforms if:
 ## 16. Reserved for Future Features
 | Feature | Planned Section |
 |---------|-----------------|
-| Bytecode IR & VM | §17 |
+| Bytecode optimization & JIT | §17 (basic bytecode VM implemented experimentally in v1.1.3) |
 | Modules / Imports | §18 |
 | Formatter / LSP | §19 |
 
-## 17. Bytecode IR (FUTURE Informative Outline)
-Planned stack machine with constant pool, instructions: LOAD, STORE, ICONST, DCONST, ADD, SUB, MUL, DIV, MOD, INVOKE, NEW, GETFIELD, PUTFIELD, GETSTATIC, PUTSTATIC, ARRAY_*, IF*, GOTO, RETURN, THROW, TRY_ENTER/EXIT metadata side table.
+## 17. Bytecode IR & VM (Implemented Experimentally as of v1.1.3)
+DhrLang now includes experimental IR and bytecode backends accessible via `--backend=ir` or `--backend=bytecode` CLI flags.
+
+### 17.1 IR (Intermediate Representation)
+The IR backend lowers AST to a structured intermediate representation with:
+- Functions containing linear instruction sequences
+- Instructions: const, load/store local, binary/unary ops, compare, jumps, labels, print, arrays, fields, calls
+- Exception handling: `IrThrow`, `IrTryPush`, `IrTryPop`, `IrCatchBind`
+- Typed exception matching for `any`, `Error`, `DhrException`, and custom exception types
+
+### 17.2 Bytecode Format
+Stack-based bytecode with:
+- Magic number, version, constant pool, function table
+- Opcodes including: LOAD, STORE, CONST, arithmetic ops, comparisons, jumps, calls, arrays, fields, exceptions
+- Exception opcodes: TRY_PUSH, TRY_POP, THROW, CATCH_BIND
+- Serialization to `.dbc` files via `--emit-bc` flag
+
+### 17.3 Bytecode VM
+Executes bytecode with:
+- Call stack with frames containing locals, operand stack, and exception handlers
+- Static field storage
+- Handler stack per frame for nested try-catch-finally
+- Typed exception matching consistent with AST interpreter
+
+### 17.4 Parity & Status
+- Full parity tests between AST/IR/bytecode for arrays, calls, fields, and exceptions
+- Currently experimental; AST interpreter remains the canonical execution engine
+- IR/bytecode used for testing and future optimization work
 
 ## 18. Change Log Policy (Normative)
 Each release MUST update `CHANGELOG.md` with Added / Changed / Fixed / Deprecated / Removed / Security headings. Semantic Versioning adopted at 1.0.

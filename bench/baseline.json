@@ -1,0 +1,5 @@
+[
+  {"file":"arith_loop.dhr","timings":{"totalMs":95}},
+  {"file":"fib.dhr","timings":{"totalMs":752}},
+  {"file":"oop_alloc.dhr","timings":{"totalMs":110}}
+]

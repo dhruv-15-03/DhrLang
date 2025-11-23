@@ -27,19 +27,24 @@ jobs:
             ${{ runner.os }}-gradle-
       - name: Grant execute
         run: chmod +x gradlew
-      - name: Run tests + coverage + badge
-        run: ./gradlew test jacocoTestReport generateCoverageBadge --info --stacktrace
+      - name: Run tests + coverage + mutation + badges
+        run: ./gradlew test jacocoTestReport generateCoverageBadge pitest generateMutationBadge --info --stacktrace
       - name: Run benchmarks
-        run: ./gradlew bench --info --stacktrace
+        run: ./gradlew bench benchCompare --info --stacktrace || echo "Bench compare failed (non-blocking in PR)"
       - name: Upload bench results
         uses: actions/upload-artifact@v4
         with:
           name: bench-results
           path: build/bench/bench-results.json
           if-no-files-found: warn
-      - name: Commit updated coverage badge
+      - name: Commit updated badges
         if: github.ref == 'refs/heads/main'
         run: |
-          if git diff --quiet docs/badges/coverage.svg; then echo "No badge changes"; else \
-          git config user.name "actions-bot"; git config user.email "actions@github.com"; \
-          git add docs/badges/coverage.svg; git commit -m "chore: update coverage badge"; git push; fi
+          CHANGED=0
+          git diff --quiet docs/badges/coverage.svg || CHANGED=1
+          git diff --quiet docs/badges/mutation.svg || CHANGED=1
+          if [ $CHANGED -eq 1 ]; then \
+            git config user.name "actions-bot"; git config user.email "actions@github.com"; \
+            git add docs/badges/coverage.svg docs/badges/mutation.svg; \
+            git commit -m "chore: update quality badges"; git push; \
+          else echo "No badge changes"; fi

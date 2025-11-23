@@ -31,38 +31,57 @@ public class CliSmokeTest {
 
     @Test
     void helpPrintsUsage() throws Exception {
-        String jarName = locateJar();
-        String result = runProcess(JAVA, "-jar", jarName, "--help");
+        String result = runWithJarOrClasspath("--help");
         assertTrue(result.contains("Usage: java -jar DhrLang.jar"), "Help output should contain usage line. Got: " + result);
     }
 
     @Test
     void versionPrintsSemanticVersion() throws Exception {
-        String jarName = locateJar();
-        String result = runProcess(JAVA, "-jar", jarName, "--version");
+        String result = runWithJarOrClasspath("--version");
         assertTrue(result.matches("(?s).*DhrLang version .*"), "Version output missing. Got: " + result);
     }
 
     @Test
     void jsonModeOutputsJsonOnError() throws Exception {
-        String jarName = locateJar();
         // Create a temp invalid program (missing semicolon or unknown token) to trigger an error
         File tmp = File.createTempFile("dhr-json-test-", ".dhr");
         try (FileWriter fw = new FileWriter(tmp)) {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
-        String result = runProcess(JAVA, "-jar", jarName, "--json", tmp.getAbsolutePath());
+        String result = runWithJarOrClasspath("--json", tmp.getAbsolutePath());
     // Current JSON structure uses top-level 'errors' and 'warnings' arrays
     assertTrue(result.contains("\"errors\"") && result.contains("\"warnings\""),
         "JSON output should contain 'errors' and 'warnings'. Got: " + result);
     }
 
-    private String locateJar() {
-        // Attempt to locate built jar (non-shadow) matching current version
+    private String runWithJarOrClasspath(String... toolArgs) throws IOException, InterruptedException {
+        // Prefer running the assembled jar if present, but fall back to classpath execution to keep tests
+        // robust when run without a prior `gradle build`.
         File libs = new File("build/libs");
-        File[] jars = libs.listFiles((dir, name) -> name.matches("DhrLang-.*\\.jar") && !name.contains("sources") && !name.contains("javadoc"));
-        assertNotNull(jars, "No jars found in build/libs – run gradle build before tests.");
-        assertTrue(jars.length > 0, "Expected at least one jar artifact.");
-        return jars[0].getPath();
+        File jar = null;
+        if (libs.exists()) {
+            File[] jars = libs.listFiles((dir, name) -> name.matches("DhrLang-.*\\.jar") && !name.contains("sources") && !name.contains("javadoc"));
+            if (jars != null && jars.length > 0) {
+                jar = jars[0];
+            }
+        }
+
+        if (jar != null && jar.exists()) {
+            String[] full = new String[3 + toolArgs.length];
+            full[0] = JAVA;
+            full[1] = "-jar";
+            full[2] = jar.getPath();
+            System.arraycopy(toolArgs, 0, full, 3, toolArgs.length);
+            return runProcess(full);
+        } else {
+            String cp = System.getProperty("java.class.path");
+            String[] full = new String[4 + toolArgs.length];
+            full[0] = JAVA;
+            full[1] = "-cp";
+            full[2] = cp;
+            full[3] = "dhrlang.Main";
+            System.arraycopy(toolArgs, 0, full, 4, toolArgs.length);
+            return runProcess(full);
+        }
     }
 }

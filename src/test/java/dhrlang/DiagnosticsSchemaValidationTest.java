@@ -14,10 +14,6 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Validates that diagnostics JSON emitted by the CLI conforms (structurally) to diagnostics.schema.json.
- * This guards against accidental breaking changes to tooling contracts.
- */
 public class DiagnosticsSchemaValidationTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -39,15 +35,26 @@ public class DiagnosticsSchemaValidationTest {
         try (FileWriter fw = new FileWriter(tmp)) {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
-        // Build jar path
+        // Build jar path (fallback to classpath execution if not present, to keep test robust in CI)
+        String javaExe = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         File libs = new File("build/libs");
         File jar = null;
-        for(File f : libs.listFiles()) {
-            if(f.getName().endsWith(".jar") && !f.getName().contains("sources") && !f.getName().contains("javadoc")) { jar = f; break; }
+        if(libs.exists()){
+            File[] files = libs.listFiles();
+            if(files!=null){
+                for(File f : files) {
+                    String n = f.getName();
+                    if(n.endsWith(".jar") && !n.contains("sources") && !n.contains("javadoc")) { jar = f; break; }
+                }
+            }
         }
-        assertNotNull(jar, "Jar not built. Run gradle build first.");
-        String output = run(System.getProperty("java.home") + File.separator + "bin" + File.separator + "java",
-                "-jar", jar.getAbsolutePath(), "--json", "--time", tmp.getAbsolutePath());
+        String output;
+        if(jar!=null && jar.exists()){
+            output = run(javaExe, "-jar", jar.getAbsolutePath(), "--json", "--time", tmp.getAbsolutePath());
+        } else {
+            String cp = System.getProperty("java.class.path");
+            output = run(javaExe, "-cp", cp, "dhrlang.Main", "--json", "--time", tmp.getAbsolutePath());
+        }
 
         // Extract JSON: capture substring from first '{' to last '}'
         int first = output.indexOf('{');
@@ -59,13 +66,8 @@ public class DiagnosticsSchemaValidationTest {
         // Basic structural assertions
         assertTrue(node.has("errors"), "Missing errors array");
         assertTrue(node.has("warnings"), "Missing warnings array");
-        // schemaVersion + timings are desirable but tolerate absence to avoid breaking older builds locally
-        if(!node.has("schemaVersion")) {
-            System.out.println("[WARN] schemaVersion not present in diagnostics JSON (legacy format)" );
-        }
-        if(!node.has("timings")) {
-            System.out.println("[WARN] timings block absent; phase timing may not have executed");
-        }
+        assertTrue(node.has("schemaVersion"), "Missing schemaVersion");
+        assertTrue(node.has("timings"), "Missing timings block");
 
         // Schema validation
         File schemaFile = new File("diagnostics.schema.json");
@@ -73,9 +75,6 @@ public class DiagnosticsSchemaValidationTest {
         JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
         JsonSchema schema = factory.getSchema(MAPPER.readTree(schemaFile));
         Set<ValidationMessage> msgs = schema.validate(node);
-        // If schemaVersion missing we cannot fully validate; allow reduced verification
-        if(node.has("schemaVersion")) {
-            assertTrue(msgs.isEmpty(), () -> "Schema violations: " + msgs);
-        }
+        assertTrue(msgs.isEmpty(), () -> "Schema violations: " + msgs);
     }
 }

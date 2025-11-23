@@ -1,0 +1,12 @@
+// Call helper static function from Main
+class Main {
+    static num square(num x) {
+        printLine("square(" + x + ") called");
+        return x * x;
+    }
+    static kaam main() {
+        num a = 7;
+        num b = Main.square(a);
+        printLine("result: " + b);
+    }
+}

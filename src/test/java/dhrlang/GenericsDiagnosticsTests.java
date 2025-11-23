@@ -57,4 +57,39 @@ public class GenericsDiagnosticsTests {
         assertFalse(result.hadRuntimeError, result.runtimeErrorMessage);
         assertEquals("3", result.stdout.trim());
     }
+
+    @Test
+    void substitutionTypeMismatchOnFieldAssignmentIsError() {
+        String src = String.join("\n",
+            "class Box<T> {",
+            "  public T value;",
+            "  kaam init(){}",
+            "}",
+            "class A { static kaam main(){",
+            "  Box<num> b = new Box<num>();",
+            "  b.value = \"oops\"; // assigning sab to T where T=num",
+            "} }"
+        );
+        var result = RuntimeTestUtil.runSource(src);
+        assertTrue(result.hadCompileErrors);
+        assertTrue(result.stderr.contains("TYPE_MISMATCH") || result.stderr.toLowerCase().contains("type"), result.stderr);
+    }
+
+    @Test
+    void methodReturnSubstitutionTypeMismatchIsError() {
+        String src = String.join("\n",
+            "class Box<T> {",
+            "  public T value;",
+            "  T get(){ return value; }",
+            "  kaam init(T v){ value = v; }",
+            "}",
+            "class A { static kaam main(){",
+            "  Box<num> b = new Box<num>(7);",
+            "  sab s = b.get(); // expecting sab from T=num",
+            "} }"
+        );
+        var result = RuntimeTestUtil.runSource(src);
+        assertTrue(result.hadCompileErrors);
+        assertTrue(result.stderr.contains("TYPE_MISMATCH") || result.stderr.toLowerCase().contains("type"), result.stderr);
+    }
 }

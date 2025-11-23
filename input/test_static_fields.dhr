@@ -1,0 +1,14 @@
+// Static field get/set parity test
+class Counter {
+    static num v;
+}
+
+class Main {
+    static kaam main() {
+        Counter.v = 10;
+        printLine(Counter.v);
+        Counter.v = Counter.v + 1;
+        printLine(Counter.v);
+        return;
+    }
+}
