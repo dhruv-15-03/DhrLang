@@ -65,10 +65,10 @@ Some constructs (advanced exception types, modules, concurrency) are either expe
 
 ### Option 1: Download Release (Recommended)
 1. Go to the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
-2. Download the latest `DhrLang-1.1.3.jar` (fat JAR).
+2. Download the latest `DhrLang-1.1.4.jar` (fat JAR).
 3. Run it directly:
    ```bash
-   java -jar DhrLang-1.1.3.jar input/sample.dhr
+   java -jar DhrLang-1.1.4.jar input/sample.dhr
    ```
 
 ### Option 2: Build from Source
@@ -78,13 +78,13 @@ git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew shadowJar
 # The JAR will be in build/libs/
-java -jar build/libs/DhrLang-1.1.3.jar input/sample.dhr
+java -jar build/libs/DhrLang-1.1.4.jar input/sample.dhr
 ```
 
 ### CLI Options
 ```bash
 --help           Show usage and options
---version        Print version (e.g., "DhrLang version 1.1.3")
+--version        Print version (e.g., "DhrLang version 1.1.4")
 --json           Output diagnostics as JSON (see JSON Diagnostics below)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics

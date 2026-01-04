@@ -6,8 +6,8 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 
 ### Option 1: Download Release (Recommended)
 1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
-2. Download `DhrLang-1.1.3.jar` (fat JAR with all dependencies)
-3. Run: `java -jar DhrLang-1.1.3.jar input/sample.dhr`
+2. Download `DhrLang-1.1.4.jar` (fat JAR with all dependencies)
+3. Run: `java -jar DhrLang-1.1.4.jar input/sample.dhr`
 
 **Requirements**: Java 17 or higher
 
@@ -16,13 +16,13 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew shadowJar
-java -jar build/libs/DhrLang-1.1.3.jar input/sample.dhr
+java -jar build/libs/DhrLang-1.1.4.jar input/sample.dhr
 ```
 
 ### CLI Options
 ```bash
 --help           Show usage and options
---version        Print version (e.g., "DhrLang version 1.1.3")
+--version        Print version (e.g., "DhrLang version 1.1.4")
 --json           Output diagnostics as JSON (machine-readable)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics
@@ -47,7 +47,7 @@ class Main {
 
 Run it:
 ```bash
-java -jar DhrLang-1.1.3.jar hello.dhr
+java -jar DhrLang-1.1.4.jar hello.dhr
 ```
 
 Output:

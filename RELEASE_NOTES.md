@@ -1,5 +1,11 @@
 # 🚀 DhrLang Release Notes
 
+## v1.1.4 - Hotfix Release *(Jan 2026)*
+
+### 🔧 Fixes
+- **Release Pipeline**: Fixed GitHub Actions release workflow stability.
+- **Extension Bundle**: Ensured correct bundling of the compiler JAR in the VS Code extension.
+
 ## v1.1.3 - Current Release Line *(Nov 2025)*
 
 ### 🚀 Zero Config Experience
