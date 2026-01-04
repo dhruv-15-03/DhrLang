@@ -3,7 +3,7 @@
 ## Pre-Release Steps
 
 ### 1. Version Management
-- [ ] Update `version` in `build.gradle` to the target release version (currently `1.1.4`)
+- [ ] Update `version` in `build.gradle` to the target release version (currently `1.1.5`)
 - [ ] Ensure version matches any references in documentation
 
 ### 2. Build and Test
@@ -21,16 +21,16 @@
 ls build\libs\DhrLang-*.jar
 
 # Test version
-java -jar build\libs\DhrLang-1.1.4.jar --version
+java -jar build\libs\DhrLang-1.1.5.jar --version
 
 # Test help
-java -jar build\libs\DhrLang-1.1.4.jar --help
+java -jar build\libs\DhrLang-1.1.5.jar --help
 
 # Test a working program
-java -jar build\libs\DhrLang-1.1.4.jar input\simple_working_test.dhr
+java -jar build\libs\DhrLang-1.1.5.jar input\simple_working_test.dhr
 
 # Test JSON diagnostics (should output clean JSON only)
-java -jar build\libs\DhrLang-1.1.4.jar --json --time input\parser_error_test.dhr
+java -jar build\libs\DhrLang-1.1.5.jar --json --time input\parser_error_test.dhr
 ```
 
 ### 4. Quality Checks
@@ -44,18 +44,18 @@ java -jar build\libs\DhrLang-1.1.4.jar --json --time input\parser_error_test.dhr
 
 ### 1. Create Git Tag
 ```bash
-git tag -a v1.1.4 -m "Release version 1.1.4"
-git push origin v1.1.4
+git tag -a v1.1.5 -m "Release version 1.1.5"
+git push origin v1.1.5
 ```
 
 ### 2. Create GitHub Release
 1. Go to: https://github.com/dhruv-15-03/DhrLang/releases/new
-2. Choose tag: `v1.1.4`
-3. Release title: `DhrLang v1.1.4`
+2. Choose tag: `v1.1.5`
+3. Release title: `DhrLang v1.1.5`
 4. Description: Include highlights from `CHANGELOG.md`
 5. Upload assets:
-   - `build/libs/DhrLang-1.1.4.jar` (required)
-   - Optional: Create a ZIP with `lib/DhrLang-1.1.4.jar` and `LICENSE`
+   - `build/libs/DhrLang-1.1.5.jar` (required)
+   - Optional: Create a ZIP with `lib/DhrLang-1.1.5.jar` and `LICENSE`
 
 ### 3. Verify Release
 - [ ] Download the release JAR from GitHub
@@ -72,7 +72,7 @@ git push origin v1.1.4
 - [ ] Announce release (if applicable)
 - [ ] Update any external documentation or project pages
 
-## Current Release Status (v1.1.4)
+## Current Release Status (v1.1.5)
 
 ### ✅ Completed
 - Build configuration finalized (`shadowJar` produces fat JAR)
@@ -85,8 +85,8 @@ git push origin v1.1.4
 - README updated with production instructions
 
 ### 📋 Ready for Release
-- Version: `1.1.4`
-- Artifact: `build/libs/DhrLang-1.1.4.jar` (approx ~4-6 MB with dependencies)
+- Version: `1.1.5`
+- Artifact: `build/libs/DhrLang-1.1.5.jar` (approx ~4-6 MB with dependencies)
 - Java requirement: Java 17+
 - Platforms: Windows, Linux, macOS (JVM-based)
 

@@ -100,7 +100,7 @@ Runtime safety flags (JVM system properties):
 DhrLang can emit machine-readable diagnostics in JSON format for tooling integration:
 
 ```powershell
-java -jar DhrLang-1.1.3.jar --json --time program.dhr
+java -jar DhrLang-1.1.5.jar --json --time program.dhr
 ```
 
 Output conforms to `diagnostics.schema.json` (JSON Schema v7) with:
@@ -132,7 +132,7 @@ Set-Location DhrLang
 To build the production fat JAR:
 ```powershell
 ./gradlew.bat shadowJar
-# Output: build/libs/DhrLang-1.1.3.jar
+# Output: build/libs/DhrLang-1.1.5.jar
 ```
 
 ### Running DhrLang Programs
@@ -145,7 +145,7 @@ Linux/macOS:
 java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
 
 # Using the fat JAR
-java -jar build/libs/DhrLang-1.1.3.jar path/to/your/file.dhr
+java -jar build/libs/DhrLang-1.1.5.jar path/to/your/file.dhr
 ```
 
 Windows (PowerShell):
