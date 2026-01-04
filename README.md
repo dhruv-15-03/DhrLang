@@ -63,28 +63,34 @@ Some constructs (advanced exception types, modules, concurrency) are either expe
 - **Java**: JDK 17 or higher
 - **OS**: Windows, macOS, or Linux
 
-### Option 1: Download Release (Recommended)
+### Option 1: VS Code Extension (Easiest)
+1. Install the **DhrLang Support** extension from the VS Code Marketplace.
+2. Ensure you have **Java 17+** installed.
+3. Open any `.dhr` file and run it directly (Ctrl+F5).
+   - **Zero Config**: The extension bundles the compiler, so you don't need to download the JAR manually.
+
+### Option 2: Download Release (Manual CLI)
 1. Go to the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
-2. Download the latest `DhrLang-1.1.4.jar` (fat JAR).
+2. Download the latest `DhrLang-1.1.6.jar` (fat JAR).
 3. Run it directly:
    ```bash
-   java -jar DhrLang-1.1.4.jar input/sample.dhr
+   java -jar DhrLang-1.1.6.jar input/sample.dhr
    ```
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 If you want to contribute or use the latest development version:
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew shadowJar
 # The JAR will be in build/libs/
-java -jar build/libs/DhrLang-1.1.4.jar input/sample.dhr
+java -jar build/libs/DhrLang-1.1.6.jar input/sample.dhr
 ```
 
 ### CLI Options
 ```bash
 --help           Show usage and options
---version        Print version (e.g., "DhrLang version 1.1.4")
+--version        Print version (e.g., "DhrLang version 1.1.6")
 --json           Output diagnostics as JSON (see JSON Diagnostics below)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics

@@ -4,14 +4,20 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 
 ## Quick Start
 
-### Option 1: Download Release (Recommended)
+### Option 1: VS Code Extension (Easiest)
+1. Install **DhrLang Support** from the VS Code Marketplace.
+2. Ensure **Java 17+** is installed.
+3. Open a `.dhr` file and click "Run" or press `Ctrl+F5`.
+   - The extension includes the compiler, so no extra setup is needed!
+
+### Option 2: Download Release (CLI)
 1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
 2. Download `DhrLang-1.1.6.jar` (fat JAR with all dependencies)
 3. Run: `java -jar DhrLang-1.1.6.jar input/sample.dhr`
 
 **Requirements**: Java 17 or higher
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
@@ -47,7 +53,7 @@ class Main {
 
 Run it:
 ```bash
-java -jar DhrLang-1.1.4.jar hello.dhr
+java -jar DhrLang-1.1.6.jar hello.dhr
 ```
 
 Output:
