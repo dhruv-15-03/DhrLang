@@ -178,7 +178,7 @@ if (age >= 18) {
 
 ## Examples Gallery
 
-Explore `input/` directory for comprehensive examples:
+Explore `input/` directory for basic examples:
 - **Basic Syntax**: `test_basic_syntax.dhr`
 - **OOP Features**: `test_oop_features.dhr` 
 - **Arrays & Collections**: `test_arrays.dhr`

@@ -8,9 +8,6 @@ If you want maximum coverage (including edge cases and negative tests), use the 
 
 - [input/sample.dhr](input/sample.dhr) — minimal program covering basics
 - [input/test_basic_syntax.dhr](input/test_basic_syntax.dhr) — syntax coverage
-- [input/test_arrays.dhr](input/test_arrays.dhr) — arrays + `arrayLength`
-- [input/test_oop_features.dhr](input/test_oop_features.dhr) — classes/fields/methods
-- [input/test_exceptions.dhr](input/test_exceptions.dhr) and [input/test_edge_exceptions.dhr](input/test_edge_exceptions.dhr) — `try/catch/finally`, typed catches
 
 ## Runnable Demos (Top-level)
 

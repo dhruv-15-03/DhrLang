@@ -41,9 +41,9 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ### Manual (VSIX)
 If Marketplace listing isn’t live yet or you are testing a local build:
-1. Build the extension (see Packaging below) to produce `dhrlang-vscode-1.1.2.vsix`
+1. Build the extension (see Packaging below) to produce `dhrlang-vscode-1.1.3.vsix`
 2. VS Code Command Palette: “Extensions: Install from VSIX...” and select the file
-   - OR from shell: `code --install-extension dhrlang-vscode-1.1.2.vsix`
+   - OR from shell: `code --install-extension dhrlang-vscode-1.1.3.vsix`
 
 ## 🚧 Packaging / Updating the VSIX
 
@@ -53,7 +53,7 @@ The repository currently contains an older `dhrlang-vscode-1.0.0.vsix`. Rebuild 
    - Install dependencies: `npm ci`
    - (If not installed) `npm install -g @vscode/vsce`
 2. Compile: `npm run compile`
-3. Package: `vsce package` (produces `dhrlang-vscode-1.1.2.vsix`)
+3. Package: `vsce package` (produces `dhrlang-vscode-1.1.3.vsix`)
 4. (Optional) Publish: `vsce publish patch` (requires a Personal Access Token and verified publisher)
 
 ## 🚀 Quick Start

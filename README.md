@@ -60,33 +60,25 @@ Some constructs (advanced exception types, modules, concurrency) are either expe
 ## Installation
 
 ### Prerequisites
-- Java 17 or higher
-- Gradle 8.0 or higher
- - Tested on Java 17 and 21 in CI (Ubuntu); local development verified on Windows.
+- **Java**: JDK 17 or higher
+- **OS**: Windows, macOS, or Linux
 
-### Install (Download Release)
-- Download the latest release ZIP from: https://github.com/dhruv-15-03/DhrLang/releases/latest
-- Extract the ZIP; inside `lib/` you’ll find a runnable fat JAR (shadow JAR) with `Main-Class` set.
+### Option 1: Download Release (Recommended)
+1. Go to the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. Download the latest `DhrLang-1.1.3.jar` (fat JAR).
+3. Run it directly:
+   ```bash
+   java -jar DhrLang-1.1.3.jar input/sample.dhr
+   ```
 
-Linux/macOS:
+### Option 2: Build from Source
+If you want to contribute or use the latest development version:
 ```bash
-cd path/to/DhrLang-<version>/lib
-java -jar DhrLang-<version>.jar input/sample.dhr
-```
-
-Windows (PowerShell):
-```powershell
-Set-Location path\to\DhrLang-<version>\lib
-java -jar DhrLang-<version>.jar input\sample.dhr
-```
-
-Alternatively, download just the JAR directly from Releases and run:
-```powershell
-# Windows
-java -jar DhrLang-1.1.3.jar path\to\program.dhr
-
-# Linux/macOS
-java -jar DhrLang-1.1.3.jar path/to/program.dhr
+git clone https://github.com/dhruv-15-03/DhrLang.git
+cd DhrLang
+./gradlew shadowJar
+# The JAR will be in build/libs/
+java -jar build/libs/DhrLang-1.1.3.jar input/sample.dhr
 ```
 
 ### CLI Options
