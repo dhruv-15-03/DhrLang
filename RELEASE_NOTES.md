@@ -2,6 +2,10 @@
 
 ## v1.1.3 - Current Release Line *(Nov 2025)*
 
+### 🚀 Zero Config Experience
+- **Bundled Compiler**: The VS Code extension now includes the compiler JAR. Users can just install the extension and run code immediately without manual setup.
+- **Simplified Examples**: Cleaned up the repository to focus on high-quality, working examples in `input/`.
+
 ### ✅ Runtime & Backend Updates
 - IR and bytecode backends are supported via `--backend=ir` / `--backend=bytecode`.
 - Backend selection is authoritative (no AST fallback).

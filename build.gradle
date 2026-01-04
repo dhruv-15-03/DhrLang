@@ -166,6 +166,17 @@ pmd {
     }
 }
 
+// Standard JAR configuration
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'dhrlang.Main',
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version
+        )
+    }
+}
+
 // Shadow JAR configuration (fat JAR)
 shadowJar {
     archiveClassifier.set('')

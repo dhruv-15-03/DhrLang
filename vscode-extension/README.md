@@ -6,6 +6,10 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ## ✨ Features
 
+### 🚀 Zero Config Run
+* **Bundled Compiler**: The extension includes the DhrLang compiler. Just install and run!
+* **No Setup**: You don't need to download the JAR separately.
+
 ### 🎨 Syntax Highlighting
 * Accurate grammar for `.dhr` files
 * Highlights keywords, literals, strings, comments, classes, functions, numbers

@@ -5,7 +5,10 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+let extensionContext: vscode.ExtensionContext;
+
 export function activate(context: vscode.ExtensionContext) {
+    extensionContext = context;
     console.log('DhrLang extension is now active!');
 
     // Register commands
@@ -79,6 +82,16 @@ async function resolveJarPath(): Promise<string | null> {
     const libJars = await vscode.workspace.findFiles(libPattern, undefined, 1);
         if (libJars.length) return libJars[0].fsPath;
     }
+
+    // 3. Check bundled JAR inside the extension
+    if (extensionContext) {
+        const bundledJar = vscode.Uri.joinPath(extensionContext.extensionUri, 'compiler', 'DhrLang.jar');
+        try {
+            await vscode.workspace.fs.stat(bundledJar);
+            return bundledJar.fsPath;
+        } catch { /* ignore */ }
+    }
+
     return null;
 }
 
