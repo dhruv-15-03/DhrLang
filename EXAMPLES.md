@@ -9,18 +9,18 @@ If you want maximum coverage (including edge cases and negative tests), use the 
 - [input/sample.dhr](input/sample.dhr) — minimal program covering basics
 - [input/test_basic_syntax.dhr](input/test_basic_syntax.dhr) — syntax coverage
 
-## Runnable Demos (Top-level)
+## Runnable Demos (examples/)
 
-- [hello.dhr](hello.dhr) — hello world
-- [banking-demo.dhr](banking-demo.dhr) — OOP + methods + fields
-- [professional-demo.dhr](professional-demo.dhr) — larger demo program
+- [examples/hello_world.dhr](examples/hello_world.dhr) — hello world
+- [examples/banking_system.dhr](examples/banking_system.dhr) — OOP + methods + fields
+- [examples/professional_demo.dhr](examples/professional_demo.dhr) — larger demo program
 
 ## How to Run
 
 Using a release JAR:
 
 ```powershell
-java -jar DhrLang-<version>.jar input\sample.dhr
+java -jar DhrLang-<version>.jar examples/hello_world.dhr
 ```
 
 Selecting a backend:
