@@ -5,7 +5,7 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 ## Quick Start
 
 ### Option 1: VS Code Extension (Easiest)
-1. Download `dhrlang-vscode-1.1.6.vsix` from [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+1. Download `dhrlang-vscode-1.1.7.vsix` from [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest).
 2. In VS Code, run command **"Extensions: Install from VSIX..."** and select the file.
 3. Ensure **Java 17+** is installed.
 4. Open a `.dhr` file and click "Run" or press `Ctrl+F5`.
@@ -13,8 +13,8 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 
 ### Option 2: Download Release (CLI)
 1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
-2. Download `DhrLang-1.1.6.jar` (fat JAR with all dependencies)
-3. Run: `java -jar DhrLang-1.1.6.jar input/sample.dhr`
+2. Download `DhrLang-1.1.7.jar` (fat JAR with all dependencies)
+3. Run: `java -jar DhrLang-1.1.7.jar input/sample.dhr`
 
 **Requirements**: Java 17 or higher
 
@@ -23,13 +23,13 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew shadowJar
-java -jar build/libs/DhrLang-1.1.6.jar input/sample.dhr
+java -jar build/libs/DhrLang-1.1.7.jar input/sample.dhr
 ```
 
 ### CLI Options
 ```bash
 --help           Show usage and options
---version        Print version (e.g., "DhrLang version 1.1.6")
+--version        Print version (e.g., "DhrLang version 1.1.7")
 --json           Output diagnostics as JSON (machine-readable)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics

@@ -1,5 +1,10 @@
 # 🚀 DhrLang Release Notes
 
+## v1.1.7 - Hotfix Release *(Jan 2026)*
+
+### 🔧 Fixes
+- **VS Code Extension**: Fixed PowerShell command execution issue where quoted paths caused "Unexpected token" errors.
+
 ## v1.1.6 - Hotfix Release *(Jan 2026)*
 
 ### 🔧 Fixes

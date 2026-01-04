@@ -115,7 +115,8 @@ async function runDhrLangFile() {
         vscode.window.showErrorMessage('Cannot locate DhrLang.jar. Set dhrlang.jarPath or enable autoDetectJar.');
         return;
     }
-    const cmd = `"${javaPath}" -jar "${jarResolved}" "${document.fileName}"`;
+    const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
+    const cmd = `${javaCmd} -jar "${jarResolved}" "${document.fileName}"`;
     const terminal = vscode.window.createTerminal({ name: 'DhrLang Output', cwd: path.dirname(document.fileName) });
     terminal.show();
     terminal.sendText(cmd);
@@ -141,7 +142,8 @@ async function compileDhrLangFile() {
         vscode.window.showErrorMessage('Cannot locate DhrLang.jar. Set dhrlang.jarPath or enable autoDetectJar.');
         return;
     }
-    const cmd = `"${javaPath}" -jar "${jarResolved}" --check "${document.fileName}"`;
+    const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
+    const cmd = `${javaCmd} -jar "${jarResolved}" --check "${document.fileName}"`;
     try {
         const { stdout, stderr } = await execAsync(cmd, { cwd: path.dirname(document.fileName), encoding: 'utf8' });
         if (stderr) {
