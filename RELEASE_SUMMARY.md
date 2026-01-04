@@ -5,7 +5,7 @@
 ### 🚀 Core Infrastructure
 - **✅ VS Code Extension**: Fully functional with syntax highlighting, IntelliSense, code completion, and run commands
 - **✅ Compiler Distribution**: Fat JAR built via Gradle (e.g., `build/libs/DhrLang-<version>.jar`)
-- **✅ GitHub Release**: Official v1.1.5 tagged and pushed with all release artifacts
+- **✅ GitHub Release**: Official v1.1.6 tagged and pushed with all release artifacts
 - **✅ Automated Workflows**: GitHub Actions configured for releases, VS Code extension publishing, and multi-platform distribution
 
 ### 📚 Complete Documentation Suite
@@ -46,7 +46,7 @@
 ### Immediate Actions (Ready to Execute)
 1. **VS Code Marketplace Publication**
    ```bash
-   vsce publish --packagePath dhrlang-vscode-1.1.5.vsix
+   vsce publish --packagePath dhrlang-vscode-1.1.6.vsix
    ```
 
 2. **Monitor GitHub Actions**

@@ -1,5 +1,10 @@
 # 🚀 DhrLang Release Notes
 
+## v1.1.6 - Hotfix Release *(Jan 2026)*
+
+### 🔧 Fixes
+- **Extension Bundle**: Fixed build pipeline to correctly bundle the compiler JAR in the VS Code extension.
+
 ## v1.1.5 - Hotfix Release *(Jan 2026)*
 
 ### 🔧 Fixes

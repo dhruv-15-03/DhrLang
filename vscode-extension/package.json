@@ -2,7 +2,7 @@
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting, snippets, run/compile helpers for the DhrLang language (num/duo/sab/kya/kaam)",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "publisher": "dhruv-15-03",
   "engines": {
     "vscode": "^1.74.0"

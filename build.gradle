@@ -12,7 +12,7 @@ plugins {
 }
 
 group = 'com.dhrlang'
-version = '1.1.5'
+version = '1.1.6'
 description = 'DhrLang Programming Language - Modern static language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
 
 application {

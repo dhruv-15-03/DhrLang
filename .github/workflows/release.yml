@@ -109,6 +109,11 @@ jobs:
       - name: Package VS Code extension (vsix)
         run: |
           echo "Packaging VS Code extension..."
+          
+          # Copy the built JAR to the extension compiler directory
+          mkdir -p vscode-extension/compiler
+          cp release/DhrLang.jar vscode-extension/compiler/DhrLang.jar
+          
           pushd vscode-extension
           npm ci --no-audit --no-fund
           npx vsce package --no-yarn || (npm install -g @vscode/vsce && vsce package --no-yarn)
