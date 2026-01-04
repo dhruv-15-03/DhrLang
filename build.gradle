@@ -266,7 +266,8 @@ publishing {
 
 // Signing configuration (for Maven Central)
 signing {
-    required = { gradle.taskGraph.hasTask("publish") }
+    def hasSigningKey = project.hasProperty("signingKey") || project.hasProperty("signing.keyId")
+    required = { gradle.taskGraph.hasTask("publish") && hasSigningKey }
     sign publishing.publications.maven
 }
 
