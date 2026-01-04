@@ -7,7 +7,7 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 ### Option 1: Download Release (Recommended)
 1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
 2. Download `DhrLang-1.1.3.jar` (fat JAR with all dependencies)
-3. Run: `java -jar DhrLang-1.1.3.jar examples/hello_world.dhr`
+3. Run: `java -jar DhrLang-1.1.3.jar input/sample.dhr`
 
 **Requirements**: Java 17 or higher
 

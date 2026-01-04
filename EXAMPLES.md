@@ -4,23 +4,18 @@ This document lists **runnable** DhrLang example programs that match the current
 
 If you want maximum coverage (including edge cases and negative tests), use the `input/` suite.
 
-## Quick Start (Recommended)
+## Runnable Demos
 
 - [input/sample.dhr](input/sample.dhr) — minimal program covering basics
 - [input/test_basic_syntax.dhr](input/test_basic_syntax.dhr) — syntax coverage
-
-## Runnable Demos (examples/)
-
-- [examples/hello_world.dhr](examples/hello_world.dhr) — hello world
-- [examples/banking_system.dhr](examples/banking_system.dhr) — OOP + methods + fields
-- [examples/professional_demo.dhr](examples/professional_demo.dhr) — larger demo program
+- [input/demo.dhr](input/demo.dhr) — complete feature demo (OOP, fields, methods)
 
 ## How to Run
 
 Using a release JAR:
 
 ```powershell
-java -jar DhrLang-<version>.jar examples/hello_world.dhr
+java -jar DhrLang-<version>.jar input/sample.dhr
 ```
 
 Selecting a backend:
