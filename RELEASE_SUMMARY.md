@@ -5,7 +5,7 @@
 ### 🚀 Core Infrastructure
 - **✅ VS Code Extension**: Fully functional with syntax highlighting, IntelliSense, code completion, and run commands
 - **✅ Compiler Distribution**: Fat JAR built via Gradle (e.g., `build/libs/DhrLang-<version>.jar`)
-- **✅ GitHub Release**: Official v1.1.7 tagged and pushed with all release artifacts
+- **✅ GitHub Release**: Official v1.1.8 tagged and pushed with all release artifacts
 - **✅ Automated Workflows**: GitHub Actions configured for releases, VS Code extension publishing, and multi-platform distribution
 
 ### 📚 Complete Documentation Suite

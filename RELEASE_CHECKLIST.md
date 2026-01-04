@@ -3,7 +3,7 @@
 ## Pre-Release Steps
 
 ### 1. Version Management
-- [ ] Update `version` in `build.gradle` to the target release version (currently `1.1.7`)
+- [ ] Update `version` in `build.gradle` to the target release version (currently `1.1.8`)
 - [ ] Ensure version matches any references in documentation
 
 ### 2. Build and Test
