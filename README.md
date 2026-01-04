@@ -64,9 +64,10 @@ Some constructs (advanced exception types, modules, concurrency) are either expe
 - **OS**: Windows, macOS, or Linux
 
 ### Option 1: VS Code Extension (Easiest)
-1. Install the **DhrLang Support** extension from the VS Code Marketplace.
-2. Ensure you have **Java 17+** installed.
-3. Open any `.dhr` file and run it directly (Ctrl+F5).
+1. Download the **DhrLang Support** extension (`.vsix`) from the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. Install it in VS Code (Command Palette -> "Install from VSIX").
+3. Ensure you have **Java 17+** installed.
+4. Open any `.dhr` file and run it directly (Ctrl+F5).
    - **Zero Config**: The extension bundles the compiler, so you don't need to download the JAR manually.
 
 ### Option 2: Download Release (Manual CLI)

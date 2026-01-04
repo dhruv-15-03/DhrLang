@@ -5,9 +5,10 @@ DhrLang currently ships with an **English-core token set** (`class`, `static`, `
 ## Quick Start
 
 ### Option 1: VS Code Extension (Easiest)
-1. Install **DhrLang Support** from the VS Code Marketplace.
-2. Ensure **Java 17+** is installed.
-3. Open a `.dhr` file and click "Run" or press `Ctrl+F5`.
+1. Download `dhrlang-vscode-1.1.6.vsix` from [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. In VS Code, run command **"Extensions: Install from VSIX..."** and select the file.
+3. Ensure **Java 17+** is installed.
+4. Open a `.dhr` file and click "Run" or press `Ctrl+F5`.
    - The extension includes the compiler, so no extra setup is needed!
 
 ### Option 2: Download Release (CLI)

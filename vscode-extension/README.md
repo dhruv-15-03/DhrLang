@@ -38,17 +38,19 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ## 🛠 Installation
 
-### From Marketplace (Recommended)
+### From Marketplace (Coming Soon)
+*Once published to the VS Code Marketplace:*
 1. Open VS Code
 2. Extensions (Ctrl+Shift+X)
 3. Search: `DhrLang Support` (publisher: `dhruv-15-03`)
 4. Install
 
-### Manual (VSIX)
-If Marketplace listing isn’t live yet or you are testing a local build:
-1. Build the extension (see Packaging below) to produce `dhrlang-vscode-1.1.4.vsix`
-2. VS Code Command Palette: “Extensions: Install from VSIX...” and select the file
-   - OR from shell: `code --install-extension dhrlang-vscode-1.1.4.vsix`
+### Manual (VSIX) - Recommended
+1. Download `dhrlang-vscode-1.1.6.vsix` from the [GitHub Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest) page.
+2. Open VS Code.
+3. Press `Ctrl+Shift+P` (Command Palette).
+4. Type "Install from VSIX" and select **Extensions: Install from VSIX...**.
+5. Select the downloaded `.vsix` file.
 
 ## 🚧 Packaging / Updating the VSIX
 
