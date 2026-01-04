@@ -7,7 +7,7 @@ import java.util.*;
 /** Serializes IR program to a simple DhrLang bytecode (.dbc). */
 public class BytecodeWriter {
     private static final int MAGIC = 0x44484243; // 'DHBC'
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     private static class ConstPool {
         final Map<Object,Integer> indexMap = new HashMap<>();
@@ -48,6 +48,7 @@ public class BytecodeWriter {
                     else if(ins instanceof IrSetStatic ss){ cp.indexOf(ss.className); cp.indexOf(ss.fieldName); pc++; }
                     else if(ins instanceof IrGetField gf){ cp.indexOf(gf.fieldName); pc++; }
                     else if(ins instanceof IrSetField sf){ cp.indexOf(sf.fieldName); pc++; }
+                    else if(ins instanceof IrNewArray na){ if(na.elementType!=null) cp.indexOf(na.elementType); pc++; }
                     else if(ins instanceof IrTryPush tp){ cp.indexOf(tp.catchType); pc++; }
                     else if(ins instanceof IrTryPop){ pc++; }
                     else if(ins instanceof IrThrow th){ pc++; }
@@ -101,10 +102,14 @@ public class BytecodeWriter {
                         out.writeInt(cmp.leftSlot); out.writeInt(cmp.rightSlot); out.writeInt(cmp.targetSlot);
                     } else if(ins instanceof IrJump j){
                         out.writeInt(BytecodeOpcode.JUMP.code);
-                        out.writeInt(labelPc.getOrDefault(j.label, -1));
+                        Integer target = labelPc.get(j.label);
+                        if(target == null) throw new IllegalArgumentException("Unresolved label in function "+f.name+": "+j.label);
+                        out.writeInt(target);
                     } else if(ins instanceof IrJumpIfFalse jf){
                         out.writeInt(BytecodeOpcode.JUMP_IF_FALSE.code);
-                        out.writeInt(jf.condSlot); out.writeInt(labelPc.getOrDefault(jf.label, -1));
+                        Integer target = labelPc.get(jf.label);
+                        if(target == null) throw new IllegalArgumentException("Unresolved label in function "+f.name+": "+jf.label);
+                        out.writeInt(jf.condSlot); out.writeInt(target);
                     } else if(ins instanceof IrPrint p){
                         out.writeInt(BytecodeOpcode.PRINT.code);
                         out.writeInt(p.slot); out.writeBoolean(p.newline);
@@ -118,6 +123,7 @@ public class BytecodeWriter {
                     } else if(ins instanceof IrNewArray na){
                         out.writeInt(BytecodeOpcode.NEW_ARRAY.code);
                         out.writeInt(na.sizeSlot); out.writeInt(na.targetSlot);
+                        out.writeInt(na.elementType==null? -1 : cp.indexOf(na.elementType));
                     } else if(ins instanceof IrLoadElement le){
                         out.writeInt(BytecodeOpcode.LOAD_ELEM.code);
                         out.writeInt(le.arraySlot); out.writeInt(le.indexSlot); out.writeInt(le.targetSlot);
@@ -155,7 +161,9 @@ public class BytecodeWriter {
                         out.writeInt(sf.valueSlot);
                     } else if(ins instanceof IrTryPush tp){
                         out.writeInt(BytecodeOpcode.TRY_PUSH.code);
-                        out.writeInt(labelPc.getOrDefault(tp.catchLabel, -1));
+                        Integer target = labelPc.get(tp.catchLabel);
+                        if(target == null) throw new IllegalArgumentException("Unresolved label in function "+f.name+": "+tp.catchLabel);
+                        out.writeInt(target);
                         out.writeInt(cp.indexOf(tp.catchType));
                     } else if(ins instanceof IrTryPop){
                         out.writeInt(BytecodeOpcode.TRY_POP.code);

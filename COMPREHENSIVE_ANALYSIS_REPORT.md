@@ -2,15 +2,15 @@
 
 ## Executive Summary
 
-DhrLang is a sophisticated, object-oriented programming language compiler written in Java that combines modern programming language features with Hindi keywords. The compiler implements a complete compilation pipeline from lexical analysis through type checking to interpretation, with robust error handling and comprehensive standard library support.
+DhrLang is a sophisticated, object-oriented programming language toolchain written in Java. It implements a complete compilation pipeline (lexing → parsing → type checking → execution) with robust error handling and comprehensive standard library support. The runtime supports multiple execution backends, including a bytecode VM.
 
 ## Language Overview
 
 ### Core Philosophy
-- **Localization**: Uses Hindi keywords (`kaam`, `num`, `sab`, `kya`) to make programming more accessible to Hindi speakers
+- **Readable Core Tokens**: Uses a small, consistent core token set (`kaam`, `num`, `duo`, `sab`, `kya`, `any`) alongside standard structural keywords (`class`, `if`, `for`, etc.)
 - **Modern Design**: Incorporates contemporary language features like generics, interfaces, and static typing
 - **Educational Focus**: Designed with clear error messages and educational use in mind
-- **Java Interoperability**: Built on JVM foundation with familiar syntax patterns
+- **JVM Foundation**: Runs on the JVM and leverages the Java runtime for portability
 
 ### Data Types
 
@@ -35,7 +35,7 @@ DhrLang is a sophisticated, object-oriented programming language compiler writte
 
 **Capabilities**:
 - **101 Token Types**: Comprehensive token recognition including operators, keywords, literals
-- **Hindi Keywords**: `num`, `duo`, `ek`, `sab`, `kya`, `kaam` alongside English keywords
+- **Core Tokens**: `num`, `duo`, `ek`, `sab`, `kya`, `kaam` alongside structural keywords
 - **Operators**: Arithmetic (`+`, `-`, `*`, `/`, `%`), logical (`&&`, `||`, `!`), comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`)
 - **Special Operators**: Increment/decrement (`++`, `--`), assignment (`=`)
 - **Comments**: Single-line (`//`) and multi-line (`/* */`) comment support
@@ -60,7 +60,6 @@ DhrLang is a sophisticated, object-oriented programming language compiler writte
 - **Array Operations**: Array literals, indexing, and new array creation
 
 **Advanced Features**:
-- **Method Overloading**: Support for method overloading resolution
 - **Static Members**: Static fields and methods with proper access semantics
 - **Access Modifiers**: `private`, `protected`, `public` with proper visibility rules
 - **Abstract Classes**: Abstract class and method support
@@ -105,7 +104,7 @@ DhrLang is a sophisticated, object-oriented programming language compiler writte
 **Implementation**: `dhrlang.interpreter.Interpreter`
 
 **Execution Engine**:
-- **Tree-Walking Interpreter**: Direct AST interpretation
+- **Multiple Backends**: AST interpreter (tree-walking), IR interpreter, and a bytecode VM backend
 - **Environment-Based Scoping**: Lexical scoping with nested environments
 - **Call Stack Management**: Function call stack with overflow protection
 - **Exception Propagation**: Comprehensive exception handling and propagation
@@ -295,8 +294,8 @@ DhrException (base)
 3. **Rich Standard Library**: Comprehensive built-in functions
 4. **Modern Features**: Generics, interfaces, exceptions
 5. **Educational Design**: Clear syntax and helpful error messages
-6. **Hindi Localization**: Accessibility to Hindi speakers
-7. **Java Integration**: Built on proven JVM technology
+6. **JVM Foundation**: Portable runtime on the JVM
+7. **Multiple Backends**: AST/IR/bytecode execution options
 
 ### Advanced Features
 1. **Generic Programming**: Type-safe generic classes and interfaces
@@ -304,7 +303,6 @@ DhrException (base)
 3. **Multiple Inheritance**: Interface-based multiple inheritance
 4. **Exception Safety**: Comprehensive exception handling
 5. **Static Analysis**: Dead code detection and warnings
-6. **Method Overloading**: Compile-time method resolution
 
 ## Limitations & Areas for Improvement
 
@@ -312,12 +310,12 @@ DhrException (base)
 1. **Generic Arrays**: Generic array declarations not fully supported
 2. **Type Inference**: Limited type inference capabilities
 3. **Null Safety**: Basic null checking, could be more comprehensive
-4. **Performance**: Interpreted execution (no compilation to bytecode)
+4. **Performance**: Performance varies by backend; further optimization work is ongoing
 5. **Concurrency**: No built-in concurrency support
 6. **Modules**: No package/module system
 
 ### Potential Enhancements
-1. **JIT Compilation**: Bytecode generation and optimization
+1. **Optimization/JIT**: Additional bytecode/IR optimizations and potential JIT work
 2. **Advanced Generics**: Wildcard types, better bounds
 3. **Pattern Matching**: Modern pattern matching constructs
 4. **Null Safety**: Kotlin-style null safety
@@ -340,7 +338,7 @@ DhrException (base)
 
 ## Conclusion
 
-DhrLang represents a sophisticated and well-engineered programming language implementation that successfully combines modern language features with accessibility through Hindi keywords. The compiler demonstrates:
+DhrLang represents a sophisticated and well-engineered programming language implementation that combines modern language features with a compact core token set and a multi-backend runtime. The compiler demonstrates:
 
 **Technical Excellence**:
 - Complete compilation pipeline with all major phases
@@ -351,7 +349,6 @@ DhrLang represents a sophisticated and well-engineered programming language impl
 **Educational Value**:
 - Clear syntax that's approachable for beginners
 - Excellent error messages with helpful hints
-- Hindi keywords for better accessibility
 - Comprehensive example programs and test cases
 
 **Professional Quality**:

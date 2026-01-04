@@ -26,7 +26,7 @@ java -jar build/libs/DhrLang-1.1.3.jar input/sample.dhr
 --json           Output diagnostics as JSON (machine-readable)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics
---backend=ast|ir|bytecode  (experimental backends)
+--backend=ast|ir|bytecode  (select execution backend)
 ```
 
 ## Your First DhrLang Program

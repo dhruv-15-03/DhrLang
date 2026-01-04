@@ -19,12 +19,6 @@ public class IrParitySmokeTest {
         String cp = System.getProperty("java.class.path");
         String astOut = run("java","-cp",cp,"dhrlang.Main","input/sample.dhr");
         String irOut = run("java","-cp",cp,"dhrlang.Main","--backend=ir","input/sample.dhr");
-        // Allow IR to have experimental banner; strip it
-        irOut = irOut.replaceFirst("\\[experimental].*?\\n"," ").trim();
-        // If the experimental backend printed and then AST fallback printed the same again, de-duplicate
-        if(irOut.equals(astOut + "\n" + astOut) || irOut.equals(astOut + astOut)){
-            irOut = astOut;
-        }
         assertEquals(astOut, irOut, "AST vs IR output diverged\nAST=\n"+astOut+"\nIR=\n"+irOut);
     }
 }

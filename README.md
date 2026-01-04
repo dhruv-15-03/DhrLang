@@ -8,13 +8,15 @@ DhrLang is a modern, statically typed, object-oriented programming language with
 
 ## Quick Links
 - Getting Started: docs/GETTING_STARTED.md
-- Installation: see Installation
+- Installation: see below
 - Run a program: Running DhrLang Programs
 - Language Spec: SPEC.md
 - Standard Library: STDLIB.md
 - Examples: input/
+- Changelog: CHANGELOG.md
+- Release Checklist: RELEASE_CHECKLIST.md
 - Bytecode / IR Plan: design/bytecode-roadmap.md
- - Bytecode Format: design/bytecode-format.md
+    - Bytecode Format: design/bytecode-format.md
 - Editor Integration: VS Code Extension section
 
 ## Features
@@ -26,7 +28,7 @@ DhrLang is a modern, statically typed, object-oriented programming language with
 - **Generics**: Type parameters on classes/methods with full substitution + diagnostics
 - **Implicit Field Access**: Instance method identifier resolution falls back to fields safely
 - **String & Array Utilities**: Core built-ins (`printLine`, `arrayLength`, substring helpers, etc.)
-- **Structured Error Handling**: `try/catch/finally` (experimental advanced patterns documented separately)
+- **Structured Error Handling**: `try/catch/finally` (including typed catches)
 - **Evaluator Architecture**: Central semantic executor for maintainability & clear runtime rules
 - **Static Initialization Safety**: Detects forward references & dependency cycles early
 
@@ -94,8 +96,13 @@ java -jar DhrLang-1.1.3.jar path/to/program.dhr
 --json           Output diagnostics as JSON (see JSON Diagnostics below)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics
---backend=ast|ir|bytecode  (experimental: IR and bytecode backends)
+--backend=ast|ir|bytecode  (select execution backend)
 ```
+
+Runtime safety flags (JVM system properties):
+- `dhrlang.backend.maxSteps` — instruction step limit (IR + bytecode)
+- `dhrlang.bytecode.untrusted=true` — enables conservative validation + limits for bytecode execution
+- `dhrlang.bytecode.strictEntry` — require an entrypoint (`Main.main` or any `*.main`)
 
 ### JSON Diagnostics
 DhrLang can emit machine-readable diagnostics in JSON format for tooling integration:
@@ -376,10 +383,23 @@ Check out the `input/` directory for comprehensive examples:
  - `duplicate_error_test.dhr`, `parser_error_test.dhr` - Intentional negative tests to verify diagnostics
 
 ## Roadmap & Backend
-High-level roadmap lives in design/bytecode-roadmap.md (IR + bytecode path). Current stable runtime: AST interpreter. IR and bytecode backends are experimental but functional for a substantial subset:
-- Implemented (IR/Bytecode): literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=), if/else, while, short-circuit `&&`/`||`, `break`/`continue`, print/printLine, return (with/without value), unary minus/! and postfix ++/-- on locals, arrays (literal/new/load/store/`arrayLength`), static function calls with return values.
-- Pending: objects/fields (instance/static get/set), exceptions (throw, try/catch/finally) in IR/Bytecode.
-Use `--backend=ir` or `--backend=bytecode` to try them. During the experimental phase, the CLI also runs the AST backend to preserve ground-truth behavior.
+High-level roadmap lives in design/bytecode-roadmap.md (IR + bytecode path).
+
+Backends:
+- `--backend=ast` is the default and is useful for debugging.
+- `--backend=ir` and `--backend=bytecode` are intended to be semantically equivalent to AST for the implemented language feature set.
+- Backend selection is authoritative: IR/bytecode runs do not fall back to AST.
+
+Implemented in IR/Bytecode:
+- Literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=)
+- Control-flow: if/else, while, short-circuit `&&`/`||`, `break`/`continue`
+- print/printLine, return (with/without value), unary minus/! and postfix ++/-- on locals
+- Arrays (literal/new/load/store/`arrayLength`), static function calls
+- Static fields + instance fields
+- Exceptions: `throw`, `try/catch/finally` (including typed catches)
+
+Security note for running untrusted code:
+- Prefer `--backend=bytecode` and run with `-Ddhrlang.bytecode.untrusted=true` to enable strict verification and conservative resource limits.
 
 ## Feature Status
 - Generics: Fully implemented, including type parameter substitution and diagnostics
@@ -417,7 +437,7 @@ Use `--backend=ir` or `--backend=bytecode` to try them. During the experimental 
 
 The official VS Code extension (version aligned with core releases) provides:
 * Syntax highlighting for current English-core tokens
-* Snippets (main class, loops, methods, printLine, experimental try/catch skeleton)
+* Snippets (main class, loops, methods, printLine, try/catch skeleton)
 * Run / Compile commands with status bar JAR detection
 * Optional inline diagnostics (enable via settings)
 
@@ -453,14 +473,14 @@ Flags:
 | `--json` | Emit diagnostics JSON (always includes `schemaVersion` and `timings` when `--time`) |
 | `--time` | Show phase timings and embed timings in JSON |
 | `--no-color` | Disable ANSI color output |
-| `--backend=ast|ir|bytecode` | Select execution backend (IR and bytecode are experimental) |
+| `--backend=ast|ir|bytecode` | Select execution backend |
 | `--emit-ir` | Dump lowered IR (JSON) for debugging |
 | `--emit-bc` | Write compiled bytecode to build/bytecode/Main.dbc |
 
 Behavior:
 * If no file is specified, defaults to `input/sample.dhr`.
 * Exit codes: `0` success or warnings only, `1` compile error, `2` runtime/system error, `65` JSON diagnostics emission with errors.
-* Future flags under design: `--backend`, `--emit-ir`.
+* Future flags under design: additional optimization/debug flags.
 * Diagnostics schema: see `diagnostics.schema.json` (always includes `schemaVersion` and timings object; timings may be zero if error short-circuits).
 
 

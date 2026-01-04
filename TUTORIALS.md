@@ -10,7 +10,7 @@ This updated guide reflects the actual implemented DhrLang syntax present in rep
 | Concept | Token / Pattern |
 |---------|-----------------|
 | Entry point | `class Main { static kaam main() { ... } }` |
-| Primitive types | `num`, `duo` (floating), `sab` (string), `kya` (boolean), `ek` (char), `any` (experimental wildcard) |
+| Primitive types | `num`, `duo` (floating), `sab` (string), `kya` (boolean), `ek` (char), `any` (top type / catch-all) |
 | Void-like | `kaam` |
 | Control flow | `if`, `else`, `for`, `while`, `break`, `continue` |
 | OOP | `class`, `extends`, `this`, `super` + access: `public`, `private`, `protected` |
@@ -19,7 +19,7 @@ This updated guide reflects the actual implemented DhrLang syntax present in rep
 | String helpers (grammar) | `substring`, `replace`, `charAt` |
 | Initialization pattern | Provide `kaam init(...)` method & call post construction |
 
-Experimental / incomplete: advanced exceptions, full generics semantics, Java collections, static init blocks, switch-case.
+Not yet implemented: Java collections, switch-case.
 
 ## 📚 Tutorial Index
 
@@ -29,9 +29,9 @@ Experimental / incomplete: advanced exceptions, full generics semantics, Java co
 4. [Functions & Methods](#4-functions--methods)
 5. [Arrays](#5-arrays)
 6. [Object-Oriented Programming](#6-object-oriented-programming)
-7. [Error Handling (Experimental)](#7-error-handling-experimental)
+7. [Error Handling](#7-error-handling)
 8. [Strings & Built-ins](#8-strings--built-ins)
-9. [Generics (Experimental)](#9-generics-experimental)
+9. [Generics](#9-generics)
 10. [Access Modifiers](#10-access-modifiers)
 11. [Static Members](#11-static-members)
 12. [Best Practices](#12-best-practices)
@@ -206,7 +206,7 @@ class OOPDemo {
 
 ---
 
-## 7. Error Handling (Experimental)
+## 7. Error Handling
 
 Full try/catch semantics & custom exception classes not confirmed in current test corpus. Treat as provisional.
 
@@ -239,7 +239,7 @@ class StringDemo {
 
 ---
 
-## 9. Generics (Experimental)
+## 9. Generics
 
 Generic parsing exists (per warnings & spec) but runtime behaviors remain evolving.
 

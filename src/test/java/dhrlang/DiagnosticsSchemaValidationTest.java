@@ -30,12 +30,10 @@ public class DiagnosticsSchemaValidationTest {
 
     @Test
     void diagnosticsJsonMatchesSchema() throws Exception {
-        // Create a temp source containing an error to ensure errors[] populated
         File tmp = File.createTempFile("dhr-schema-test-", ".dhr");
         try (FileWriter fw = new FileWriter(tmp)) {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
-        // Build jar path (fallback to classpath execution if not present, to keep test robust in CI)
         String javaExe = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         File libs = new File("build/libs");
         File jar = null;

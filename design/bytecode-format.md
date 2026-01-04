@@ -1,50 +1,100 @@
-# DhrLang Bytecode (DHBC) Format v1
+# DhrLang Bytecode (DHBC) Format v2
 
-Status: Experimental (alpha). Backward compatibility is not yet guaranteed.
+Status: Implemented and versioned. Backward compatibility across major format versions is not guaranteed.
 
-Header:
+This document describes the serialized bytecode consumed by the bytecode VM. It is intended as a developer-facing format reference.
+
+## Header
 - Magic: 0x44484243 ('D' 'H' 'B' 'C') (4 bytes)
-- Version: 1 (4 bytes)
+- Version: 2 (4 bytes)
 
-Constant Pool:
-- u32 count
+## Constant Pool
+- i32 count
 - Repeated entries:
-  - u8 tag: 0=NULL, 1=LONG, 2=DOUBLE, 3=STRING, 4=BOOLEAN
-  - payload per tag (none | i64 | f64 | UTF | u8)
+  - u8 tag:
+    - 0 = NULL
+    - 1 = LONG
+    - 2 = DOUBLE
+    - 3 = STRING
+    - 4 = BOOLEAN
+  - payload per tag:
+    - NULL: none
+    - LONG: i64
+    - DOUBLE: f64
+    - STRING: modified UTF (DataOutput.writeUTF)
+    - BOOLEAN: u8
 
-Functions:
-- u32 functionCount
-- For each function (only the first is executed for now):
-  - UTF functionName
-  - u32 instructionCount (labels elided)
-  - instruction stream:
-    - u32 opcode
-    - operands (u32, i32, or flag) depending on opcode
+Notes:
+- Names (class names, field names, catch types) are stored as STRING entries in the constant pool.
 
-Opcodes (subset aligned with IR Phase 1):
-- 1 CONST: (targetSlot:i32, constIndex:i32)
-- 2 LOAD_LOCAL: (slot:i32, targetSlot:i32)
-- 3 STORE_LOCAL: (sourceSlot:i32, destSlot:i32)
-- 4 ADD | 5 SUB | 6 MUL | 7 DIV: (leftSlot:i32, rightSlot:i32, targetSlot:i32)
-- 8 EQ | 9 NEQ | 10 LT | 11 LE | 12 GT | 13 GE: (leftSlot, rightSlot, targetSlot)
-- 14 JUMP: (targetIndex:i32)
-- 15 JUMP_IF_FALSE: (condSlot:i32, targetIndex:i32)
-- 16 PRINT: (slot:i32, newline:bool)
-- 17 RETURN: (slotOrNeg1:i32)
-- 18 NEG: (sourceSlot:i32, targetSlot:i32)
-- 19 NOT: (sourceSlot:i32, targetSlot:i32)
+## Functions
+- i32 functionCount
+- For each function:
+  - UTF functionName (e.g. "Main.main", "Foo.bar")
+  - i32 instructionCount
+  - instruction stream (instructionCount entries):
+    - i32 opcode
+    - operands (i32 and/or boolean), depending on opcode
 
-Semantics:
-- Locals are an Object[256] register file. Arithmetic uses long/double with string concat fallback for ADD.
-- Truthiness: null=false, boolean as-is, number zero=false, others=true.
-- Comparison: numbers via numeric compare; others via String.compareTo.
-- Division by zero yields NaN for floating path, 0 for integer path (temporary behavior subject to change).
+Entrypoint resolution (VM behavior):
+- Prefer function named "Main.main".
+- Otherwise the first function whose name ends with ".main".
+- If `dhrlang.bytecode.strictEntry=true`, missing entrypoint is rejected.
 
-Limitations:
-- Single function executed; calls/returns not yet supported.
-- No objects/fields, arrays, exceptions, or short-circuit logical ops.
+## Execution Model
+- Each frame has a fixed Object[256] slot array.
+- Calls create new frames; returns can write into a caller slot.
+- Exceptions use a per-frame handler stack.
 
-Planned:
-- Multi-function modules, CALL/RET, stack frame model.
-- Arrays, objects/fields, try/catch.
-- Optimized constant pool and instruction encoding.
+## Opcodes
+All operands are i32 unless specified.
+
+- CONST: (targetSlot, constIndex)
+- LOAD_LOCAL: (slot, targetSlot)
+- STORE_LOCAL: (sourceSlot, destSlot)
+
+- ADD|SUB|MUL|DIV: (leftSlot, rightSlot, targetSlot)
+- EQ|NEQ|LT|LE|GT|GE: (leftSlot, rightSlot, targetSlot)
+
+- JUMP: (targetPc)
+- JUMP_IF_FALSE: (condSlot, targetPc)
+
+- PRINT: (slot, newline:boolean)
+- RETURN: (slotOrNeg1)
+
+- NEG|NOT: (sourceSlot, targetSlot)
+
+- NEW_ARRAY: (sizeSlot, targetSlot, elementTypeConstIndexOrNeg1)
+- LOAD_ELEM: (arraySlot, indexSlot, targetSlot)
+- STORE_ELEM: (arraySlot, indexSlot, valueSlot)
+- ARRAY_LENGTH: (arraySlot, targetSlot)
+
+- CALL: (functionIndex, arg0SlotOrNeg1, arg1SlotOrNeg1, arg2SlotOrNeg1, arg3SlotOrNeg1, destSlotOrNeg1)
+
+- GET_STATIC: (classNameConstIndex, fieldNameConstIndex, targetSlot)
+- SET_STATIC: (classNameConstIndex, fieldNameConstIndex, valueSlot)
+- GET_FIELD: (objectSlot, fieldNameConstIndex, targetSlot)
+- SET_FIELD: (objectSlot, fieldNameConstIndex, valueSlot)
+
+- TRY_PUSH: (catchPc, catchTypeConstIndex)
+- TRY_POP: ()
+- THROW: (valueSlot)
+- CATCH_BIND: (targetSlot)
+
+## Semantics (selected)
+- Truthiness: null=false, boolean as-is, numeric zero=false, others=true.
+- ADD: numeric addition for two numbers; string concatenation if either operand is a string.
+- DIV: division by zero throws a runtime arithmetic error.
+- Arrays: bounds-checked; new arrays are initialized with element-type defaults when available.
+
+## Validation / Untrusted Mode
+The bytecode VM validates bytecode before executing:
+- jump targets must be within the instruction array
+- constant pool indices must be in range and of the expected type
+- function indices must be in range
+- structural validation for try/catch control flow (enabled by default)
+
+For untrusted code, run the VM with:
+- `dhrlang.bytecode.untrusted=true`
+
+This enables conservative size/shape caps for the bytecode and tighter execution limits.

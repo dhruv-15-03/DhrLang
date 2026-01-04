@@ -18,8 +18,23 @@ public enum BytecodeOpcode {
 
     public final int code;
     BytecodeOpcode(int code){ this.code = code; }
+
+    private static final BytecodeOpcode[] BY_CODE;
+    static {
+        int max = 0;
+        for (var op : values()) max = Math.max(max, op.code);
+        BY_CODE = new BytecodeOpcode[max + 1];
+        for (var op : values()) {
+            if (op.code >= 0 && op.code < BY_CODE.length) {
+                BY_CODE[op.code] = op;
+            }
+        }
+    }
+
     public static BytecodeOpcode from(int code){
-        for(var op: values()) if(op.code==code) return op;
-        throw new IllegalArgumentException("Unknown opcode "+code);
+        if(code < 0 || code >= BY_CODE.length || BY_CODE[code] == null) {
+            throw new IllegalArgumentException("Unknown opcode " + code);
+        }
+        return BY_CODE[code];
     }
 }

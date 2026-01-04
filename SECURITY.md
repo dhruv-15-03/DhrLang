@@ -6,6 +6,7 @@ We provide security updates for the following versions of DhrLang:
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 1.1.x   | :white_check_mark: |
 | 1.0.x   | :white_check_mark: |
 | < 1.0   | :x:                |
 
@@ -36,9 +37,9 @@ DhrLang processes user code and executes it. Key security areas:
 
 #### Code Execution
 - Input validation for source code
-- Memory safety in interpreter
 - Resource usage limits
-- Sandbox execution environment
+- Bytecode validation when executing bytecode
+- Sandbox execution environment (recommended for untrusted code)
 
 #### File System Access
 - Restricted file operations
@@ -58,12 +59,19 @@ DhrLang processes user code and executes it. Key security areas:
 4. **Updates**: Keep DhrLang updated to the latest version
 5. **Access Control**: Limit file system and network access
 
+If you run untrusted programs:
+- Prefer the bytecode backend and enable conservative defaults: run with JVM property `dhrlang.bytecode.untrusted=true`.
+- Consider tightening the shared step limit via `dhrlang.backend.maxSteps`.
+- Run inside an OS-level sandbox/container (defense in depth).
+
 ### Security Features
 
 - **Type Safety**: Strong static typing prevents many runtime errors
 - **Bounds Checking**: Array access is bounds-checked at runtime
 - **Exception Handling**: Controlled error propagation
 - **Input Sanitization**: Lexer validates input tokens
+- **Bytecode Verifier**: Bytecode is validated before execution (bounds/indices/control-flow constraints)
+- **Execution Caps**: Configurable limits for bytecode size, constant pool size, function count, instruction count, call depth, handler depth, and instruction steps
 
 ### Known Security Considerations
 

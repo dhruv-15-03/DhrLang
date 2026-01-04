@@ -1,6 +1,6 @@
 # Getting Started with DhrLang
 
-This guide shows how to build and run DhrLang programs on Windows (PowerShell) and how to use the experimental IR/Bytecode backends and diagnostics.
+This guide shows how to build and run DhrLang programs on Windows (PowerShell), how to select execution backends (AST / IR / Bytecode), and how to use diagnostics.
 
 ## Prerequisites
 - Java 17 or newer (21 also supported)
@@ -65,7 +65,7 @@ java -jar build\libs\DhrLang-1.1.3.jar hello.dhr
 - `--json` — emit diagnostics as JSON (see Diagnostics section)
 - `--time` — print phase timings (also included in JSON when `--json`)
 - `--no-color` — disable ANSI colors
-- `--backend=ast|ir|bytecode` — choose execution backend (IR/bytecode are experimental)
+- `--backend=ast|ir|bytecode` — choose execution backend
 - `--emit-ir` — dump lowered IR
 - `--emit-bc` — write compiled bytecode to `build/bytecode/Main.dbc`
 
@@ -74,19 +74,34 @@ Notes:
 - Exit codes: 0 success, 1 compile error, 2 runtime/system error.
 
 ## Switch execution backends
-The default backend is the stable AST interpreter. You can run experimental backends with flags:
+The default backend is the AST interpreter. You can select the IR or bytecode backend with flags:
 ```powershell
-# IR backend (experimental)
+# IR backend
 java -jar build\libs\DhrLang-1.1.3.jar --backend=ir input\test_arrays.dhr
 
-# Bytecode backend (experimental)
+# Bytecode backend
 java -jar build\libs\DhrLang-1.1.3.jar --backend=bytecode input\test_arrays.dhr
 
 # Using Gradle
 ./gradlew.bat run --args="--backend=ir input\test_arrays.dhr"
 ```
 
-Note: IR and bytecode backends are experimental. Both have full parity tests for arrays, calls, fields, and exceptions, and currently fall back to the AST interpreter for full semantics.
+Notes:
+- Backend selection is authoritative: when you choose `--backend=ir` or `--backend=bytecode`, the program executes on that backend (no AST fallback).
+- The test suite enforces parity across AST/IR/bytecode for core semantics.
+
+## Running untrusted programs (bytecode)
+If you execute untrusted code, prefer the bytecode backend with the built-in verifier and conservative defaults:
+```powershell
+java -Ddhrlang.bytecode.untrusted=true -jar build\libs\DhrLang-1.1.3.jar --backend=bytecode input\sample.dhr
+```
+Key runtime flags (as JVM system properties):
+- `dhrlang.bytecode.untrusted` (default: false) — enables conservative limits and strict entry validation.
+- `dhrlang.backend.maxSteps` — instruction step limit (shared by IR and bytecode).
+- `dhrlang.bytecode.strictEntry` — require an entrypoint (`Main.main` or any `*.main`).
+- `dhrlang.bytecode.maxBytes`, `dhrlang.bytecode.maxConstPool`, `dhrlang.bytecode.maxFunctions`, `dhrlang.bytecode.maxInstructionsPerFunction` — size/shape caps for bytecode input.
+- `dhrlang.bytecode.maxCallDepth`, `dhrlang.bytecode.maxHandlersPerFrame` — execution caps.
+- `dhrlang.bytecode.verifyControlFlow` (default: true) — validates try/catch control-flow structure.
 
 ## Inspect IR and Bytecode
 ```powershell
@@ -115,18 +130,16 @@ The JSON schema is validated in tests; see `diagnostics.schema.json` and `Diagno
 - Colored output looks odd:
   Add `--no-color` to disable ANSI sequences in terminals that don’t support them.
 
-## What’s implemented in experimental backends (IR/Bytecode)
+## What’s implemented in IR/Bytecode backends
 - Literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=)
 - Control-flow: if/else, while, short-circuit `&&` and `||`, `break`/`continue`
 - Print/printLine, return (with/without value)
 - Arrays: literal creation, `new`, load/store, `arrayLength`
 - Static function calls with return values
+- Static fields and instance fields
+- Exceptions: `throw`, `try/catch/finally` (including typed catches)
 
-Pending for full parity without AST fallback:
-- Objects and fields (instance/static field get/set)
-- Exceptions (throw, try/catch/finally) in IR/Bytecode
-
-When these are complete, we’ll flip the default backend from AST to Bytecode.
+The default backend remains AST for compatibility and debugging, but IR and bytecode are intended to be semantically equivalent.
 
 ## Next steps
 - Explore examples in `input/`

@@ -1,6 +1,7 @@
 package dhrlang.ir;
 
 import dhrlang.ast.*;
+import dhrlang.error.ErrorFactory;
 import dhrlang.error.ErrorReporter;
 
 /** Very small subset lowering (Phase 1 slice): literals, var decls with literal init, addition, return void. */
@@ -10,19 +11,45 @@ public class AstToIrLowerer {
 
     public IrProgram lower(Program program){
         IrProgram ir = new IrProgram();
-        // Add Main.main first (entry)
+        // Select an entrypoint and add it first.
+        // Prefer Main.main if present; otherwise first static *.main.
+        String entryQualifiedName = null;
+
+        ClassDecl preferredMainClass = null;
         for(ClassDecl cd: program.getClasses()){
-            if(!cd.getName().equals("Main")) continue;
-            cd.getFunctions().stream().filter(m-> m.getName().equals("main")).findFirst()
-                    .ifPresent(f-> ir.functions.add(lowerFunction(f, cd.getName())));
-            break;
+            if("Main".equals(cd.getName())){ preferredMainClass = cd; break; }
         }
-        // Add all other static functions across classes (including Main.* other than main)
+        if(preferredMainClass != null){
+            for(FunctionDecl f : preferredMainClass.getFunctions()){
+                if("main".equals(f.getName()) && f.hasModifier(dhrlang.ast.Modifier.STATIC)){
+                    IrFunction irEntry = lowerFunction(f, preferredMainClass.getName());
+                    entryQualifiedName = irEntry.name;
+                    ir.functions.add(irEntry);
+                    break;
+                }
+            }
+        }
+        if(entryQualifiedName == null){
+            outer:
+            for(ClassDecl cd: program.getClasses()){
+                for(FunctionDecl f : cd.getFunctions()){
+                    if("main".equals(f.getName()) && f.hasModifier(dhrlang.ast.Modifier.STATIC)){
+                        IrFunction irEntry = lowerFunction(f, cd.getName());
+                        entryQualifiedName = irEntry.name;
+                        ir.functions.add(irEntry);
+                        break outer;
+                    }
+                }
+            }
+        }
+
+        // Add all other static functions across classes.
         for(ClassDecl cd: program.getClasses()){
             for(FunctionDecl f: cd.getFunctions()){
-                if(f.getName().equals("main")) continue; // already added above
                 if(f.hasModifier(dhrlang.ast.Modifier.STATIC)){
-                    ir.functions.add(lowerFunction(f, cd.getName()));
+                    IrFunction lowered = lowerFunction(f, cd.getName());
+                    if(entryQualifiedName != null && entryQualifiedName.equals(lowered.name)) continue;
+                    ir.functions.add(lowered);
                 }
             }
         }
@@ -99,9 +126,15 @@ public class AstToIrLowerer {
             String cont = ctx.currentContinue();
             if(cont != null){ out.instructions.add(new IrJump(cont)); }
         } else if(s instanceof TryStmt ts){
+            boolean enteredNestedTryWithinCatch = false;
+            if(ctx.isInCatchBody()){
+                ctx.enterNestedTryWithinCatch();
+                enteredNestedTryWithinCatch = true;
+            }
             String endL = freshLabel("try_end");
             int catchCount = (ts.getCatchClauses()==null)? 0 : ts.getCatchClauses().size();
             String[] catchLabels = new String[catchCount];
+            boolean hasFinally = ts.getFinallyBlock() != null;
             // Pre-create labels for each catch
             for(int i=0;i<catchCount;i++) catchLabels[i] = freshLabel("catch"+i);
             // Push handlers for each catch in reverse order so first clause has highest priority
@@ -110,8 +143,19 @@ public class AstToIrLowerer {
                 String ctype = cc.getExceptionType()!=null? cc.getExceptionType() : "any";
                 out.instructions.add(new IrTryPush(catchLabels[i], ctype));
             }
+            // Track finally scope for returns (and for throws only when there are no catches).
+            // When catches exist, throw inside the try body is intended to transfer to a catch clause
+            // before finally runs.
+            if(hasFinally){
+                ctx.pushFinally(ts.getFinallyBlock(), catchCount == 0, false);
+            }
+
             // Lower try block
             lowerStmt(ts.getTryBlock(), out, ctx, currentClass);
+
+            if(hasFinally){
+                ctx.popFinally();
+            }
             // Pop all handlers on normal exit
             for(int i=0;i<catchCount;i++) out.instructions.add(new IrTryPop());
             // finally on normal flow
@@ -125,16 +169,50 @@ public class AstToIrLowerer {
                 String pname = cc.getParameter()!=null? cc.getParameter() : "e";
                 int slot = ctx.getSlot(pname); if(slot<0) slot = ctx.allocSlot(pname);
                 out.instructions.add(new IrCatchBind(slot));
-                // Lower catch body
+                // Lower catch body with finally scope that applies on throws/returns.
+                if(hasFinally){
+                    ctx.enterCatchBody();
+                    ctx.pushFinally(ts.getFinallyBlock(), true, true);
+                }
                 lowerStmt(cc.getBody(), out, ctx, currentClass);
+                if(hasFinally){
+                    ctx.popFinally();
+                    ctx.exitCatchBody();
+                }
                 // finally after catch
                 if(ts.getFinallyBlock()!=null){ lowerStmt(ts.getFinallyBlock(), out, ctx, currentClass); }
                 out.instructions.add(new IrJump(endL));
             }
             out.instructions.add(new IrLabel(endL));
+
+            if(enteredNestedTryWithinCatch){
+                ctx.exitNestedTryWithinCatch();
+            }
         } else if(s instanceof ThrowStmt th){
+            emitFinallyBlocks(ctx, out, currentClass, true);
             int v = lowerExpr(th.getValue(), out, ctx, currentClass);
             out.instructions.add(new IrThrow(v));
+        } else if(s instanceof ReturnStmt rs){
+            emitFinallyBlocks(ctx, out, currentClass, false);
+            Expression value = rs.getValue();
+            if(value == null){
+                out.instructions.add(new IrReturn(null));
+            } else {
+                int v = lowerExpr(value, out, ctx, currentClass);
+                out.instructions.add(new IrReturn(v));
+            }
+        } else {
+            errorReporter.error(ErrorFactory.getLocation(s),
+                    "IR backend does not support statement: " + (s==null?"<null>":s.getClass().getSimpleName()),
+                    "Run without --backend=ir, or refactor the program to avoid this construct.");
+        }
+    }
+
+    private void emitFinallyBlocks(LoweringContext ctx, IrFunction out, String currentClass, boolean forThrow){
+        for(LoweringContext.FinallyScope scope : ctx.finallyScopes()){
+            if(forThrow && !scope.applyOnThrow) continue;
+            if(forThrow && scope.fromCatchBody && ctx.isInsideNestedTryWithinCatch()) continue;
+            lowerStmt(scope.finallyBlock, out, ctx, currentClass);
         }
     }
 
@@ -172,7 +250,7 @@ public class AstToIrLowerer {
             // Lower array literal by allocating and storing each element
             java.util.List<Expression> elems = arr.getElements();
             int size = ctx.newTemp(); out.instructions.add(new IrConst(size, (long) elems.size()));
-            int arrSlot = ctx.newTemp(); out.instructions.add(new IrNewArray(size, arrSlot));
+            int arrSlot = ctx.newTemp(); out.instructions.add(new IrNewArray(size, arrSlot, null));
             for(int i=0;i<elems.size();i++){
                 int idx = ctx.newTemp(); out.instructions.add(new IrConst(idx, (long) i));
                 int val = lowerExpr(elems.get(i), out, ctx, currentClass);
@@ -183,8 +261,13 @@ public class AstToIrLowerer {
             // Only support first dimension now
             java.util.List<Expression> sizes = na.getSizes();
             Expression sExpr = (sizes!=null && !sizes.isEmpty())? sizes.get(0): na.getSize();
+            if(sizes!=null && sizes.size()>1){
+                errorReporter.error(ErrorFactory.getLocation(na),
+                        "IR backend does not support multi-dimensional array allocation yet.",
+                        "Use the AST backend, or allocate dimensions manually.");
+            }
             int sz = lowerExpr(sExpr, out, ctx, currentClass);
-            int arrSlot = ctx.newTemp(); out.instructions.add(new IrNewArray(sz, arrSlot));
+            int arrSlot = ctx.newTemp(); out.instructions.add(new IrNewArray(sz, arrSlot, na.getElementType()));
             return arrSlot;
         } else if(e instanceof IndexExpr ie){
             int arrS = lowerExpr(ie.getObject(), out, ctx, currentClass);
@@ -236,7 +319,9 @@ public class AstToIrLowerer {
                 out.instructions.add(new IrCall(qn, argSlots, dest));
                 return dest;
             }
-            // Unsupported call for now: yield null
+            errorReporter.error(ErrorFactory.getLocation(ce),
+                    "IR backend does not support this kind of call target.",
+                    "Only simple function calls (name(...) or ClassName.method(...)) are currently supported.");
             int t = ctx.newTemp(); out.instructions.add(new IrConst(t, null)); return t;
         } else if(e instanceof AssignmentExpr ae){
             // Lower RHS then store into existing local slot if present.
@@ -333,7 +418,12 @@ public class AstToIrLowerer {
                     case "<=" -> out.instructions.add(new IrCompare(IrCompare.Op.LE, l, r, t));
                     case ">" -> out.instructions.add(new IrCompare(IrCompare.Op.GT, l, r, t));
                     case ">=" -> out.instructions.add(new IrCompare(IrCompare.Op.GE, l, r, t));
-                    default -> out.instructions.add(new IrConst(t, null));
+                    default -> {
+                        errorReporter.error(ErrorFactory.getLocation(be),
+                                "IR backend does not support binary operator '"+op+"'.",
+                                "Run without --backend=ir, or avoid this operator.");
+                        out.instructions.add(new IrConst(t, null));
+                    }
                 }
                 return t;
             }
@@ -344,34 +434,14 @@ public class AstToIrLowerer {
             switch(op){
                 case "-" -> out.instructions.add(new IrUnaryOp(IrUnaryOp.Op.NEG, inner, t));
                 case "!" -> out.instructions.add(new IrUnaryOp(IrUnaryOp.Op.NOT, inner, t));
-                default -> out.instructions.add(new IrConst(t, null));
+                default -> {
+                    errorReporter.error(ErrorFactory.getLocation(ue),
+                            "IR backend does not support unary operator '"+op+"'.",
+                            "Run without --backend=ir, or avoid this operator.");
+                    out.instructions.add(new IrConst(t, null));
+                }
             }
             return t;
-        } else if(e instanceof PostfixIncrementExpr pie){
-            // Only support variable targets for now
-            Expression tgt = pie.getTarget();
-            if(tgt instanceof VariableExpr ve){
-                String name = ve.getName()!=null? ve.getName().getLexeme(): "";
-                int slot = ctx.getSlot(name);
-                if(slot<0){ slot = ctx.allocSlot(name); out.instructions.add(new IrConst(slot, 0)); }
-                int original = ctx.newTemp();
-                out.instructions.add(new IrLoadLocal(slot, original));
-                int one = ctx.newTemp();
-                out.instructions.add(new IrConst(one, 1));
-                int updated = ctx.newTemp();
-                if(pie.isIncrement()){
-                    out.instructions.add(new IrBinOp(IrBinOp.Op.ADD, original, one, updated));
-                } else {
-                    out.instructions.add(new IrBinOp(IrBinOp.Op.SUB, original, one, updated));
-                }
-                out.instructions.add(new IrStoreLocal(updated, slot));
-                // Postfix yields original value
-                return original;
-            } else {
-                int t = ctx.newTemp();
-                out.instructions.add(new IrConst(t, null));
-                return t;
-            }
         } else if(e instanceof VariableExpr ve){
             String name = ve.getName()!=null? ve.getName().getLexeme(): "";
             int slot = ctx.getSlot(name);
@@ -380,7 +450,12 @@ public class AstToIrLowerer {
             else out.instructions.add(new IrConst(t, null));
             return t;
         }
-        return ctx.newTemp(); // placeholder slot allocation for unsupported exprs
+        errorReporter.error(ErrorFactory.getLocation(e),
+                "IR backend does not support expression: " + (e==null?"<null>":e.getClass().getSimpleName()),
+                "Run without --backend=ir, or refactor the program to avoid this construct.");
+        int t = ctx.newTemp();
+        out.instructions.add(new IrConst(t, null));
+        return t;
     }
 
     private Object literalValue(LiteralExpr le){

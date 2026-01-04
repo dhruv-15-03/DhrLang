@@ -19,12 +19,6 @@ public class BytecodeFieldsParityTest {
         String cp = System.getProperty("java.class.path");
         String astOut = run("java","-cp",cp,"dhrlang.Main","input/test_static_fields.dhr");
         String bcOut = run("java","-cp",cp,"dhrlang.Main","--backend=bytecode","input/test_static_fields.dhr");
-        // Strip experimental banner
-        bcOut = bcOut.replaceFirst("\\[experimental].*?\\n"," ").trim();
-        // De-duplicate in case backend output is followed by AST fallback output
-        if(bcOut.equals(astOut + "\n" + astOut) || bcOut.equals(astOut + astOut)){
-            bcOut = astOut;
-        }
         assertEquals(astOut, bcOut, "AST vs Bytecode output diverged\nAST=\n"+astOut+"\nBC=\n"+bcOut);
     }
 }

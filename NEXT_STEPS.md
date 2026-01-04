@@ -10,7 +10,7 @@
 
 2. **🎯 VS Code Extension**
    - Full syntax highlighting for `.dhr` files
-   - Code completion with Hindi keywords
+   - Code completion/snippets for the current English-core tokens
    - Run/compile commands (Ctrl+F5, Ctrl+Shift+B)
    - Hover information and IntelliSense
    - Code snippets for rapid development
@@ -194,7 +194,7 @@ vsce publish --pat YOUR_PERSONAL_ACCESS_TOKEN
 - **Advanced**: Compiler optimizations, IDE integrations
 
 ### For Users:
-- **Try DhrLang**: Write your first program in Hindi
+- **Try DhrLang**: Write your first program using the current token set
 - **Share Examples**: Submit interesting programs to our gallery
 - **Spread the Word**: Tell others about programming in Hindi
 - **Report Issues**: Help us improve the language

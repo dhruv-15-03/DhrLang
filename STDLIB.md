@@ -5,7 +5,7 @@ This document tracks the currently implemented built-in functions, their stabili
 Stability Levels:
 - Stable: Semantics unlikely to change; relied on by tests.
 - Provisional: May change name or signature pending broader design (flagged in release notes).
-- Experimental: Behind design discussion; subject to removal.
+- Experimental: Under active design discussion; subject to removal.
 
 ## Built-in Functions
 

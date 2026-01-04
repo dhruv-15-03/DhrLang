@@ -17,17 +17,6 @@ public class BytecodeCallsParityTest {
         String cp = System.getProperty("java.class.path");
         String astOut = run("java","-cp",cp,"dhrlang.Main","input/calls_sample.dhr");
         String bcOut = run("java","-cp",cp,"dhrlang.Main","--backend=bytecode","input/calls_sample.dhr");
-        bcOut = bcOut.replaceFirst("\\[experimental].*?\\n"," ").trim();
-        if(bcOut.equals(astOut + "\n" + astOut) || bcOut.equals(astOut + astOut)) bcOut = astOut;
-        String[] astLines = astOut.split("\\n");
-        String[] bcLines = bcOut.split("\\n");
-        if(bcLines.length > astLines.length){
-            StringBuilder sb = new StringBuilder();
-            for(int i=bcLines.length-astLines.length; i<bcLines.length; i++){
-                if(sb.length()>0) sb.append('\n'); sb.append(bcLines[i]);
-            }
-            bcOut = sb.toString();
-        }
         assertEquals(astOut, bcOut, "AST vs Bytecode output diverged on calls test\nAST=\n"+astOut+"\nBC=\n"+bcOut);
     }
 }

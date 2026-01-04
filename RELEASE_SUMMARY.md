@@ -1,11 +1,11 @@
-# 🎉 DhrLang v1.0.0 Official Release - COMPLETE! 
+# 🎉 DhrLang Release Summary (Current)
 
 ## ✅ What We've Successfully Accomplished
 
 ### 🚀 Core Infrastructure
 - **✅ VS Code Extension**: Fully functional with syntax highlighting, IntelliSense, code completion, and run commands
-- **✅ Compiler Distribution**: JAR file built and ready for distribution (`DhrLang-1.0.0.jar`)
-- **✅ GitHub Release**: Official v1.0.0 tagged and pushed with all release artifacts
+- **✅ Compiler Distribution**: Fat JAR built via Gradle (e.g., `build/libs/DhrLang-<version>.jar`)
+- **✅ GitHub Release**: Official v1.1.3 tagged and pushed with all release artifacts
 - **✅ Automated Workflows**: GitHub Actions configured for releases, VS Code extension publishing, and multi-platform distribution
 
 ### 📚 Complete Documentation Suite
@@ -31,14 +31,13 @@
 - **✅ End-to-End Workflow**: Full development cycle from writing to running DhrLang programs
 
 ## 📊 Release Metrics
-- **VS Code Extension Package**: `dhrlang-vscode-1.0.0.vsix` (21.68 KB, 14 files)
-- **Compiler JAR**: `DhrLang-1.0.0.jar` (946,950 bytes)
-- **Documentation**: 7 comprehensive guides totaling 5,608+ lines
-- **GitHub Commit**: 29 files changed, 5,608 insertions
+- **VS Code Extension Package**: `dhrlang-vscode-<version>.vsix`
+- **Compiler JAR**: `DhrLang-<version>.jar`
+- **Documentation**: Markdown docs aligned with the implemented compiler/token set
 
 ## 🔄 Active Distribution Channels
-1. **GitHub Releases**: v1.0.0 tag with automated workflow triggers
-2. **VS Code Extension**: vscode-v1.0.0 tag for marketplace publishing
+1. **GitHub Releases**: release artifacts published per tag/version
+2. **VS Code Extension**: packaged VSIX aligned with core releases
 3. **Package Managers**: Workflows configured for Homebrew, Chocolatey, Snap, Docker
 4. **Multi-Platform Support**: Windows, macOS, Linux distributions ready
 
@@ -47,7 +46,7 @@
 ### Immediate Actions (Ready to Execute)
 1. **VS Code Marketplace Publication**
    ```bash
-   vsce publish --packagePath dhrlang-vscode-1.0.0.vsix
+   vsce publish --packagePath dhrlang-vscode-1.1.3.vsix
    ```
 
 2. **Monitor GitHub Actions**
@@ -90,4 +89,4 @@ The language has all the professional infrastructure needed for developers to:
 - Build real applications with provided examples
 - Contribute to the language development
 
-**DhrLang v1.0.0 is officially complete and ready for the world! 🚀**
+**DhrLang is ready for public use with AST/IR/bytecode backends and hardened bytecode execution options.**

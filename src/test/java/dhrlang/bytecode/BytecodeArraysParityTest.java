@@ -17,7 +17,6 @@ public class BytecodeArraysParityTest {
         String cp = System.getProperty("java.class.path");
         String astOut = run("java","-cp",cp,"dhrlang.Main","input/test_arrays.dhr");
         String bcOut = run("java","-cp",cp,"dhrlang.Main","--backend=bytecode","input/test_arrays.dhr");
-        bcOut = bcOut.replaceFirst("\\[experimental].*?\\n"," ").trim();
         assertEquals(astOut, bcOut, "AST vs Bytecode output diverged on arrays test\nAST=\n"+astOut+"\nBC=\n"+bcOut);
     }
 }

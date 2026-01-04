@@ -203,20 +203,25 @@ public class Main {
         s = System.nanoTime();
         try {
             if("ir".equalsIgnoreCase(opts.backend)) {
-                System.out.println("[experimental] IR backend selected (lowering subset active)\n");
                 dhrlang.ir.AstToIrLowerer lowerer = new dhrlang.ir.AstToIrLowerer(errorReporter);
                 dhrlang.ir.IrProgram irProgram = lowerer.lower(program);
+                if(errorReporter.hasErrors()){
+                    pt.execMs = msSince(s);
+                    pt.totalMs = msSince(tStart);
+                    return pt;
+                }
                 if(opts.emitIr){
                     System.out.println(serializeIr(irProgram));
                 }
-                // Execute IR (subset) then fall back to AST for full semantics until parity
                 new dhrlang.ir.IrInterpreter().execute(irProgram);
-                Interpreter fallback = new Interpreter();
-                fallback.execute(program);
             } else if("bytecode".equalsIgnoreCase(opts.backend)) {
-                System.out.println("[experimental] Bytecode backend selected (alpha)\n");
                 dhrlang.ir.AstToIrLowerer lowerer = new dhrlang.ir.AstToIrLowerer(errorReporter);
                 dhrlang.ir.IrProgram irProgram = lowerer.lower(program);
+                if(errorReporter.hasErrors()){
+                    pt.execMs = msSince(s);
+                    pt.totalMs = msSince(tStart);
+                    return pt;
+                }
                 dhrlang.bytecode.BytecodeWriter writer = new dhrlang.bytecode.BytecodeWriter();
                 byte[] bc = writer.write(irProgram);
                 if(opts.emitBc){
@@ -228,9 +233,6 @@ public class Main {
                     } catch(Exception ex){ System.err.println("Failed to write bytecode: "+ex); }
                 }
                 new dhrlang.bytecode.BytecodeVM().execute(bc);
-                // Fallback to AST for correctness until full parity
-                Interpreter fallback = new Interpreter();
-                fallback.execute(program);
             } else {
                 Interpreter interpreter = new Interpreter();
                 interpreter.execute(program);

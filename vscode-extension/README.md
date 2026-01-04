@@ -13,7 +13,7 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ### 🧠 Completions & Snippets
 * Contextual keyword & snippet suggestions (main class, methods, loops, conditionals)
-* Snippets for: main entry, class, method, if / if-else, while, for, foreach, arrays, printLine, experimental try/catch skeleton
+* Snippets for: main entry, class, method, if / if-else, while, for, foreach, arrays, printLine, try/catch skeleton
 
 ### 🚀 Run & Compile
 * `Ctrl+F5` Run current DhrLang file
@@ -78,7 +78,7 @@ Press `Ctrl+F5` to run (jar must be resolvable or `dhrlang.jarPath` set).
 | Functions | `kaam` (method/function indicator) |
 | Built‑ins (examples) | `printLine`, `arrayLength` |
 
-Experimental / evolving constructs (like advanced exceptions) are marked in main docs.
+Language feature status is tracked in the main docs (README/SPEC).
 
 ## 📦 Snippet Prefix Samples
 

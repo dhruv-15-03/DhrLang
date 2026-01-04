@@ -1,5 +1,7 @@
 package dhrlang.ir;
 
+import dhrlang.error.ErrorFactory;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -37,11 +39,12 @@ public class IrInterpreter {
         Map<String, java.util.Map<String,Object>> statics = new HashMap<>();
 
         int safetyCounter = 0;
-        int maxSteps = 100000; // crude safeguard against accidental infinite loops in IR backend
+        int maxSteps = Integer.getInteger("dhrlang.backend.maxSteps", 50_000_000);
 
-        // Start at first function (expected Main.main)
+        // Start at entrypoint (prefer Main.main, otherwise first *.main)
+        IrFunction entry = findEntryFunction(program);
         java.util.Deque<Frame> callStack = new java.util.ArrayDeque<>();
-        callStack.push(new Frame(program.functions.get(0)));
+        callStack.push(new Frame(entry));
 
         Object bubblingException = null; // cross-frame exception being unwound
         while(!callStack.isEmpty()){
@@ -53,8 +56,7 @@ public class IrInterpreter {
                 continue;
             }
             if(++safetyCounter > maxSteps){
-                System.err.println("[IR] Execution aborted: exceeded max instruction steps ("+maxSteps+") - possible infinite loop.");
-                return;
+                throw ErrorFactory.runtimeError("Execution aborted: exceeded max instruction steps ("+maxSteps+") - possible infinite loop.", (dhrlang.error.SourceLocation) null);
             }
             IrInstruction ins = frame.fn.instructions.get(frame.pc);
             boolean advance = true;
@@ -91,35 +93,60 @@ public class IrInterpreter {
             } else if(ins instanceof IrStoreLocal sl){
                 frame.slots[sl.destSlot] = frame.slots[sl.sourceSlot];
             } else if(ins instanceof IrBinOp b){
-                Object lv = frame.slots[b.leftSlot];
-                Object rv = frame.slots[b.rightSlot];
-                if(b.op== IrBinOp.Op.ADD && (!(lv instanceof Number) || !(rv instanceof Number))){
-                    frame.slots[b.targetSlot] = String.valueOf(lv) + String.valueOf(rv);
-                } else {
-                    Number l = lv instanceof Number ? (Number) lv : 0;
-                    Number r = rv instanceof Number ? (Number) rv : 0;
-                    double v = switch(b.op){
-                        case ADD -> l.doubleValue()+r.doubleValue();
-                        case SUB -> l.doubleValue()-r.doubleValue();
-                        case MUL -> l.doubleValue()*r.doubleValue();
-                        case DIV -> r.doubleValue()==0?Double.NaN:l.doubleValue()/r.doubleValue();
-                    };
-                    if(l instanceof Integer || l instanceof Long){
-                        if(r instanceof Integer || r instanceof Long){
-                            long lvv=l.longValue(), rvv=r.longValue();
-                            frame.slots[b.targetSlot] = switch(b.op){
-                                case ADD -> lvv+rvv; case SUB -> lvv-rvv; case MUL -> lvv*rvv; case DIV -> (rvv==0?0: lvv/rvv);
-                            }; advance = true; gotoAdvance(frame); continue; }
+                Object left = frame.slots[b.leftSlot];
+                Object right = frame.slots[b.rightSlot];
+                switch(b.op){
+                    case ADD -> {
+                        if(left instanceof String || right instanceof String){
+                            frame.slots[b.targetSlot] = String.valueOf(left) + String.valueOf(right);
+                        } else if(left instanceof Number && right instanceof Number){
+                            if(left instanceof Double || right instanceof Double){
+                                frame.slots[b.targetSlot] = ((Number)left).doubleValue() + ((Number)right).doubleValue();
+                            } else {
+                                frame.slots[b.targetSlot] = ((Number)left).longValue() + ((Number)right).longValue();
+                            }
+                        } else {
+                            throw ErrorFactory.typeError("Operands for '+' must be two numbers or at least one string for concatenation.", (dhrlang.error.SourceLocation) null);
+                        }
                     }
-                    frame.slots[b.targetSlot] = v;
+                    case SUB -> {
+                        requireNumbers(left, right, "-");
+                        if(left instanceof Double || right instanceof Double) frame.slots[b.targetSlot] = ((Number)left).doubleValue() - ((Number)right).doubleValue();
+                        else frame.slots[b.targetSlot] = ((Number)left).longValue() - ((Number)right).longValue();
+                    }
+                    case MUL -> {
+                        requireNumbers(left, right, "*");
+                        if(left instanceof Double || right instanceof Double) frame.slots[b.targetSlot] = ((Number)left).doubleValue() * ((Number)right).doubleValue();
+                        else frame.slots[b.targetSlot] = ((Number)left).longValue() * ((Number)right).longValue();
+                    }
+                    case DIV -> {
+                        requireNumbers(left, right, "/");
+                        double divisor = ((Number)right).doubleValue();
+                        if(divisor==0.0) throw ErrorFactory.arithmeticError("Division by zero.", (dhrlang.error.SourceLocation) null);
+                        frame.slots[b.targetSlot] = ((Number)left).doubleValue() / divisor;
+                    }
                 }
             } else if(ins instanceof IrCompare cmp){
-                Object lv = frame.slots[cmp.leftSlot];
-                Object rv = frame.slots[cmp.rightSlot];
-                int res = compareValues(lv, rv);
-                boolean bool = switch(cmp.op){
-                    case EQ -> res==0; case NEQ -> res!=0; case LT -> res<0; case LE -> res<=0; case GT -> res>0; case GE -> res>=0;
-                };
+                Object left = frame.slots[cmp.leftSlot];
+                Object right = frame.slots[cmp.rightSlot];
+                boolean bool;
+                switch(cmp.op){
+                    case EQ -> bool = java.util.Objects.equals(left, right);
+                    case NEQ -> bool = !java.util.Objects.equals(left, right);
+                    case LT, LE, GT, GE -> {
+                        requireNumbers(left, right, cmp.op.name());
+                        double ld = ((Number)left).doubleValue();
+                        double rd = ((Number)right).doubleValue();
+                        bool = switch(cmp.op){
+                            case LT -> ld < rd;
+                            case LE -> ld <= rd;
+                            case GT -> ld > rd;
+                            case GE -> ld >= rd;
+                            default -> false;
+                        };
+                    }
+                    default -> bool = false;
+                }
                 frame.slots[cmp.targetSlot] = bool;
             } else if(ins instanceof IrJump j){
                 Integer dest = frame.labelPc.get(j.label);
@@ -127,7 +154,7 @@ public class IrInterpreter {
                 advance = false;
             } else if(ins instanceof IrJumpIfFalse jf){
                 Object v = frame.slots[jf.condSlot];
-                boolean isFalse = (v==null) || (v instanceof Boolean b && !b) || (v instanceof Number n && n.doubleValue()==0.0);
+                boolean isFalse = (v==null) || (v instanceof Boolean b && !b);
                 if(isFalse){
                     Integer dest = frame.labelPc.get(jf.label);
                     frame.pc = dest==null? frame.pc : dest;
@@ -143,50 +170,47 @@ public class IrInterpreter {
                 Object result;
                 switch(u.op){
                     case NEG -> {
-                        if(v instanceof Number n){
-                            if(v instanceof Integer || v instanceof Long){
-                                result = -((Number)v).longValue();
-                            } else {
-                                result = -n.doubleValue();
-                            }
-                        } else if(v instanceof String s){
-                            try { result = -Double.parseDouble(s); }
-                            catch(Exception ex){ result = 0; }
-                        } else { result = 0; }
+                        if(v instanceof Long l) result = -l;
+                        else if(v instanceof Integer i) result = -i.longValue();
+                        else if(v instanceof Double d) result = -d;
+                        else throw ErrorFactory.typeError("Operand for '-' must be a number.", (dhrlang.error.SourceLocation) null);
                     }
                     case NOT -> {
-                        boolean bool = !isTruthy(v);
-                        result = bool;
+                        result = !isTruthy(v);
                     }
                     default -> result = null;
                 }
                 frame.slots[u.targetSlot] = result;
             } else if(ins instanceof IrNewArray na){
                 Object sz = frame.slots[na.sizeSlot];
-                int n = (sz instanceof Number)? ((Number)sz).intValue() : 0;
-                if(n < 0) n = 0; if(n > 1_000_000) n = 1_000_000;
+                if(!(sz instanceof Long) && !(sz instanceof Integer)) throw ErrorFactory.typeError("Array size must be a number.", (dhrlang.error.SourceLocation) null);
+                int n = ((Number)sz).intValue();
+                if(n < 0) throw ErrorFactory.validationError("Array size cannot be negative.", (dhrlang.error.SourceLocation) null);
+                if(n > 1_000_000) throw ErrorFactory.validationError("Array size too large (max: 1,000,000).", (dhrlang.error.SourceLocation) null);
                 Object[] arr = new Object[n];
+                Object def = dhrlang.runtime.RuntimeDefaults.getDefaultValue(na.elementType);
+                if(def != null) java.util.Arrays.fill(arr, def);
                 frame.slots[na.targetSlot] = arr;
             } else if(ins instanceof IrLoadElement le){
                 Object arrObj = frame.slots[le.arraySlot];
                 Object idxObj = frame.slots[le.indexSlot];
-                Object val = null;
-                if(arrObj instanceof Object[] arr && idxObj instanceof Number){
-                    int i = ((Number)idxObj).intValue();
-                    if(i >= 0 && i < arr.length) val = arr[i];
-                }
-                frame.slots[le.targetSlot] = val;
+                if(!(arrObj instanceof Object[] arr)) throw ErrorFactory.typeError("Can only index arrays.", (dhrlang.error.SourceLocation) null);
+                if(!(idxObj instanceof Long) && !(idxObj instanceof Integer)) throw ErrorFactory.typeError("Array index must be a number.", (dhrlang.error.SourceLocation) null);
+                int i = ((Number)idxObj).intValue();
+                if(i<0 || i>=arr.length) throw ErrorFactory.indexError("Array index "+i+" out of bounds for array of length "+arr.length+".", (dhrlang.error.SourceLocation) null);
+                frame.slots[le.targetSlot] = arr[i];
             } else if(ins instanceof IrStoreElement se){
                 Object arrObj = frame.slots[se.arraySlot];
                 Object idxObj = frame.slots[se.indexSlot];
-                if(arrObj instanceof Object[] arr && idxObj instanceof Number){
-                    int i = ((Number)idxObj).intValue();
-                    if(i >= 0 && i < arr.length){ arr[i] = frame.slots[se.valueSlot]; }
-                }
+                if(!(arrObj instanceof Object[] arr)) throw ErrorFactory.typeError("Can only assign to array elements.", (dhrlang.error.SourceLocation) null);
+                if(!(idxObj instanceof Long) && !(idxObj instanceof Integer)) throw ErrorFactory.typeError("Array index must be a number.", (dhrlang.error.SourceLocation) null);
+                int i = ((Number)idxObj).intValue();
+                if(i<0 || i>=arr.length) throw ErrorFactory.indexError("Array index "+i+" out of bounds for array of length "+arr.length+".", (dhrlang.error.SourceLocation) null);
+                arr[i] = frame.slots[se.valueSlot];
             } else if(ins instanceof IrArrayLength al){
                 Object arrObj = frame.slots[al.arraySlot];
-                int len = (arrObj instanceof Object[] a) ? a.length : 0;
-                frame.slots[al.targetSlot] = (long) len;
+                if(!(arrObj instanceof Object[] a)) throw ErrorFactory.typeError("Can only call arrayLength on arrays.", (dhrlang.error.SourceLocation) null);
+                frame.slots[al.targetSlot] = (long) a.length;
             } else if(ins instanceof IrGetStatic gsf){
                 java.util.Map<String,Object> map = statics.computeIfAbsent(gsf.className, k-> new HashMap<>());
                 frame.slots[gsf.targetSlot] = map.get(gsf.fieldName);
@@ -276,23 +300,28 @@ public class IrInterpreter {
         }
     }
 
-    private int compareValues(Object a, Object b){
-        if(a==b) return 0;
-        if(a==null) return -1;
-        if(b==null) return 1;
-        if(a instanceof Number an && b instanceof Number bn){
-            double diff = an.doubleValue()-bn.doubleValue();
-            if(diff<0) return -1; if(diff>0) return 1; return 0;
+    private IrFunction findEntryFunction(IrProgram program){
+        for(IrFunction f : program.functions){
+            if("Main.main".equals(f.name)) return f;
         }
-        return String.valueOf(a).compareTo(String.valueOf(b));
+        for(IrFunction f : program.functions){
+            if(f.name != null && f.name.endsWith(".main")) return f;
+        }
+        return program.functions.get(0);
+    }
+
+    private void requireNumbers(Object left, Object right, String op){
+        if(left==null || right==null) throw ErrorFactory.typeError("Null operand for operator: "+op, (dhrlang.error.SourceLocation) null);
+        if(!(left instanceof Number) || !(right instanceof Number)){
+            throw ErrorFactory.typeError("Operands must be numbers for operator: "+op+".", (dhrlang.error.SourceLocation) null);
+        }
     }
 
     private boolean isTruthy(Object v){
-        if(v==null) return false; if(v instanceof Boolean b) return b; if(v instanceof Number n) return n.doubleValue()!=0.0; return true;
+        if(v==null) return false;
+        if(v instanceof Boolean b) return b;
+        return true;
     }
-
-    // Small helper to satisfy earlier continue in transformed code path.
-    private void gotoAdvance(Frame frame){ frame.pc++; }
 
     // Match semantics aligned with Evaluator.canCatch
     private boolean matchesCatch(String catchType, Object exceptionValue){

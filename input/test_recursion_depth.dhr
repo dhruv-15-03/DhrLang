@@ -1,1 +1,0 @@
-class R { static kaam recurse(num n){ if(n==0) return; recurse(n-1); } static kaam main(){ recurse(1100); } }

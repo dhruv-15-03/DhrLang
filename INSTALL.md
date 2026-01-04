@@ -15,7 +15,7 @@
 2. **Extract**: Unzip `DhrLang-x.x.x-distribution.zip`
 3. **Verify**: 
    ```bash
-   java -jar lib/DhrLang-1.0.0.jar --version
+   java -jar lib/DhrLang-<version>.jar --version
    ```
 
 ### 🔧 Method 2: Package Managers
@@ -81,9 +81,9 @@ cd DhrLang
    ```json
    // settings.json
    {
-     "dhrlang.compiler.path": "/path/to/DhrLang-1.0.0.jar",
-     "dhrlang.enableDiagnostics": true,
-     "dhrlang.formatOnSave": true
+       "dhrlang.jarPath": "/path/to/DhrLang-<version>.jar",
+       "dhrlang.autoDetectJar": true,
+       "dhrlang.enableErrorSquiggles": true
    }
    ```
 
@@ -97,7 +97,7 @@ cd DhrLang
    ```
    Name: Run DhrLang
    Program: java
-   Arguments: -jar $ProjectFileDir$/DhrLang-1.0.0.jar $FilePath$
+   Arguments: -jar $ProjectFileDir$/DhrLang-<version>.jar $FilePath$
    Working Dir: $ProjectFileDir$
    ```
 
@@ -127,7 +127,7 @@ echo "class Main { static kaam main() { printLine(\"Hello DhrLang!\"); } }" > sr
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 export DHRLANG_HOME="/path/to/dhrlang"
-alias dhrlang="java -jar $DHRLANG_HOME/DhrLang-1.0.0.jar"
+alias dhrlang="java -jar $DHRLANG_HOME/DhrLang-<version>.jar"
 
 # Usage
 dhrlang src/main.dhr
@@ -137,7 +137,7 @@ dhrlang src/main.dhr
 ```powershell
 # Add to $PROFILE
 $env:DHRLANG_HOME = "C:\tools\dhrlang"
-function dhrlang { java -jar "$env:DHRLANG_HOME\DhrLang-1.0.0.jar" $args }
+function dhrlang { java -jar "$env:DHRLANG_HOME\DhrLang-<version>.jar" $args }
 
 # Usage
 dhrlang src\main.dhr
@@ -150,7 +150,7 @@ dhrlang src\main.dhr
 FROM openjdk:17-alpine
 
 # Install DhrLang
-COPY DhrLang-1.0.0.jar /usr/local/bin/dhrlang.jar
+COPY DhrLang-<version>.jar /usr/local/bin/dhrlang.jar
 RUN echo '#!/bin/sh\njava -jar /usr/local/bin/dhrlang.jar "$@"' > /usr/local/bin/dhrlang && \
     chmod +x /usr/local/bin/dhrlang
 
@@ -172,20 +172,18 @@ docker run --rm -v $(pwd):/workspace dhrlang:latest src/main.dhr
 ### Test Installation
 ```bash
 # Check version
-java -jar DhrLang-1.0.0.jar --version
+java -jar DhrLang-<version>.jar --version
 
 # Run sample program
-java -jar DhrLang-1.0.0.jar examples/sample.dhr
+java -jar DhrLang-<version>.jar examples/sample.dhr
 
 # Run with JSON output
-java -jar DhrLang-1.0.0.jar --json examples/sample.dhr
+java -jar DhrLang-<version>.jar --json examples/sample.dhr
 ```
 
 ### Expected Output
 ```
-DhrLang v1.0.0
-Compiled successfully
-नमस्ते, दुनिया!
+DhrLang version <version>
 ```
 
 ## Troubleshooting
@@ -214,10 +212,10 @@ Solution: Check syntax against SPEC.md
 
 ```bash
 # Increase memory for large programs
-java -Xmx2g -jar DhrLang-1.0.0.jar program.dhr
+java -Xmx2g -jar DhrLang-<version>.jar program.dhr
 
 # Enable detailed garbage collection
-java -XX:+UseG1GC -XX:+PrintGCDetails -jar DhrLang-1.0.0.jar program.dhr
+java -XX:+UseG1GC -XX:+PrintGCDetails -jar DhrLang-<version>.jar program.dhr
 ```
 
 ## Next Steps

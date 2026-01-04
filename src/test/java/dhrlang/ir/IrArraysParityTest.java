@@ -17,7 +17,6 @@ public class IrArraysParityTest {
         String cp = System.getProperty("java.class.path");
         String astOut = run("java","-cp",cp,"dhrlang.Main","input/test_arrays.dhr");
         String irOut = run("java","-cp",cp,"dhrlang.Main","--backend=ir","input/test_arrays.dhr");
-        irOut = irOut.replaceFirst("\\[experimental].*?\\n"," ").trim();
         assertEquals(astOut, irOut, "AST vs IR output diverged on arrays test\nAST=\n"+astOut+"\nIR=\n"+irOut);
     }
 }

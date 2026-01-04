@@ -1,12 +1,24 @@
 # 🚀 DhrLang Release Notes
 
+## v1.1.3 - Current Release Line *(Nov 2025)*
+
+### ✅ Runtime & Backend Updates
+- IR and bytecode backends are supported via `--backend=ir` / `--backend=bytecode`.
+- Backend selection is authoritative (no AST fallback).
+- Bytecode format is DHBC v2 (see design/bytecode-format.md).
+
+### 🔒 Safety / Hardening
+- Bytecode VM validates bytecode before execution (bounds/indices/control-flow constraints).
+- Untrusted mode available via `-Ddhrlang.bytecode.untrusted=true` with conservative caps.
+- Shared instruction step cap available via `-Ddhrlang.backend.maxSteps=<n>`.
+
 ## v1.0.1 - Documentation Fix Release *(September 28, 2025)*
 
 ### 🔧 **Critical Documentation Fixes**
 
 #### ❌ **Issues Resolved:**
 - **Syntax Mismatch**: Fixed critical mismatch between documentation examples and actual compiler syntax
-- **Hindi Keywords**: Corrected non-existent Hindi keywords (`मुख्य`, `प्रिंट`) to actual DhrLang keywords (`main`, `printLine`)
+- **Legacy Hindi Keywords**: Corrected non-existent Hindi keywords (`मुख्य`, `प्रिंट`) to actual DhrLang tokens (`class`, `static kaam main`, `printLine`)
 - **Class Structure**: Added missing required class structure (`static kaam main()`)
 - **Function Calls**: Fixed `printLine()` function calls to include required arguments
 - **Type System**: Updated type examples to use correct keywords (`num`, `sab`, `duo`, `kya`)
@@ -40,7 +52,7 @@ New users can now follow the documentation from start to finish without encounte
 
 #### 🛠️ **Development Tools:**
 - **VS Code Extension**: Syntax highlighting, IntelliSense, auto-completion
-- **Command-Line Compiler**: `DhrLang-1.0.0.jar` with professional error messages
+- **Command-Line Compiler**: `DhrLang-<version>.jar` with professional error messages
 - **Run Commands**: Integrated VS Code shortcuts (Ctrl+F5, Ctrl+Shift+B)
 - **Code Snippets**: Common programming patterns and templates
 
@@ -70,11 +82,11 @@ New users can now follow the documentation from start to finish without encounte
 
 ### **Quick Installation:**
 ```bash
-# Download from GitHub Releases
-java -jar DhrLang-1.0.0.jar hello.dhr
+# Download the matching release asset from GitHub Releases
+java -jar DhrLang-<version>.jar hello.dhr
 
 # Install VS Code Extension
-code --install-extension dhrlang-vscode-1.0.0.vsix
+code --install-extension dhrlang-vscode-<version>.vsix
 ```
 
 ### **First Program:**

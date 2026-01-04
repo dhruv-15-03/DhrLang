@@ -4,7 +4,7 @@
 
 ### **Issue 1: Incorrect Syntax Documentation**
 - **Problem**: Documentation showed Hindi keywords (`मुख्य`, `प्रिंट`, `संख्या`) that don't exist in compiler
-- **Reality**: DhrLang uses English-based keywords (`main`, `printLine`, `num`, `sab`)
+- **Reality**: DhrLang uses an English-core token set (`class`, `static`, `kaam`, `num`, `sab`, `duo`, `kya`, etc.) and requires an entry method named `main`.
 - **Impact**: Users following docs would get compilation errors immediately
 - **Fix**: Updated all code examples with correct syntax
 
