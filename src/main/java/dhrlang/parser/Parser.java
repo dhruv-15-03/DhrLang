@@ -9,6 +9,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.EnumSet;
+
+/**
+ * Container class for parsed modifiers and contract annotations.
+ */
+class ParsedModifiers {
+    final Set<Modifier> modifiers;
+    final Set<ContractAnnotation> contractAnnotations;
+    
+    ParsedModifiers(Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
+        this.modifiers = modifiers;
+        this.contractAnnotations = contractAnnotations;
+    }
+}
 
 public class Parser {
 
@@ -44,7 +58,9 @@ public class Parser {
     }
 
     private ClassDecl parseClassDecl() {
-        Set<Modifier> classModifiers = parseModifiers();
+        ParsedModifiers parsed = parseAllModifiers();
+        Set<Modifier> classModifiers = parsed.modifiers;
+        Set<ContractAnnotation> classAnnotations = parsed.contractAnnotations;
         
         consume(TokenType.CLASS, "Expected 'class' keyword to start a class declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected class name after 'class'.");
@@ -124,15 +140,17 @@ public class Parser {
         List<FunctionDecl> functions = new ArrayList<>();
         List<VarDecl> variables = new ArrayList<>();
         while (!check(TokenType.RBRACE) && !isAtEnd()) {
-            Set<Modifier> modifiers = parseModifiers();
+            ParsedModifiers memberParsed = parseAllModifiers();
+            Set<Modifier> modifiers = memberParsed.modifiers;
+            Set<ContractAnnotation> memberAnnotations = memberParsed.contractAnnotations;
             
             if (checkType()) {
                 Token typeToken = consumeType("Expected type.");
                 Token nameToken = consume(TokenType.IDENTIFIER, "Expected name after type.");
                 if (check(TokenType.LPAREN)) {
-                    functions.add(parseFunctionDecl(typeToken, nameToken, modifiers));
+                    functions.add(parseFunctionDecl(typeToken, nameToken, modifiers, memberAnnotations));
                 } else {
-                    variables.add(parseVarDecl(typeToken, nameToken, modifiers));
+                    variables.add(parseVarDecl(typeToken, nameToken, modifiers, memberAnnotations));
                 }
             } else {
                 throw error(peek(), "Expected field or method declaration.");
@@ -142,9 +160,9 @@ public class Parser {
         
         ClassDecl classDecl;
         if (!typeParameters.isEmpty()) {
-            classDecl = new GenericClassDecl(name.getLexeme(), typeParameters, superclass, interfaces, functions, variables, classModifiers);
+            classDecl = new GenericClassDecl(name.getLexeme(), typeParameters, superclass, interfaces, functions, variables, classModifiers, classAnnotations);
         } else {
-            classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers);
+            classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers, classAnnotations);
         }
         
         classDecl.setSourceLocation(name.getLocation());
@@ -254,6 +272,10 @@ public class Parser {
     
     
     private FunctionDecl parseFunctionDecl(Token returnType, Token name, Set<Modifier> modifiers) {
+        return parseFunctionDecl(returnType, name, modifiers, EnumSet.noneOf(ContractAnnotation.class));
+    }
+    
+    private FunctionDecl parseFunctionDecl(Token returnType, Token name, Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
         consume(TokenType.LPAREN, "Expected '(' after function name.");
         List<VarDecl> parameters = new ArrayList<>();
         if (!check(TokenType.RPAREN)) {
@@ -270,7 +292,7 @@ public class Parser {
             body = parseBlock();
         }
         
-        FunctionDecl functionDecl = new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers);
+        FunctionDecl functionDecl = new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers, contractAnnotations);
         functionDecl.setSourceLocation(returnType.getLocation());
         return functionDecl;
     }
@@ -295,12 +317,16 @@ public class Parser {
     }
     
     private VarDecl parseVarDecl(Token type, Token name, Set<Modifier> modifiers) {
+        return parseVarDecl(type, name, modifiers, EnumSet.noneOf(ContractAnnotation.class));
+    }
+    
+    private VarDecl parseVarDecl(Token type, Token name, Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
         Expression initializer = null;
         if (match(TokenType.ASSIGN)) {
             initializer = parseExpression();
         }
         consume(TokenType.SEMICOLON, "Expected ';' after variable declaration.");
-        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers);
+        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers, contractAnnotations);
         varDecl.setSourceLocation(name.getLocation());
         return varDecl;
     }
@@ -641,13 +667,23 @@ public class Parser {
             if (check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) || 
                 check(TokenType.SAB) || check(TokenType.KYA)) {
                 Token typeToken = advance(); 
-                // Support multi-dimensional: new num[a][b][c]
+                // Support multi-dimensional: new num[a][b][c] and jagged: new num[a][]
                 List<Expression> sizes = new ArrayList<>();
+                boolean seenEmptyDim = false;
                 do {
                     consume(TokenType.LBRACKET, "Expected '[' after type for array creation.");
-                    Expression size = parseExpression();
+                    if (check(TokenType.RBRACKET)) {
+                        // Empty dimension for jagged arrays (e.g., new num[3][])
+                        sizes.add(null);
+                        seenEmptyDim = true;
+                    } else {
+                        if (seenEmptyDim) {
+                            throw error(peek(), "Cannot specify a size after an empty dimension in array creation.");
+                        }
+                        Expression size = parseExpression();
+                        sizes.add(size);
+                    }
                     consume(TokenType.RBRACKET, "Expected ']' after array size.");
-                    sizes.add(size);
                 } while (check(TokenType.LBRACKET));
                 NewArrayExpr expr = new NewArrayExpr(typeToken.getLexeme(), sizes);
                 expr.setSourceLocation(newToken.getLocation());
@@ -881,7 +917,15 @@ public class Parser {
     private boolean checkType() {
         boolean isBaseType = check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) ||
                 check(TokenType.SAB) || check(TokenType.KYA) || check(TokenType.KAAM) ||
-                check(TokenType.IDENTIFIER);
+                check(TokenType.IDENTIFIER) ||
+                // Blockchain types
+                check(TokenType.ADDRESS) || check(TokenType.UINT256) || check(TokenType.INT256) ||
+                check(TokenType.BYTES32) || check(TokenType.WEI);
+
+        // Handle mapping type: mapping(KeyType => ValueType)
+        if (!isBaseType && check(TokenType.MAPPING)) {
+            return true;
+        }
 
         if (!isBaseType) return false;
         
@@ -915,6 +959,35 @@ public class Parser {
         }
 
         Token baseType = advance();
+
+        // Handle mapping type: mapping(KeyType => ValueType)
+        if (baseType.getType() == TokenType.MAPPING && check(TokenType.LPAREN)) {
+            StringBuilder mappingType = new StringBuilder(baseType.getLexeme());
+            mappingType.append("(");
+            advance(); // consume '('
+            
+            // Consume everything until matching ')'
+            int depth = 1;
+            while (depth > 0 && !isAtEnd()) {
+                Token token = advance();
+                if (token.getType() == TokenType.LPAREN) {
+                    depth++;
+                } else if (token.getType() == TokenType.RPAREN) {
+                    depth--;
+                    if (depth == 0) break;
+                }
+                mappingType.append(token.getLexeme());
+                // Add space around => for readability
+                if (token.getLexeme().equals("=") && check(TokenType.GREATER)) {
+                    mappingType.append(">");
+                    advance(); // consume '>'
+                } else {
+                    mappingType.append(" ");
+                }
+            }
+            mappingType.append(")");
+            return new Token(TokenType.IDENTIFIER, mappingType.toString(), baseType.getLine());
+        }
 
         if (check(TokenType.LBRACKET)) {
             // Support multiple [] suffixes on types: num[][]
@@ -992,13 +1065,33 @@ public class Parser {
         return peek().getType() == TokenType.EOF;
     }
     
-    private Set<Modifier> parseModifiers() {
+    /**
+     * Parse both regular modifiers and contract annotations.
+     * Contract annotations (@contract, @storage, @view, etc.) are parsed first,
+     * followed by regular modifiers (public, private, static, etc.).
+     */
+    private ParsedModifiers parseAllModifiers() {
         Set<Modifier> modifiers = new HashSet<>();
+        Set<ContractAnnotation> contractAnnotations = EnumSet.noneOf(ContractAnnotation.class);
         
+        // Parse contract annotations first
+        while (match(TokenType.CONTRACT, TokenType.STORAGE, TokenType.VIEW, TokenType.PURE, 
+                     TokenType.PAYABLE, TokenType.NONREENTRANT, TokenType.CONSTRUCTOR,
+                     TokenType.EVENT, TokenType.IMMUTABLE, TokenType.INVARIANT)) {
+            TokenType tokenType = previous().getType();
+            ContractAnnotation annotation = ContractAnnotation.fromTokenType(tokenType);
+            if (contractAnnotations.contains(annotation)) {
+                throw error(previous(), "Duplicate contract annotation: " + annotation);
+            }
+            contractAnnotations.add(annotation);
+        }
+        
+        // Parse @Override annotation
         if (match(TokenType.OVERRIDE)) {
             modifiers.add(Modifier.OVERRIDE);
         }
         
+        // Parse regular modifiers
         while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC, TokenType.ABSTRACT, TokenType.FINAL)) {
             TokenType tokenType = previous().getType();
             Modifier modifier = Modifier.fromTokenType(tokenType);
@@ -1012,7 +1105,14 @@ public class Parser {
             modifiers.add(Modifier.PUBLIC);
         }
         
-        return modifiers;
+        return new ParsedModifiers(modifiers, contractAnnotations);
+    }
+    
+    /**
+     * Legacy method for backward compatibility - returns only modifiers, ignores contract annotations.
+     */
+    private Set<Modifier> parseModifiers() {
+        return parseAllModifiers().modifiers;
     }
     
     private List<TypeParameter> parseTypeParameters() {

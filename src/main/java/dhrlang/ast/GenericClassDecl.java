@@ -3,6 +3,7 @@ package dhrlang.ast;
 import java.util.List;
 import java.util.Set;
 import java.util.ArrayList;
+import java.util.EnumSet;
 
 /**
  * Generic-aware class declaration that extends the original ClassDecl
@@ -14,14 +15,21 @@ public class GenericClassDecl extends ClassDecl {
     // Non-generic constructor (maintains backward compatibility)
     public GenericClassDecl(String name, VariableExpr superclass, List<VariableExpr> interfaces, 
                            List<FunctionDecl> functions, List<VarDecl> variables, Set<Modifier> modifiers) {
-        this(name, new ArrayList<>(), superclass, interfaces, functions, variables, modifiers);
+        this(name, new ArrayList<>(), superclass, interfaces, functions, variables, modifiers, EnumSet.noneOf(ContractAnnotation.class));
     }
     
-    // Generic constructor
+    // Generic constructor (without contract annotations)
     public GenericClassDecl(String name, List<TypeParameter> typeParameters, VariableExpr superclass, 
                            List<VariableExpr> interfaces, List<FunctionDecl> functions, 
                            List<VarDecl> variables, Set<Modifier> modifiers) {
-        super(name, superclass, interfaces, functions, variables, modifiers);
+        this(name, typeParameters, superclass, interfaces, functions, variables, modifiers, EnumSet.noneOf(ContractAnnotation.class));
+    }
+    
+    // Generic constructor with contract annotations
+    public GenericClassDecl(String name, List<TypeParameter> typeParameters, VariableExpr superclass, 
+                           List<VariableExpr> interfaces, List<FunctionDecl> functions, 
+                           List<VarDecl> variables, Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
+        super(name, superclass, interfaces, functions, variables, modifiers, contractAnnotations);
         this.typeParameters = typeParameters != null ? typeParameters : new ArrayList<>();
     }
     

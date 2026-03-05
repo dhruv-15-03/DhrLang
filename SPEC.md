@@ -6,9 +6,9 @@
 
 # DhrLang Language Specification
 
-Version: 1.1.8 (Spec synchronized with latest implemented feature set / CLI enhancements)
+Version: 2.0.0 (Smart contracts, EVM backend, AI agent orchestration, data pipelines)
 Stability: Stable – subject to semantic versioning.
-Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth. As of v1.1.3 (Nov 2025), IR and bytecode execution backends are available via `--backend=ir|bytecode` flags.
+Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth. As of v1.1.3 (Nov 2025), IR and bytecode execution backends are available via `--backend=ir|bytecode` flags. As of v1.2.0 (Jan 2026), all errors include unique DHR-EXXX codes with actionable hints.
 
 ## 0. Overview (Informative)
 DhrLang is a statically checked, interpreted, object‑oriented language with:

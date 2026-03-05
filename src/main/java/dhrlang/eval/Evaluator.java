@@ -286,8 +286,15 @@ public class Evaluator implements ASTVisitor<Object> {
     @Override public Object visitNewArrayExpr(NewArrayExpr newArrayExpr) {
         java.util.List<Expression> dims = newArrayExpr.getSizes();
         if(dims==null || dims.isEmpty()) throw ErrorFactory.validationError("Array creation requires at least one dimension.", ErrorFactory.getLocation(newArrayExpr));
-        int[] sizes = new int[dims.size()];
-        for(int i=0;i<dims.size();i++){
+        // Determine how many leading dimensions have explicit sizes (non-null)
+        int specifiedDims = 0;
+        for (Expression dim : dims) {
+            if (dim == null) break;
+            specifiedDims++;
+        }
+        if (specifiedDims == 0) throw ErrorFactory.validationError("Array creation requires at least one dimension with a size.", ErrorFactory.getLocation(newArrayExpr));
+        int[] sizes = new int[specifiedDims];
+        for(int i=0;i<specifiedDims;i++){
             Object v = dims.get(i).accept(this);
             if(!(v instanceof Long)) throw ErrorFactory.typeError("Array size must be a number.", ErrorFactory.getLocation(newArrayExpr));
             int s = ((Long)v).intValue();
@@ -296,17 +303,22 @@ public class Evaluator implements ASTVisitor<Object> {
             sizes[i]=s;
         }
         Object def = dhrlang.runtime.RuntimeDefaults.getDefaultValue(newArrayExpr.getElementType());
-        return allocateMultiDimArray(sizes, 0, def);
+        boolean isJagged = specifiedDims < dims.size();
+        return allocateMultiDimArray(sizes, 0, def, isJagged);
     }
 
-    private Object allocateMultiDimArray(int[] sizes, int dim, Object def){
+    private Object allocateMultiDimArray(int[] sizes, int dim, Object def, boolean isJagged){
         int n = sizes[dim];
         Object[] arr = new Object[n];
         if(dim == sizes.length-1){
+            if (isJagged) {
+                // Jagged: leave sub-arrays as null (to be assigned later)
+                return arr;
+            }
             java.util.Arrays.fill(arr, def);
             return arr;
         }
-        for(int i=0;i<n;i++) arr[i] = allocateMultiDimArray(sizes, dim+1, def);
+        for(int i=0;i<n;i++) arr[i] = allocateMultiDimArray(sizes, dim+1, def, isJagged);
         return arr;
     }
     @Override public Object visitIndexExpr(IndexExpr indexExpr) {

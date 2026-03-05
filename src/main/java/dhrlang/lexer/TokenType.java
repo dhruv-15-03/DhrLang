@@ -32,6 +32,33 @@ public enum TokenType {
     IMPLEMENTS,     // implements - Interface implementation
     OVERRIDE,       // @Override - Method override annotation
     
+    // ===============================
+    //    SMART CONTRACT ANNOTATIONS
+    // ===============================
+    CONTRACT,       // @contract - Smart contract class marker
+    STORAGE,        // @storage - Persistent on-chain variable
+    VIEW,           // @view - Read-only function (no state modification)
+    PURE,           // @pure - No state access at all
+    PAYABLE,        // @payable - Function can receive ETH
+    NONREENTRANT,   // @nonreentrant - Reentrancy guard
+    CONSTRUCTOR,    // @constructor - Contract constructor
+    EVENT,          // @event - Event emission
+    IMMUTABLE,      // @immutable - Set once in constructor
+    INVARIANT,      // @invariant - Formal verification invariant
+    TEST,           // @test - Contract test method
+    BEFORE_EACH,    // @beforeEach - Test setup hook
+    AFTER_EACH,     // @afterEach - Test teardown hook
+    
+    // ===============================
+    //    BLOCKCHAIN TYPES
+    // ===============================
+    ADDRESS,        // Address - 20-byte Ethereum address
+    UINT256,        // uint256 - 256-bit unsigned integer
+    INT256,         // int256 - 256-bit signed integer
+    BYTES32,        // bytes32 - 32-byte fixed-size array
+    WEI,            // wei - ETH denomination type
+    MAPPING,        // mapping - On-chain key-value mapping
+    
     PRIVATE,        // private - Private access modifier
     PROTECTED,      // protected - Protected access modifier  
     PUBLIC,         // public - Public access modifier

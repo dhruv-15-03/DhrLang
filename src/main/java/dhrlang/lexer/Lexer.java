@@ -58,6 +58,26 @@ public class Lexer {
         keywords.put("static", TokenType.STATIC);
         keywords.put("abstract", TokenType.ABSTRACT);
         keywords.put("final", TokenType.FINAL);
+        
+        // Smart Contract Annotations (recognized with @ prefix)
+        keywords.put("@contract", TokenType.CONTRACT);
+        keywords.put("@storage", TokenType.STORAGE);
+        keywords.put("@view", TokenType.VIEW);
+        keywords.put("@pure", TokenType.PURE);
+        keywords.put("@payable", TokenType.PAYABLE);
+        keywords.put("@nonreentrant", TokenType.NONREENTRANT);
+        keywords.put("@constructor", TokenType.CONSTRUCTOR);
+        keywords.put("@event", TokenType.EVENT);
+        keywords.put("@immutable", TokenType.IMMUTABLE);
+        keywords.put("@invariant", TokenType.INVARIANT);
+        
+        // Blockchain Types
+        keywords.put("Address", TokenType.ADDRESS);
+        keywords.put("uint256", TokenType.UINT256);
+        keywords.put("int256", TokenType.INT256);
+        keywords.put("bytes32", TokenType.BYTES32);
+        keywords.put("wei", TokenType.WEI);
+        keywords.put("mapping", TokenType.MAPPING);
     }
 
     public Lexer(String source) {
@@ -203,11 +223,14 @@ public class Lexer {
 
         String text = source.substring(start, current);
         
-        if (text.equals("@Override")) {
+        // Check for annotations (text starting with @)
+        TokenType type = keywords.get(text);
+        if (type != null) {
+            addToken(type, text);
+        } else if (text.equals("@Override")) {
             addToken(TokenType.OVERRIDE, text);
         } else {
-            TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
-            addToken(type, text);
+            addToken(keywords.getOrDefault(text, TokenType.IDENTIFIER), text);
         }
     }
     private void number() {

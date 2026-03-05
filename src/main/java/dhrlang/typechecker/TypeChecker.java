@@ -7,6 +7,11 @@ import dhrlang.error.SourceLocation;
 import dhrlang.lexer.TokenType;
 import dhrlang.interpreter.GenericTypeManager;
 import dhrlang.stdlib.NativeSignatures;
+import dhrlang.types.BlockchainTypes;
+import dhrlang.validation.ContractValidator;
+import dhrlang.validation.ViewPureChecker;
+import dhrlang.validation.StorageLayouter;
+import dhrlang.validation.MsgContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +39,7 @@ public class TypeChecker {
     private ErrorReporter errorReporter;
     private Set<String> nonNullVars = new HashSet<>();
     private final Map<String, Map<String,String>> genericInstanceBindings = new HashMap<>();
+    private FunctionDecl currentFunction = null;
 
     public TypeChecker() {
         this.errorReporter = null;
@@ -97,6 +103,22 @@ public class TypeChecker {
                 validateGenericInterface(gi);
             }
         }
+
+        // Smart contract validation: validate annotations, view/pure, storage layout
+        ContractValidator contractValidator = new ContractValidator(errorReporter);
+        contractValidator.validate(program);
+
+        ViewPureChecker viewPureChecker = new ViewPureChecker(errorReporter);
+        viewPureChecker.check(program);
+
+        StorageLayouter storageLayouter = new StorageLayouter();
+        storageLayouter.layoutAll(program);
+
+        // Iteration 2 safety validators: reentrancy, CEI ordering, checked arithmetic, access control
+        new dhrlang.validation.NonReentrantChecker(errorReporter).check(program);
+        new dhrlang.validation.EffectOrderingAnalyzer(errorReporter).analyze(program);
+        new dhrlang.validation.CheckedArithmetic(errorReporter).analyze(program);
+        new dhrlang.validation.AccessControlChecker(errorReporter).analyze(program);
         
         FunctionDecl mainMethod = null;
         for (ClassDecl classDecl : program.getClasses()) {
@@ -536,9 +558,16 @@ public class TypeChecker {
     nonNullVars = new HashSet<>();
         boolean prevStatic = currentFunctionIsStatic;
         currentFunctionIsStatic = function.hasModifier(Modifier.STATIC);
+        FunctionDecl prevFunction = currentFunction;
+        currentFunction = function;
         
         if (currentClass != null) {
             local.define("this", currentClass.getName());
+            // Define msg and block globals for @contract classes
+            if (currentClass.isContract()) {
+                local.define("msg", MsgContext.MSG_TYPE);
+                local.define("block", MsgContext.BLOCK_TYPE);
+            }
         }
         
         for (VarDecl param : function.getParameters()) {
@@ -567,6 +596,7 @@ public class TypeChecker {
 
         currentFunctionReturnType = previousReturnType;
         currentFunctionIsStatic = prevStatic;
+        currentFunction = prevFunction;
     }
 
     private void checkBlock(Block block, TypeEnvironment env) {
@@ -1329,6 +1359,7 @@ public class TypeChecker {
             return elementType + "[]";
         }
         for(Expression dimExpr : dims){
+            if (dimExpr == null) continue; // jagged dimension (e.g., new num[3][]) — no size to check
             TypeDesc sizeDesc = checkExprDesc(dimExpr, env);
             if (!sizeDesc.isNumeric()) {
                 errorWithHint("Array size must be numeric, got '" + sizeDesc + "'.", expr.getSourceLocation(),
@@ -1409,6 +1440,26 @@ public class TypeChecker {
         }
         if (objectType.equals("sab") && propName.equals("length")) {
             return "num";
+        }
+        
+        // Handle msg.sender, msg.value, block.timestamp for smart contracts
+        if (objectType.equals(MsgContext.MSG_TYPE)) {
+            String resolvedType = MsgContext.getMsgPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'msg." + propName + "'.", expr.getSourceLocation(),
+                         "Available msg properties: sender (Address), value (uint256)");
+            return "unknown";
+        }
+        if (objectType.equals(MsgContext.BLOCK_TYPE)) {
+            String resolvedType = MsgContext.getBlockPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'block." + propName + "'.", expr.getSourceLocation(),
+                         "Available block properties: timestamp (uint256), number (uint256)");
+            return "unknown";
         }
         
         // Handle built-in string methods for sab type
@@ -2319,7 +2370,16 @@ public class TypeChecker {
 
 
     private boolean isPrimitive(String type) {
-        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek");
+        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek")
+            || isBlockchainPrimitive(type);
+    }
+
+    /**
+     * Check if a type is a blockchain primitive type.
+     */
+    private boolean isBlockchainPrimitive(String type) {
+        return type.equals("Address") || type.equals("uint256") || type.equals("int256")
+            || type.equals("bytes32") || type.equals("wei");
     }
     
     
@@ -2456,8 +2516,13 @@ public class TypeChecker {
         }
         
     if (!isPrimitive(type) && !classRegistry.containsKey(type) && !interfaceRegistry.containsKey(type)) {
+        // Check for mapping types: mapping(K → V)
+        if (type.startsWith("mapping")) {
+            // mapping types are valid blockchain types
+            return;
+        }
         errorWithHint("Unknown type '" + type + "'.", location,
-            "Make sure the type is defined or use a valid primitive type: num, duo, sab, kya, ek");
+            "Make sure the type is defined or use a valid primitive type: num, duo, sab, kya, ek, Address, uint256, int256, bytes32, wei");
         }
     }
     

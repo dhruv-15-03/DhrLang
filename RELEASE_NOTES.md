@@ -1,5 +1,67 @@
 # 🚀 DhrLang Release Notes
+## v2.0.0 - Major Release *(March 2026)*
 
+### Overview
+DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, bringing the test suite from 146 to **1,034 tests** with 0 failures. This release adds smart contract safety analysis, EVM bytecode compilation, interactive debugging, a comprehensive testing and verification framework, production deployment tooling, and an AI agent orchestration and data pipeline framework.
+
+### Iteration 1: Enhanced Error Reporting
+- Unique error codes (DHR-EXXX/DHR-WXXX) with contextual hints
+- Type-aware suggestions for DhrLang-specific types
+- Multi-dimensional array support (2D–4D) with full test coverage
+
+### Iteration 2: Smart Contract Safety
+- `ViewPureChecker` — enforces view/pure function semantics
+- `NonReentrantChecker` — static reentrancy guard analysis
+- `StatementClassifier` — read/write/call/transfer classification
+- `EffectOrderingAnalyzer` — checks-effects-interactions pattern enforcement
+- `StorageLayouter` — EVM-compatible storage slot assignment with packing
+
+### Iteration 3: EVM Backend
+- Complete EVM opcode support with gas costs and stack effects
+- EVM assembler with label resolution and jump patching
+- Solidity-compatible 4-byte function selectors (Keccak-256)
+- ABI encoding/decoding for all standard types
+- Peephole optimizer with dead code elimination and constant folding
+
+### Iteration 4: Interactive Debugging
+- File/line/conditional/hit-count breakpoints
+- Full debug session with step-over, step-into, step-out
+- Interactive REPL with expression evaluation
+- Watch expressions with change detection
+- Bidirectional source maps (source ↔ bytecode)
+
+### Iteration 5: Testing & Verification
+- Smart contract test runner with lifecycle management
+- Coverage-guided fuzzing with mutation and dictionary strategies
+- Property-based testing with shrinking
+- Line/branch/function coverage tracking
+- Mock framework with call recording
+- Gas profiler with hotspot detection
+- Multi-format reporting (text, JSON, JUnit XML, HTML, Markdown)
+
+### Iteration 6: Production & Deployment
+- Security audit reports with SARIF export
+- NatSpec-compatible documentation generation
+- Multi-chain deployment with proxy patterns and gas estimation
+- Layer-2 chain configurations (Optimism, Arbitrum, zkSync, Polygon, Base)
+- Production-ready contract templates (ERC-20, ERC-721, Governor, Vault)
+
+### Iteration 7: AI Agent & Data Pipeline
+- Agent annotations (@agent, @tool, @model, @prompt, @guardrail, @memory, @retry)
+- Pipeline annotations (@pipeline, @transform, @schema) with validation
+- AI agent runtime with tool dispatch, memory, and guardrails
+- Multi-step planning (ReAct, chain-of-thought, tree-of-thought)
+- Streaming/batch pipeline execution with backpressure and windowing
+- Intelligent pipelines combining AI agents with data processing
+
+### Build & Quality
+- **1,034 tests, 0 failures**
+- Fat JAR: `DhrLang-2.0.0.jar` (~1.3 MB)
+- Javadoc JAR and sources JAR included
+- Java 17+ required, tested on OpenJDK 23
+- SpotBugs, Checkstyle, PMD, Jacoco quality gates active
+
+---
 ## v1.1.8 - Hotfix Release *(Jan 2026)*
 
 ### 🔧 Fixes

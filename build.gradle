@@ -12,7 +12,7 @@ plugins {
 }
 
 group = 'com.dhrlang'
-version = '1.1.8'
+version = '2.0.0'
 description = 'DhrLang Programming Language - Modern static language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
 
 application {
@@ -65,7 +65,7 @@ test {
 
 // Jacoco coverage
 jacoco {
-    toolVersion = "0.8.8"
+    toolVersion = "0.8.11"
 }
 
 jacocoTestReport {
