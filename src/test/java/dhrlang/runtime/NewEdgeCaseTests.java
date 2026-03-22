@@ -8,12 +8,12 @@ public class NewEdgeCaseTests {
     private void expectCompileError(String src){ var r = RuntimeTestUtil.runSource(src); assertTrue(r.hadCompileErrors, "Expected compile error. stderr=\n"+r.stderr); }
     private void expectRuntimeError(String src, String cat, String msgSub){ var r = RuntimeTestUtil.runSource(src); assertFalse(r.hadCompileErrors,"Unexpected compile error: \n"+r.stderr); assertTrue(r.hadRuntimeError, "Expected runtime error"); if(cat!=null) assertTrue(r.runtimeErrorCategory.contains(cat)); if(msgSub!=null) assertTrue((r.runtimeErrorMessage+"\n"+r.stderr).contains(msgSub)); }
 
-    @Test void nullSetPropertyCompileRejected() {
-        // Type system currently rejects property assignment on possibly-null reference at compile time.
+    @Test void nullSetPropertyRuntimeError() {
+        // null is a valid literal; property assignment on null reference is a runtime error
         String src = "class A { sab x; static kaam main(){ A a = null; a.x = \"hi\"; } }";
         var r = RuntimeTestUtil.runSource(src);
-        assertTrue(r.hadCompileErrors, "Expected compile/type error for property on null");
-        assertFalse(r.hadRuntimeError);
+        assertFalse(r.hadCompileErrors, "No compile error expected: " + r.stderr);
+        assertTrue(r.hadRuntimeError, "Expected runtime error for property set on null");
     }
 
     @Test void genericFieldSet() {

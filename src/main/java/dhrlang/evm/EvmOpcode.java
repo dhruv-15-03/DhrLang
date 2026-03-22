@@ -51,6 +51,7 @@ public enum EvmOpcode {
     CALLDATACOPY(0x37, 3, 0, 3),
     CODESIZE(0x38, 0, 1, 2),
     CODECOPY(0x39, 3, 0, 3),
+    GASPRICE(0x3A, 0, 1, 2),
 
     // Block Information
     BLOCKHASH(0x40, 1, 1, 20),
@@ -59,6 +60,8 @@ public enum EvmOpcode {
     NUMBER(0x43, 0, 1, 2),
     DIFFICULTY(0x44, 0, 1, 2),
     GASLIMIT(0x45, 0, 1, 2),
+    CHAINID(0x46, 0, 1, 2),
+    SELFBALANCE(0x47, 0, 1, 5),
 
     // Stack, Memory, Storage
     POP(0x50, 1, 0, 2),

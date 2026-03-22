@@ -8,5 +8,6 @@ import java.util.List;
  * Will be populated by lowering pipeline in later phases.
  */
 public class IrProgram {
+    public final List<IrClassDef> classes = new ArrayList<>();
     public final List<IrFunction> functions = new ArrayList<>();
 }

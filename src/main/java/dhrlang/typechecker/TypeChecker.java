@@ -897,6 +897,7 @@ public class TypeChecker {
         if (expr instanceof PrefixIncrementExpr) return checkPrefixIncrement((PrefixIncrementExpr) expr, env);
         if (expr instanceof StaticAccessExpr) return checkStaticAccess((StaticAccessExpr) expr, env);
         if (expr instanceof StaticAssignExpr) return checkStaticAssign((StaticAssignExpr) expr, env);
+        if (expr instanceof TernaryExpr te) return checkTernary(te, env);
 
         errorWithHint("Unsupported expression type: " + expr.getClass().getSimpleName(), expr.getSourceLocation(),
                      "This expression type is not yet supported in DhrLang");
@@ -1044,6 +1045,7 @@ public class TypeChecker {
     }
 
     private String checkLiteral(LiteralExpr expr) {
+        if (expr.getValue() == null) return "null";
         if (expr.getValue() instanceof Long) return "num";
         if (expr.getValue() instanceof Double) return "duo";
         if (expr.getValue() instanceof Boolean) return "kya";
@@ -1107,10 +1109,17 @@ public class TypeChecker {
                              "Use boolean values (true/false) with the '!' operator");
             }
             return "kya";
+        } else if (op == TokenType.BIT_NOT) {
+            if (!rightDesc.isNumeric()) {
+                errorWithHint("Operand for '~' must be a number, got '" + rightType + "'.", 
+                             expr.getSourceLocation(),
+                             "Bitwise NOT (~) requires a numeric operand");
+            }
+            return "num";
         }
         
         errorWithHint("Unsupported unary operator: " + op, expr.getSourceLocation(),
-                     "Use supported unary operators: - (minus) or ! (not)");
+                     "Use supported unary operators: - (minus), ! (not), or ~ (bitwise not)");
         return "unknown";
     }
 
@@ -1235,6 +1244,17 @@ public class TypeChecker {
                                  "Logical operators (&&, ||) require boolean values: true && false");
                 }
                 return "kya";
+
+            case BIT_AND:
+            case BIT_OR:
+            case BIT_XOR:
+            case LSHIFT:
+            case RSHIFT:
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
+                    errorWithHint("Operands for bitwise operator must be numbers, got '" + leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
+                                 "Bitwise operators (&, |, ^, <<, >>) require numeric operands");
+                }
+                return "num";
                 
             default:
                 errorWithHint("Unsupported binary operator: " + op, expr.getSourceLocation(),
@@ -1664,6 +1684,21 @@ public class TypeChecker {
     errorWithHint("Static field '" + memberName + "' not found in class '" + className + "'.", expr.getSourceLocation(),
              "Check the field name and ensure it's declared as static", ErrorCode.UNDECLARED_IDENTIFIER);
         return "unknown";
+    }
+
+    private String checkTernary(TernaryExpr expr, TypeEnvironment env) {
+        String condType = checkExpr(expr.getCondition(), env);
+        if (!"kya".equals(condType)) {
+            errorWithHint("Ternary condition must be boolean (kya), got '" + condType + "'.", expr.getSourceLocation(),
+                         "The condition before '?' must evaluate to kya (boolean)");
+        }
+        String thenType = checkExpr(expr.getThenBranch(), env);
+        String elseType = checkExpr(expr.getElseBranch(), env);
+        TypeDesc thenDesc = TypeDesc.parse(thenType);
+        TypeDesc elseDesc = TypeDesc.parse(elseType);
+        if (isAssignable(elseDesc, thenDesc)) return thenType;
+        if (isAssignable(thenDesc, elseDesc)) return elseType;
+        return thenType;
     }
 
     private String checkCall(CallExpr call, TypeEnvironment env) {
@@ -2371,6 +2406,7 @@ public class TypeChecker {
 
     private boolean isPrimitive(String type) {
         return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek")
+            || type.equals("any") || type.equals("null")
             || isBlockchainPrimitive(type);
     }
 
@@ -2585,7 +2621,14 @@ public class TypeChecker {
     }
     // New descriptor-based assignability (to gradually replace string variant)
     private boolean isAssignable(TypeDesc from, TypeDesc to){
-        return TypeDesc.assignable(from,to);
+        if(TypeDesc.assignable(from,to)) return true;
+        // Subtype check: allow assigning a subclass to a superclass variable
+        if(from.kind == TypeKind.CLASS && to.kind == TypeKind.CLASS){
+            ClassDecl fromClass = classRegistry.get(from.name);
+            ClassDecl toClass = classRegistry.get(to.name);
+            if(isSubclass(fromClass, toClass)) return true;
+        }
+        return false;
     }
 
     /* -------------------- Generic Instantiation Support (Foundational) -------------------- */

@@ -1,0 +1,7 @@
+class Main {
+    static kaam main() {
+        sab s = "hello";
+        printLine(arrayLength([1, 2, 3]));
+        printLine(s.substring(1, 4));
+    }
+}

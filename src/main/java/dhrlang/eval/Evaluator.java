@@ -141,6 +141,11 @@ public class Evaluator implements ASTVisitor<Object> {
 
     // === Expressions migrated ===
     @Override public Object visitLiteralExpr(LiteralExpr literalExpr) { return literalExpr.getValue(); }
+    @Override public Object visitTernaryExpr(TernaryExpr ternaryExpr) {
+        Object cond = ternaryExpr.getCondition().accept(this);
+        if (isTruthy(cond)) return ternaryExpr.getThenBranch().accept(this);
+        return ternaryExpr.getElseBranch().accept(this);
+    }
     @Override public Object visitVariableExpr(VariableExpr variableExpr) {
         String name = variableExpr.getName().getLexeme();
         try { return env.get(name); }
@@ -368,6 +373,10 @@ public class Evaluator implements ASTVisitor<Object> {
                 throw ErrorFactory.typeError("Operand for '-' must be a number, got: "+(right==null?"null": right.getClass().getSimpleName()), operator);
             }
             case NOT -> !isTruthy(right);
+            case BIT_NOT -> {
+                if(right instanceof Long) yield ~((Long)right);
+                throw ErrorFactory.typeError("Operand for '~' must be an integer.", operator);
+            }
             default -> throw ErrorFactory.systemError("Unsupported unary operator: "+operator.getType(), operator);
         };
     }
@@ -411,6 +420,21 @@ public class Evaluator implements ASTVisitor<Object> {
                 validateNumberOperands(operator,left,right);
                 if(left instanceof Long && right instanceof Long) return (Long)left <= (Long)right;
                 return toDouble(left) <= toDouble(right);
+            case BIT_AND:
+                if(left instanceof Long && right instanceof Long) return (Long)left & (Long)right;
+                throw ErrorFactory.typeError("Bitwise '&' requires integer operands.", operator);
+            case BIT_OR:
+                if(left instanceof Long && right instanceof Long) return (Long)left | (Long)right;
+                throw ErrorFactory.typeError("Bitwise '|' requires integer operands.", operator);
+            case BIT_XOR:
+                if(left instanceof Long && right instanceof Long) return (Long)left ^ (Long)right;
+                throw ErrorFactory.typeError("Bitwise '^' requires integer operands.", operator);
+            case LSHIFT:
+                if(left instanceof Long && right instanceof Long) return (Long)left << (Long)right;
+                throw ErrorFactory.typeError("Shift '<<' requires integer operands.", operator);
+            case RSHIFT:
+                if(left instanceof Long && right instanceof Long) return (Long)left >> (Long)right;
+                throw ErrorFactory.typeError("Shift '>>' requires integer operands.", operator);
             default: throw ErrorFactory.systemError("Unsupported binary operator: "+operator.getType(), operator);
         }
     }

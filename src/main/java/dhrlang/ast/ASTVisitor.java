@@ -39,6 +39,7 @@ public interface ASTVisitor<R> {
     R visitPostfixIncrementExpr(PostfixIncrementExpr postfixIncrementExpr);
     R visitStaticAccessExpr(StaticAccessExpr staticAccessExpr);
     R visitStaticAssignExpr(StaticAssignExpr staticAssignExpr);
+    R visitTernaryExpr(TernaryExpr ternaryExpr);
     
     // Generic type system
     R visitGenericType(GenericType genericType);

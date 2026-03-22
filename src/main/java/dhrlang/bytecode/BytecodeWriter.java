@@ -7,7 +7,7 @@ import java.util.*;
 /** Serializes IR program to a simple DhrLang bytecode (.dbc). */
 public class BytecodeWriter {
     private static final int MAGIC = 0x44484243; // 'DHBC'
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
 
     private static class ConstPool {
         final Map<Object,Integer> indexMap = new HashMap<>();
@@ -44,6 +44,9 @@ public class BytecodeWriter {
                 for(IrInstruction ins: f.instructions){
                     if(ins instanceof IrConst c){ cp.indexOf(c.value); pc++; }
                     else if(ins instanceof IrLabel lab){ map.put(lab.name, pc); }
+                    else if(ins instanceof IrCallNative cn){ cp.indexOf(cn.functionName); pc++; }
+                    else if(ins instanceof IrNewObject no){ cp.indexOf(no.className); pc++; }
+                    else if(ins instanceof IrInvokeMethod im){ cp.indexOf(im.methodName); pc++; }
                     else if(ins instanceof IrGetStatic gs){ cp.indexOf(gs.className); cp.indexOf(gs.fieldName); pc++; }
                     else if(ins instanceof IrSetStatic ss){ cp.indexOf(ss.className); cp.indexOf(ss.fieldName); pc++; }
                     else if(ins instanceof IrGetField gf){ cp.indexOf(gf.fieldName); pc++; }
@@ -71,10 +74,24 @@ public class BytecodeWriter {
                 }
             }
             // Write functions
+            // Write class definitions for OOP runtime
+            out.writeInt(program.classes.size());
+            for(IrClassDef cls : program.classes){
+                out.writeUTF(cls.name);
+                out.writeUTF(cls.superclassName == null ? "" : cls.superclassName);
+                out.writeInt(cls.instanceFields.size());
+                for(IrFieldDef field : cls.instanceFields){
+                    out.writeUTF(field.name);
+                    out.writeUTF(field.type == null ? "" : field.type);
+                }
+            }
             out.writeInt(program.functions.size());
             for(int fi=0; fi<program.functions.size(); fi++){
                 IrFunction f = program.functions.get(fi);
                 out.writeUTF(f.name);
+                out.writeUTF(f.ownerClassName == null ? "" : f.ownerClassName);
+                out.writeUTF(f.simpleName == null ? "" : f.simpleName);
+                out.writeBoolean(f.isStatic);
                 // Count non-label instructions
                 int count = 0; for(IrInstruction ins: f.instructions){ if(!(ins instanceof IrLabel)) count++; }
                 out.writeInt(count);
@@ -92,7 +109,17 @@ public class BytecodeWriter {
                         out.writeInt(sl.sourceSlot); out.writeInt(sl.destSlot);
                     } else if(ins instanceof IrBinOp b){
                         BytecodeOpcode op = switch(b.op){
-                            case ADD -> BytecodeOpcode.ADD; case SUB -> BytecodeOpcode.SUB; case MUL -> BytecodeOpcode.MUL; case DIV -> BytecodeOpcode.DIV; };
+                            case ADD -> BytecodeOpcode.ADD;
+                            case SUB -> BytecodeOpcode.SUB;
+                            case MUL -> BytecodeOpcode.MUL;
+                            case DIV -> BytecodeOpcode.DIV;
+                            case MOD -> BytecodeOpcode.MOD;
+                            case BIT_AND -> BytecodeOpcode.BIT_AND;
+                            case BIT_OR -> BytecodeOpcode.BIT_OR;
+                            case BIT_XOR -> BytecodeOpcode.BIT_XOR;
+                            case LSHIFT -> BytecodeOpcode.LSHIFT;
+                            case RSHIFT -> BytecodeOpcode.RSHIFT;
+                        };
                         out.writeInt(op.code);
                         out.writeInt(b.leftSlot); out.writeInt(b.rightSlot); out.writeInt(b.targetSlot);
                     } else if(ins instanceof IrCompare cmp){
@@ -117,7 +144,11 @@ public class BytecodeWriter {
                         out.writeInt(BytecodeOpcode.RETURN.code);
                         out.writeInt(r.slot==null?-1:r.slot);
                     } else if(ins instanceof IrUnaryOp u){
-                        BytecodeOpcode op = (u.op== IrUnaryOp.Op.NEG)? BytecodeOpcode.NEG : BytecodeOpcode.NOT;
+                        BytecodeOpcode op = switch(u.op){
+                            case NEG -> BytecodeOpcode.NEG;
+                            case NOT -> BytecodeOpcode.NOT;
+                            case BIT_NOT -> BytecodeOpcode.BIT_NOT;
+                        };
                         out.writeInt(op.code);
                         out.writeInt(u.sourceSlot); out.writeInt(u.targetSlot);
                     } else if(ins instanceof IrNewArray na){
@@ -134,11 +165,26 @@ public class BytecodeWriter {
                         out.writeInt(BytecodeOpcode.ARRAY_LENGTH.code);
                         out.writeInt(al.arraySlot); out.writeInt(al.targetSlot);
                     } else if(ins instanceof IrCall call){
-                        out.writeInt(BytecodeOpcode.CALL.code);
                         int idx = functionIndex.getOrDefault(call.functionName, -1);
-                        int a0=-1,a1=-1,a2=-1,a3=-1; int n = call.argSlots.length;
-                        if(n>0) a0 = call.argSlots[0]; if(n>1) a1 = call.argSlots[1]; if(n>2) a2 = call.argSlots[2]; if(n>3) a3 = call.argSlots[3];
-                        out.writeInt(idx); out.writeInt(a0); out.writeInt(a1); out.writeInt(a2); out.writeInt(a3); out.writeInt(call.destSlot);
+                        int n = call.argSlots.length;
+                        if(n <= 4){
+                            out.writeInt(BytecodeOpcode.CALL.code);
+                            int a0=-1,a1=-1,a2=-1,a3=-1;
+                            if(n>0) a0 = call.argSlots[0]; if(n>1) a1 = call.argSlots[1]; if(n>2) a2 = call.argSlots[2]; if(n>3) a3 = call.argSlots[3];
+                            out.writeInt(idx); out.writeInt(a0); out.writeInt(a1); out.writeInt(a2); out.writeInt(a3); out.writeInt(call.destSlot);
+                        } else {
+                            out.writeInt(BytecodeOpcode.CALL_VAR.code);
+                            out.writeInt(idx);
+                            out.writeInt(n);
+                            for(int s : call.argSlots){ out.writeInt(s); }
+                            out.writeInt(call.destSlot);
+                        }
+                    } else if(ins instanceof IrCallNative nativeCall){
+                        out.writeInt(BytecodeOpcode.CALL_NATIVE.code);
+                        out.writeInt(cp.indexOf(nativeCall.functionName));
+                        out.writeInt(nativeCall.argSlots.length);
+                        for(int s : nativeCall.argSlots){ out.writeInt(s); }
+                        out.writeInt(nativeCall.destSlot);
                     } else if(ins instanceof IrGetStatic gs){
                         out.writeInt(BytecodeOpcode.GET_STATIC.code);
                         out.writeInt(cp.indexOf(gs.className));
@@ -173,8 +219,21 @@ public class BytecodeWriter {
                     } else if(ins instanceof IrCatchBind cb){
                         out.writeInt(BytecodeOpcode.CATCH_BIND.code);
                         out.writeInt(cb.targetSlot);
+                    } else if(ins instanceof IrNewObject no){
+                        out.writeInt(BytecodeOpcode.NEW_OBJ.code);
+                        out.writeInt(cp.indexOf(no.className));
+                        out.writeInt(no.targetSlot);
+                    } else if(ins instanceof IrInvokeMethod im){
+                        out.writeInt(BytecodeOpcode.INVOKE_METHOD.code);
+                        out.writeInt(im.objectSlot);
+                        out.writeInt(cp.indexOf(im.methodName));
+                        out.writeInt(im.argSlots.length);
+                        for(int s : im.argSlots){ out.writeInt(s); }
+                        out.writeInt(im.destSlot);
                     } else {
-                        // unknowns ignored
+                        throw new IllegalArgumentException(
+                            "BytecodeWriter: unsupported IR instruction: "
+                            + ins.getClass().getSimpleName() + " in function " + f.name);
                     }
                 }
             }

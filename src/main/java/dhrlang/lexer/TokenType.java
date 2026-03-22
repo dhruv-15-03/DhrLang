@@ -21,6 +21,10 @@ public enum TokenType {
     ELSE,           // else    - Else block
     WHILE,          // while   - While loop
     FOR,            // for     - For loop
+    SWITCH,         // switch  - Switch statement
+    CASE,           // case    - Case label
+    DEFAULT,        // default - Default label
+    DO,             // do      - Do-while loop
     BREAK,
     CONTINUE,
     NEW,
@@ -43,6 +47,7 @@ public enum TokenType {
     NONREENTRANT,   // @nonreentrant - Reentrancy guard
     CONSTRUCTOR,    // @constructor - Contract constructor
     EVENT,          // @event - Event emission
+    EMIT,           // emit - Emit an event
     IMMUTABLE,      // @immutable - Set once in constructor
     INVARIANT,      // @invariant - Formal verification invariant
     TEST,           // @test - Contract test method
@@ -79,6 +84,7 @@ public enum TokenType {
     STRING,         // String literal (e.g., "hello")
     CHAR,           // Character literal (e.g., 'a')
     BOOLEAN,        // Boolean literal (true / false)
+    NULL,            // null literal
 
     // ===============================
     //          IDENTIFIERS
@@ -105,7 +111,14 @@ public enum TokenType {
     OR,             // ||     (logical or)
     INCREMENT,      // ++     (increment operator)
     DECREMENT,      // --     (decrement operator)
-    QUESTION,       // ?      (wildcard in generics)
+    BIT_AND,        // &      (bitwise AND)
+    BIT_OR,         // |      (bitwise OR)
+    BIT_XOR,        // ^      (bitwise XOR)
+    BIT_NOT,        // ~      (bitwise NOT)
+    LSHIFT,         // <<     (left shift)
+    RSHIFT,         // >>     (right shift)
+    QUESTION,       // ?      (ternary / wildcard in generics)
+    COLON,          // :      (ternary)
 
 
     // ===============================

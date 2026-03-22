@@ -187,6 +187,51 @@ public class EvmCodeBuffer {
         emit(EvmOpcode.REVERT);
     }
 
+    /**
+     * Emit REVERT with an Error(string) ABI-encoded message.
+     * Follows Solidity's Error(string) selector: 0x08c379a0
+     * Layout in memory at offset 0:
+     *   [0x00] selector  (4 bytes, left-padded to 32)
+     *   [0x20] offset to string data = 0x20
+     *   [0x40] string length
+     *   [0x60] string data (padded to 32)
+     */
+    public void revertWithMessage(String message) {
+        byte[] msgBytes = message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        int paddedLen = ((msgBytes.length + 31) / 32) * 32;
+        int totalSize = 4 + 32 + 32 + paddedLen;
+
+        // Store Error(string) selector at memory[0x00]
+        // 0x08c379a0 left-shifted to fill first 4 bytes of word
+        push32(new java.math.BigInteger("08c379a0", 16)
+                .shiftLeft(224));
+        pushInt(0);
+        emit(EvmOpcode.MSTORE);
+
+        // Store offset to string data = 0x20
+        pushInt(0x20);
+        pushInt(0x04);
+        emit(EvmOpcode.MSTORE);
+
+        // Store string length
+        pushInt(msgBytes.length);
+        pushInt(0x24);
+        emit(EvmOpcode.MSTORE);
+
+        // Store string data (up to 32 bytes for simplicity)
+        if (msgBytes.length > 0) {
+            byte[] padded = new byte[32];
+            System.arraycopy(msgBytes, 0, padded, 0, Math.min(msgBytes.length, 32));
+            push32(new java.math.BigInteger(1, padded));
+            pushInt(0x44);
+            emit(EvmOpcode.MSTORE);
+        }
+
+        pushInt(totalSize);
+        pushInt(0);
+        emit(EvmOpcode.REVERT);
+    }
+
     // ── Output & resolve ─────────────────────────────────────────────────
 
     /**

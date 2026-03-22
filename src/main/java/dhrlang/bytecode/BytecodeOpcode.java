@@ -14,7 +14,13 @@ public enum BytecodeOpcode {
     GET_STATIC(25), SET_STATIC(26),
     GET_FIELD(27), SET_FIELD(28),
     TRY_PUSH(29), TRY_POP(30),
-    THROW(31), CATCH_BIND(32);
+    THROW(31), CATCH_BIND(32),
+    MOD(33),
+    CALL_VAR(34),
+    CALL_NATIVE(35),
+    NEW_OBJ(36),
+    INVOKE_METHOD(37),
+    BIT_AND(38), BIT_OR(39), BIT_XOR(40), LSHIFT(41), RSHIFT(42), BIT_NOT(43);
 
     public final int code;
     BytecodeOpcode(int code){ this.code = code; }

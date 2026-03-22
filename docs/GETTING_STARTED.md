@@ -16,10 +16,10 @@ java -version
 ### Option A: Download release JAR (Recommended)
 1. Download the latest release JAR from:
    https://github.com/dhruv-15-03/DhrLang/releases/latest
-2. Download `DhrLang-1.1.3.jar` (fat JAR with all dependencies)
+2. Download `DhrLang-2.0.0.jar` (fat JAR with all dependencies)
 3. Run directly:
 ```powershell
-java -jar DhrLang-1.1.3.jar input\sample.dhr
+java -jar DhrLang-2.0.0.jar input\sample.dhr
 ```
 
 ### Option B: Build from source
@@ -32,7 +32,7 @@ Set-Location DhrLang
 ./gradlew.bat shadowJar
 
 # Run a program with the fat JAR
-java -jar build\libs\DhrLang-1.1.3.jar input\sample.dhr
+java -jar build\libs\DhrLang-2.0.0.jar input\sample.dhr
 
 # Or run via Gradle
 ./gradlew.bat run --args="input\sample.dhr"
@@ -53,7 +53,7 @@ class Main {
 Run it:
 ```powershell
 # Using fat JAR
-java -jar build\libs\DhrLang-1.1.3.jar hello.dhr
+java -jar build\libs\DhrLang-2.0.0.jar hello.dhr
 
 # Or using Gradle
 ./gradlew.bat run --args="hello.dhr"
@@ -77,10 +77,10 @@ Notes:
 The default backend is the AST interpreter. You can select the IR or bytecode backend with flags:
 ```powershell
 # IR backend
-java -jar build\libs\DhrLang-1.1.3.jar --backend=ir input\test_arrays.dhr
+java -jar build\libs\DhrLang-2.0.0.jar --backend=ir input\test_arrays.dhr
 
 # Bytecode backend
-java -jar build\libs\DhrLang-1.1.3.jar --backend=bytecode input\test_arrays.dhr
+java -jar build\libs\DhrLang-2.0.0.jar --backend=bytecode input\test_arrays.dhr
 
 # Using Gradle
 ./gradlew.bat run --args="--backend=ir input\test_arrays.dhr"
@@ -93,7 +93,7 @@ Notes:
 ## Running untrusted programs (bytecode)
 If you execute untrusted code, prefer the bytecode backend with the built-in verifier and conservative defaults:
 ```powershell
-java -Ddhrlang.bytecode.untrusted=true -jar build\libs\DhrLang-1.1.3.jar --backend=bytecode input\sample.dhr
+java -Ddhrlang.bytecode.untrusted=true -jar build\libs\DhrLang-2.0.0.jar --backend=bytecode input\sample.dhr
 ```
 Key runtime flags (as JVM system properties):
 - `dhrlang.bytecode.untrusted` (default: false) — enables conservative limits and strict entry validation.

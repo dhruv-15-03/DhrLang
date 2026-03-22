@@ -7,6 +7,39 @@ import java.util.Map;
 
 /** Executes the IR including arrays and basic function calls. */
 public class IrInterpreter {
+    private static class RuntimeClass {
+        final IrClassDef definition;
+        RuntimeClass superclass;
+        final Map<String, IrFunction> instanceMethods = new HashMap<>();
+
+        RuntimeClass(IrClassDef definition) {
+            this.definition = definition;
+        }
+
+        IrFunction findMethod(String methodName) {
+            IrFunction local = instanceMethods.get(methodName);
+            if (local != null) return local;
+            return superclass != null ? superclass.findMethod(methodName) : null;
+        }
+
+        void populateDefaultFields(Map<String, Object> fields) {
+            if (superclass != null) superclass.populateDefaultFields(fields);
+            for (IrFieldDef field : definition.instanceFields) {
+                fields.put(field.name, dhrlang.runtime.RuntimeDefaults.getDefaultValue(field.type));
+            }
+        }
+    }
+
+    private static class ObjectInstance {
+        final RuntimeClass klass;
+        final Map<String, Object> fields = new HashMap<>();
+
+        ObjectInstance(RuntimeClass klass) {
+            this.klass = klass;
+            klass.populateDefaultFields(fields);
+        }
+    }
+
     // Exception handler descriptor (pc within frame and optional catch type)
     private static class Handler {
         final int pc; final String type;
@@ -35,6 +68,7 @@ public class IrInterpreter {
         // Build function table by name
         Map<String, IrFunction> fnTable = new HashMap<>();
         for(IrFunction f: program.functions){ fnTable.put(f.name, f); }
+        Map<String, RuntimeClass> classTable = buildClassTable(program, fnTable);
         // Very simple static storage: className -> (fieldName -> value)
         Map<String, java.util.Map<String,Object>> statics = new HashMap<>();
 
@@ -85,7 +119,7 @@ public class IrInterpreter {
                     callStack.pop();
                     continue;
                 }
-            } else
+            } else try {
             if(ins instanceof IrConst c){
                 frame.slots[c.targetSlot] = c.value;
             } else if(ins instanceof IrLoadLocal ll){
@@ -125,6 +159,21 @@ public class IrInterpreter {
                         if(divisor==0.0) throw ErrorFactory.arithmeticError("Division by zero.", (dhrlang.error.SourceLocation) null);
                         frame.slots[b.targetSlot] = ((Number)left).doubleValue() / divisor;
                     }
+                    case MOD -> {
+                        requireNumbers(left, right, "%");
+                        double divisor = ((Number)right).doubleValue();
+                        if(divisor==0.0) throw ErrorFactory.arithmeticError("Modulo by zero.", (dhrlang.error.SourceLocation) null);
+                        if(left instanceof Double || right instanceof Double) {
+                            frame.slots[b.targetSlot] = ((Number)left).doubleValue() % divisor;
+                        } else {
+                            frame.slots[b.targetSlot] = ((Number)left).longValue() % ((Number)right).longValue();
+                        }
+                    }
+                    case BIT_AND -> { requireLongs(left, right, "&"); frame.slots[b.targetSlot] = ((Long)left) & ((Long)right); }
+                    case BIT_OR ->  { requireLongs(left, right, "|"); frame.slots[b.targetSlot] = ((Long)left) | ((Long)right); }
+                    case BIT_XOR -> { requireLongs(left, right, "^"); frame.slots[b.targetSlot] = ((Long)left) ^ ((Long)right); }
+                    case LSHIFT ->  { requireLongs(left, right, "<<"); frame.slots[b.targetSlot] = ((Long)left) << ((Long)right); }
+                    case RSHIFT ->  { requireLongs(left, right, ">>"); frame.slots[b.targetSlot] = ((Long)left) >> ((Long)right); }
                 }
             } else if(ins instanceof IrCompare cmp){
                 Object left = frame.slots[cmp.leftSlot];
@@ -178,6 +227,10 @@ public class IrInterpreter {
                     case NOT -> {
                         result = !isTruthy(v);
                     }
+                    case BIT_NOT -> {
+                        if(v instanceof Long l) result = ~l;
+                        else throw ErrorFactory.typeError("Operand for '~' must be an integer.", (dhrlang.error.SourceLocation) null);
+                    }
                     default -> result = null;
                 }
                 frame.slots[u.targetSlot] = result;
@@ -220,14 +273,64 @@ public class IrInterpreter {
             } else if(ins instanceof IrGetField gf){
                 Object obj = frame.slots[gf.objectSlot];
                 Object val = null;
-                if(obj instanceof java.util.Map<?,?> m){ val = ((java.util.Map<?,?>)m).get(gf.fieldName); }
+                if(obj instanceof ObjectInstance inst){
+                    val = inst.fields.get(gf.fieldName);
+                } else if(obj instanceof java.util.Map<?,?> m){
+                    val = ((java.util.Map<?,?>)m).get(gf.fieldName);
+                }
                 frame.slots[gf.targetSlot] = val;
             } else if(ins instanceof IrSetField sf){
                 Object obj = frame.slots[sf.objectSlot];
-                if(obj instanceof java.util.Map<?,?>){
+                if(obj instanceof ObjectInstance inst){
+                    inst.fields.put(sf.fieldName, frame.slots[sf.valueSlot]);
+                } else if(obj instanceof java.util.Map<?,?>){
                     @SuppressWarnings("unchecked")
                     java.util.Map<Object,Object> m = (java.util.Map<Object,Object>) obj;
                     m.put(sf.fieldName, frame.slots[sf.valueSlot]);
+                }
+            } else if(ins instanceof IrNewObject no){
+                RuntimeClass klass = classTable.get(no.className);
+                if(klass == null){
+                    throw ErrorFactory.typeError("Cannot instantiate unknown class '" + no.className + "'.", (dhrlang.error.SourceLocation) null);
+                }
+                frame.slots[no.targetSlot] = new ObjectInstance(klass);
+            } else if(ins instanceof IrCallNative nativeCall){
+                java.util.List<Object> args = new java.util.ArrayList<>(nativeCall.argSlots.length);
+                for(int argSlot : nativeCall.argSlots){
+                    args.add((argSlot >= 0 && argSlot < frame.slots.length) ? frame.slots[argSlot] : null);
+                }
+                Object result = dhrlang.runtime.NativeRuntimeBridge.invoke(nativeCall.functionName, args);
+                if(nativeCall.destSlot >= 0){
+                    frame.slots[nativeCall.destSlot] = result;
+                }
+            } else if(ins instanceof IrInvokeMethod call){
+                Object target = frame.slots[call.objectSlot];
+                if(target instanceof String value){
+                    java.util.List<Object> args = new java.util.ArrayList<>(call.argSlots.length + 1);
+                    args.add(value);
+                    for(int argSlot : call.argSlots){
+                        args.add((argSlot >= 0 && argSlot < frame.slots.length) ? frame.slots[argSlot] : null);
+                    }
+                    Object result = dhrlang.runtime.NativeRuntimeBridge.invoke(call.methodName, args);
+                    if(call.destSlot >= 0) frame.slots[call.destSlot] = result;
+                    continue;
+                }
+                if(!(target instanceof ObjectInstance instance)){
+                    throw ErrorFactory.typeError("Can only call methods on object instances.", (dhrlang.error.SourceLocation) null);
+                }
+                IrFunction callee = instance.klass.findMethod(call.methodName);
+                if(callee == null){
+                    if(call.destSlot >= 0) frame.slots[call.destSlot] = null;
+                } else {
+                    Frame newFrame = new Frame(callee);
+                    newFrame.slots[0] = instance;
+                    for(int i=0;i<call.argSlots.length && i+1<newFrame.slots.length;i++){
+                        int src = call.argSlots[i];
+                        newFrame.slots[i+1] = (src>=0 && src<frame.slots.length) ? frame.slots[src] : null;
+                    }
+                    newFrame.retDestSlot = call.destSlot;
+                    callStack.push(newFrame);
+                    advance = false;
                 }
             } else if(ins instanceof IrTryPush tp){
                 Integer dest = frame.labelPc.get(tp.catchLabel);
@@ -296,8 +399,34 @@ public class IrInterpreter {
                     return;
                 }
             }
+            } catch (dhrlang.interpreter.DhrRuntimeException ex) {
+                // Convert Java-level runtime exceptions to IR-level bubbling exceptions
+                // so that IR try/catch handlers can intercept them.
+                bubblingException = ex.getMessage();
+                continue;
+            }
             if(advance){ frame.pc++; }
         }
+    }
+
+    private Map<String, RuntimeClass> buildClassTable(IrProgram program, Map<String, IrFunction> fnTable){
+        Map<String, RuntimeClass> classTable = new HashMap<>();
+        for(IrClassDef def : program.classes){
+            classTable.put(def.name, new RuntimeClass(def));
+        }
+        for(RuntimeClass klass : classTable.values()){
+            if(klass.definition.superclassName != null){
+                klass.superclass = classTable.get(klass.definition.superclassName);
+            }
+        }
+        for(IrFunction fn : fnTable.values()){
+            if(fn.isStatic || fn.ownerClassName == null) continue;
+            RuntimeClass klass = classTable.get(fn.ownerClassName);
+            if(klass != null){
+                klass.instanceMethods.put(fn.simpleName, fn);
+            }
+        }
+        return classTable;
     }
 
     private IrFunction findEntryFunction(IrProgram program){
@@ -314,6 +443,11 @@ public class IrInterpreter {
         if(left==null || right==null) throw ErrorFactory.typeError("Null operand for operator: "+op, (dhrlang.error.SourceLocation) null);
         if(!(left instanceof Number) || !(right instanceof Number)){
             throw ErrorFactory.typeError("Operands must be numbers for operator: "+op+".", (dhrlang.error.SourceLocation) null);
+        }
+    }
+    private void requireLongs(Object left, Object right, String op){
+        if(!(left instanceof Long) || !(right instanceof Long)){
+            throw ErrorFactory.typeError("Bitwise operator '"+op+"' requires integer operands.", (dhrlang.error.SourceLocation) null);
         }
     }
 

@@ -6,10 +6,20 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 
 let extensionContext: vscode.ExtensionContext;
+let diagnosticCollection: vscode.DiagnosticCollection;
+let outputChannel: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext) {
     extensionContext = context;
     console.log('DhrLang extension is now active!');
+
+    // Create diagnostic collection for error squiggles
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('dhrlang');
+    context.subscriptions.push(diagnosticCollection);
+
+    // Create output channel
+    outputChannel = vscode.window.createOutputChannel('DhrLang');
+    context.subscriptions.push(outputChannel);
 
     // Register commands
     const runCommand = vscode.commands.registerCommand('dhrlang.runFile', () => {
@@ -33,7 +43,6 @@ export function activate(context: vscode.ExtensionContext) {
     const completionProvider = vscode.languages.registerCompletionItemProvider(
         'dhrlang',
         new DhrLangCompletionProvider(),
-        // Trigger completion on these characters
         '.',
         '('
     );
@@ -44,15 +53,32 @@ export function activate(context: vscode.ExtensionContext) {
     const hoverProvider = vscode.languages.registerHoverProvider('dhrlang', new DhrLangHoverProvider());
     context.subscriptions.push(hoverProvider);
 
-    // Show welcome message on extension activation
-    vscode.window.showInformationMessage(
-        'DhrLang extension activated! (Spec: num/duo/sab/kya + class/static kaam main())',
-        'Show Help'
-    ).then(selection => {
-        if (selection === 'Show Help') {
-            showDhrLangHelp();
-        }
-    });
+    // Run diagnostics on save and on open
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    if (config.get<boolean>('enableErrorSquiggles', true)) {
+        context.subscriptions.push(
+            vscode.workspace.onDidSaveTextDocument((doc) => {
+                if (doc.languageId === 'dhrlang' || doc.fileName.endsWith('.dhr')) {
+                    runDiagnostics(doc);
+                }
+            }),
+            vscode.workspace.onDidOpenTextDocument((doc) => {
+                if (doc.languageId === 'dhrlang' || doc.fileName.endsWith('.dhr')) {
+                    runDiagnostics(doc);
+                }
+            }),
+            vscode.workspace.onDidCloseTextDocument((doc) => {
+                diagnosticCollection.delete(doc.uri);
+            })
+        );
+
+        // Run diagnostics on any already-open .dhr files
+        vscode.workspace.textDocuments.forEach((doc) => {
+            if (doc.languageId === 'dhrlang' || doc.fileName.endsWith('.dhr')) {
+                runDiagnostics(doc);
+            }
+        });
+    }
 }
 
 let statusItem: vscode.StatusBarItem | undefined;
@@ -135,31 +161,194 @@ async function compileDhrLangFile() {
         return;
     }
     await document.save();
-    const config = vscode.workspace.getConfiguration('dhrlang');
-    const javaPath = config.get<string>('javaPath', 'java');
+
+    const diagnostics = await runDiagnostics(document);
+    if (diagnostics.length === 0) {
+        vscode.window.showInformationMessage('DhrLang: No errors found. Code is clean!');
+    } else {
+        const errorCount = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Error).length;
+        const warnCount = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Warning).length;
+        const parts: string[] = [];
+        if (errorCount > 0) { parts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`); }
+        if (warnCount > 0) { parts.push(`${warnCount} warning${warnCount > 1 ? 's' : ''}`); }
+        vscode.window.showErrorMessage(`DhrLang: ${parts.join(', ')} found. Check the Problems panel.`);
+    }
+}
+
+/**
+ * Runs the DhrLang compiler in --json --check mode and parses the output
+ * into VS Code diagnostics (error squiggles with hints).
+ */
+async function runDiagnostics(document: vscode.TextDocument): Promise<vscode.Diagnostic[]> {
     const jarResolved = await resolveJarPath();
     if (!jarResolved) {
-        vscode.window.showErrorMessage('Cannot locate DhrLang.jar. Set dhrlang.jarPath or enable autoDetectJar.');
-        return;
+        // Can't run diagnostics without JAR — silently skip
+        return [];
     }
+
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
     const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
-    const cmd = `${javaCmd} -jar "${jarResolved}" --check "${document.fileName}"`;
+    const cmd = `${javaCmd} -jar "${jarResolved}" --json --check "${document.fileName}"`;
+
+    const diagnostics: vscode.Diagnostic[] = [];
+
     try {
-        const { stdout, stderr } = await execAsync(cmd, { cwd: path.dirname(document.fileName), encoding: 'utf8' });
-        if (stderr) {
-            vscode.window.showErrorMessage(`Compilation Error: ${stderr}`);
-        } else {
-            vscode.window.showInformationMessage('DhrLang file compiled successfully');
-            if (stdout.trim()) {
-                const out = vscode.window.createOutputChannel('DhrLang');
-                out.appendLine('=== Compilation Output ===');
-                out.appendLine(stdout);
-                out.show();
+        const { stdout, stderr } = await execAsync(cmd, {
+            cwd: path.dirname(document.fileName),
+            encoding: 'utf8',
+            timeout: 15000
+        });
+
+        // Try to parse JSON from stdout or stderr
+        const jsonStr = (stdout || '').trim() || (stderr || '').trim();
+        if (jsonStr) {
+            const parsed = tryParseJson(jsonStr);
+            if (parsed) {
+                diagnostics.push(...extractDiagnostics(parsed, document));
             }
         }
     } catch (e: any) {
-        vscode.window.showErrorMessage(`Compilation failed: ${e.message}`);
+        // The compiler exits with code 65 on errors and still outputs JSON
+        const output = (e.stdout || '').trim() || (e.stderr || '').trim();
+        if (output) {
+            const parsed = tryParseJson(output);
+            if (parsed) {
+                diagnostics.push(...extractDiagnostics(parsed, document));
+            } else {
+                // Fallback: parse plain-text error output
+                diagnostics.push(...parsePlainTextErrors(output, document));
+            }
+        }
     }
+
+    diagnosticCollection.set(document.uri, diagnostics);
+    return diagnostics;
+}
+
+function tryParseJson(text: string): any | null {
+    try {
+        // The JSON might have program output before it — find the JSON object
+        const idx = text.indexOf('{');
+        if (idx >= 0) {
+            return JSON.parse(text.substring(idx));
+        }
+    } catch { /* not valid JSON */ }
+    return null;
+}
+
+function extractDiagnostics(json: any, document: vscode.TextDocument): vscode.Diagnostic[] {
+    const diagnostics: vscode.Diagnostic[] = [];
+
+    // Handle errors array
+    if (json.errors && Array.isArray(json.errors)) {
+        for (const err of json.errors) {
+            const diag = createDiagnostic(err, vscode.DiagnosticSeverity.Error, document);
+            if (diag) { diagnostics.push(diag); }
+        }
+    }
+
+    // Handle warnings array
+    if (json.warnings && Array.isArray(json.warnings)) {
+        for (const warn of json.warnings) {
+            const diag = createDiagnostic(warn, vscode.DiagnosticSeverity.Warning, document);
+            if (diag) { diagnostics.push(diag); }
+        }
+    }
+
+    return diagnostics;
+}
+
+function createDiagnostic(
+    entry: any,
+    severity: vscode.DiagnosticSeverity,
+    document: vscode.TextDocument
+): vscode.Diagnostic | null {
+    // entry may have: message, line, column, code, hint
+    const line = Math.max(0, (entry.line || 1) - 1);
+    const col = Math.max(0, (entry.column || 1) - 1);
+
+    // Try to highlight the relevant token/word on the error line
+    let range: vscode.Range;
+    try {
+        const textLine = document.lineAt(line);
+        const wordRange = document.getWordRangeAtPosition(new vscode.Position(line, col));
+        range = wordRange || new vscode.Range(line, col, line, textLine.text.length);
+    } catch {
+        range = new vscode.Range(line, col, line, col + 1);
+    }
+
+    const message = entry.message || 'Unknown error';
+    const diag = new vscode.Diagnostic(range, message, severity);
+
+    // Set error code (e.g., DHR-E201)
+    if (entry.code) {
+        diag.code = entry.code;
+    }
+
+    diag.source = 'DhrLang';
+
+    // Add hint as related information
+    if (entry.hint) {
+        diag.relatedInformation = [
+            new vscode.DiagnosticRelatedInformation(
+                new vscode.Location(document.uri, range),
+                `Hint: ${entry.hint}`
+            )
+        ];
+    }
+
+    return diag;
+}
+
+/**
+ * Fallback parser for plain-text compiler error output.
+ * Matches patterns like: "[line 5] Error at 'x': message"
+ * or "Error [DHR-E201] at line 5, column 10: message"
+ */
+function parsePlainTextErrors(text: string, document: vscode.TextDocument): vscode.Diagnostic[] {
+    const diagnostics: vscode.Diagnostic[] = [];
+    const lines = text.split('\n');
+
+    for (const rawLine of lines) {
+        const trimmed = rawLine.trim();
+        if (!trimmed) { continue; }
+
+        // Pattern 1: [line N] Error ... : message
+        const m1 = trimmed.match(/\[line\s+(\d+)\]\s*(Error|Warning).*?:\s*(.*)/i);
+        if (m1) {
+            const line = Math.max(0, parseInt(m1[1]) - 1);
+            const severity = m1[2].toLowerCase() === 'warning'
+                ? vscode.DiagnosticSeverity.Warning
+                : vscode.DiagnosticSeverity.Error;
+            const msg = m1[3].trim();
+            diagnostics.push(new vscode.Diagnostic(
+                new vscode.Range(line, 0, line, 200),
+                msg,
+                severity
+            ));
+            continue;
+        }
+
+        // Pattern 2: Error [CODE] at line N, column M: message
+        const m2 = trimmed.match(/(?:Error|Warning)\s*\[([^\]]+)\].*?line\s+(\d+).*?column\s+(\d+).*?:\s*(.*)/i);
+        if (m2) {
+            const code = m2[1];
+            const line = Math.max(0, parseInt(m2[2]) - 1);
+            const col = Math.max(0, parseInt(m2[3]) - 1);
+            const msg = m2[4].trim();
+            const diag = new vscode.Diagnostic(
+                new vscode.Range(line, col, line, col + 10),
+                msg,
+                trimmed.toLowerCase().startsWith('warning') ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error
+            );
+            diag.code = code;
+            diag.source = 'DhrLang';
+            diagnostics.push(diag);
+        }
+    }
+
+    return diagnostics;
 }
 
 function showDhrLangHelp() {

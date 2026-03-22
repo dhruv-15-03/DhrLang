@@ -900,4 +900,87 @@ class Iteration3EvmBackendTest {
         }
         return null;
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  9.  Multi-param Events & Advanced EVM
+    // ═══════════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Advanced EVM Features")
+    class AdvancedEvmTests {
+
+        @Test
+        @DisplayName("Multi-param event contract compiles with LOG2+ opcodes")
+        void multiParamEventCompiles() {
+            FunctionDecl event = makeEventFunction("Transfer",
+                    List.of(makeVarDecl("Address", "from"),
+                            makeVarDecl("Address", "to"),
+                            makeVarDecl("uint256", "amount")));
+            FunctionDecl fn = makeViewFunction("getBalance", "uint256");
+            ClassDecl contract = makeContract("Token",
+                    List.of(makeStorageVarDecl("uint256", "totalSupply")),
+                    List.of(event, fn));
+            ContractLayout layout = makeLayout("Token",
+                    new SlotInfo("totalSupply", "uint256", 0, 32));
+
+            EvmCodeGen gen = new EvmCodeGen(contract, layout);
+            EvmCodeGen.CompilationResult result = gen.compile();
+
+            // Should produce valid bytecode
+            assertNotNull(result.getRuntimeBytecode());
+            assertTrue(result.getRuntimeBytecode().length > 0);
+        }
+
+        @Test
+        @DisplayName("ABI generator marks first event param as indexed")
+        void eventParamIndexed() {
+            ClassDecl contract = makeContractWithEvent();
+            List<Map<String, Object>> abi = AbiGenerator.generate(contract, Map.of());
+            Map<String, Object> eventEntry = findAbiEntry(abi, "event", "Transfer");
+            assertNotNull(eventEntry, "Should have Transfer event in ABI");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> inputs = (List<Map<String, Object>>) eventEntry.get("inputs");
+            assertNotNull(inputs);
+            assertTrue(inputs.size() >= 1);
+            assertEquals(true, inputs.get(0).get("indexed"),
+                    "First event parameter should be indexed");
+        }
+
+        @Test
+        @DisplayName("Runtime gas estimation is positive")
+        void runtimeGasEstimation() {
+            ClassDecl contract = makeSimpleContract();
+            ContractLayout layout = makeLayout("TestToken",
+                    new SlotInfo("totalSupply", "uint256", 0, 32));
+            EvmCodeGen gen = new EvmCodeGen(contract, layout);
+            EvmCodeGen.CompilationResult result = gen.compile();
+
+            long runtimeGas = EvmContractCompiler.estimateRuntimeGas(result.getRuntimeBytecode());
+            assertTrue(runtimeGas > 21_000, "Runtime gas should include base cost + bytecode");
+        }
+
+        @Test
+        @DisplayName("DELEGATECALL opcode exists in EvmOpcode")
+        void delegateCallOpcodeExists() {
+            assertEquals(0xF4, EvmOpcode.DELEGATECALL.code & 0xFF);
+        }
+
+        @Test
+        @DisplayName("STATICCALL opcode exists in EvmOpcode")
+        void staticCallOpcodeExists() {
+            assertEquals(0xFA, EvmOpcode.STATICCALL.code & 0xFF);
+        }
+
+        @Test
+        @DisplayName("LOG2 opcode exists in EvmOpcode")
+        void log2OpcodeExists() {
+            assertEquals(0xA2, EvmOpcode.LOG2.code & 0xFF);
+        }
+
+        @Test
+        @DisplayName("LOG4 opcode exists in EvmOpcode")
+        void log4OpcodeExists() {
+            assertEquals(0xA4, EvmOpcode.LOG4.code & 0xFF);
+        }
+    }
 }

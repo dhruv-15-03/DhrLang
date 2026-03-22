@@ -5,7 +5,7 @@ import java.io.*;
 /** Tiny VM executing DhrLang bytecode for the current IR subset. */
 public class BytecodeVM {
     private static final int MAGIC = 0x44484243; // 'DHBC'
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final Object NO_EXCEPTION = new Object();
 
     // Exception handler descriptor for this VM
@@ -17,10 +17,47 @@ public class BytecodeVM {
 
     private static class Func {
         String name;
+        String ownerClassName;
+        String simpleName;
+        boolean isStatic;
         int insCount;
         BytecodeOpcode[] op;
         int[][] args;
         boolean[] printNl;
+    }
+
+    // Lightweight class metadata for bytecode OOP runtime
+    private static class BcClassDef {
+        final String name;
+        final String superclassName;
+        final String[] fieldNames;
+        final String[] fieldTypes;
+        BcClassDef superclass;
+        final java.util.Map<String,Integer> instanceMethods = new java.util.HashMap<>(); // simpleName -> funcIndex
+
+        BcClassDef(String name, String superclassName, String[] fieldNames, String[] fieldTypes){
+            this.name=name; this.superclassName=superclassName; this.fieldNames=fieldNames; this.fieldTypes=fieldTypes;
+        }
+
+        int findMethod(String methodName){
+            Integer idx = instanceMethods.get(methodName);
+            if(idx != null) return idx;
+            return superclass != null ? superclass.findMethod(methodName) : -1;
+        }
+
+        void populateDefaultFields(java.util.Map<String,Object> fields){
+            if(superclass != null) superclass.populateDefaultFields(fields);
+            for(int i=0;i<fieldNames.length;i++){
+                fields.put(fieldNames[i], dhrlang.runtime.RuntimeDefaults.getDefaultValue(fieldTypes[i].isEmpty() ? null : fieldTypes[i]));
+            }
+        }
+    }
+
+    // Runtime object instance for bytecode OOP
+    private static class BcObjectInstance {
+        final BcClassDef klass;
+        final java.util.Map<String,Object> fields = new java.util.HashMap<>();
+        BcObjectInstance(BcClassDef klass){ this.klass=klass; klass.populateDefaultFields(fields); }
     }
 
     public void execute(byte[] code){
@@ -54,6 +91,28 @@ public class BytecodeVM {
                     default -> throw new IllegalArgumentException("Unknown const tag "+tag);
                 }
             }
+            // Read class definitions
+            int classCount = in.readInt();
+            BcClassDef[] classDefs = new BcClassDef[classCount];
+            java.util.Map<String,BcClassDef> classTable = new java.util.HashMap<>();
+            for(int c=0; c<classCount; c++){
+                String cName = in.readUTF();
+                String superName = in.readUTF();
+                int fieldCount = in.readInt();
+                String[] fNames = new String[fieldCount];
+                String[] fTypes = new String[fieldCount];
+                for(int fi2=0; fi2<fieldCount; fi2++){
+                    fNames[fi2] = in.readUTF();
+                    fTypes[fi2] = in.readUTF();
+                }
+                BcClassDef def = new BcClassDef(cName, superName.isEmpty() ? null : superName, fNames, fTypes);
+                classDefs[c] = def;
+                classTable.put(cName, def);
+            }
+            // Link superclasses
+            for(BcClassDef def : classDefs){
+                if(def.superclassName != null) def.superclass = classTable.get(def.superclassName);
+            }
             int fnCount = in.readInt();
             if(fnCount < 0) throw new IllegalArgumentException("Invalid function count: "+fnCount);
             int maxFns = Integer.getInteger("dhrlang.bytecode.maxFunctions", untrusted ? 2_000 : 10_000);
@@ -63,6 +122,9 @@ public class BytecodeVM {
             for(int f=0; f<fnCount; f++){
                 Func fn = new Func();
                 fn.name = in.readUTF();
+                fn.ownerClassName = in.readUTF(); if(fn.ownerClassName.isEmpty()) fn.ownerClassName = null;
+                fn.simpleName = in.readUTF(); if(fn.simpleName.isEmpty()) fn.simpleName = null;
+                fn.isStatic = in.readBoolean();
                 fn.insCount = in.readInt();
                 if(fn.insCount < 0) throw new IllegalArgumentException("Invalid instruction count in function "+fn.name+": "+fn.insCount);
                 int maxIns = Integer.getInteger("dhrlang.bytecode.maxInstructionsPerFunction", untrusted ? 200_000 : 500_000);
@@ -77,18 +139,40 @@ public class BytecodeVM {
                     switch(opc){
                         case CONST -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
                         case LOAD_LOCAL, STORE_LOCAL -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
-                        case ADD, SUB, MUL, DIV -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
+                        case ADD, SUB, MUL, DIV, MOD, BIT_AND, BIT_OR, BIT_XOR, LSHIFT, RSHIFT -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
                         case EQ, NEQ, LT, LE, GT, GE -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
                         case JUMP -> fn.args[i] = new int[]{ in.readInt() };
                         case JUMP_IF_FALSE -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
                         case PRINT -> { fn.args[i] = new int[]{ in.readInt() }; fn.printNl[i] = in.readBoolean(); }
                         case RETURN -> fn.args[i] = new int[]{ in.readInt() };
-                        case NEG, NOT -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
+                        case NEG, NOT, BIT_NOT -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
                         case NEW_ARRAY -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
                         case LOAD_ELEM -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
                         case STORE_ELEM -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() };
                         case ARRAY_LENGTH -> fn.args[i] = new int[]{ in.readInt(), in.readInt() };
                         case CALL -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt(), in.readInt() };
+                        case CALL_VAR -> {
+                            int callee = in.readInt();
+                            int argc = in.readInt();
+                            if(argc < 0) throw new IllegalArgumentException("Invalid CALL_VAR argc: " + argc);
+                            int[] payload = new int[argc + 3];
+                            payload[0] = callee;
+                            payload[1] = argc;
+                            for(int ai=0; ai<argc; ai++) payload[2 + ai] = in.readInt();
+                            payload[2 + argc] = in.readInt(); // destSlot
+                            fn.args[i] = payload;
+                        }
+                        case CALL_NATIVE -> {
+                            int fnNameIdx = in.readInt();
+                            int argc = in.readInt();
+                            if(argc < 0) throw new IllegalArgumentException("Invalid CALL_NATIVE argc: " + argc);
+                            int[] payload = new int[argc + 3];
+                            payload[0] = fnNameIdx;
+                            payload[1] = argc;
+                            for(int ai=0; ai<argc; ai++) payload[2 + ai] = in.readInt();
+                            payload[2 + argc] = in.readInt(); // destSlot
+                            fn.args[i] = payload;
+                        }
                         case GET_STATIC -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() }; // classNameIdx, fieldNameIdx, targetSlot
                         case SET_STATIC -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() }; // classNameIdx, fieldNameIdx, valueSlot
                         case GET_FIELD -> fn.args[i] = new int[]{ in.readInt(), in.readInt(), in.readInt() }; // objectSlot, fieldNameIdx, targetSlot
@@ -97,6 +181,20 @@ public class BytecodeVM {
                         case TRY_POP -> fn.args[i] = new int[]{};
                         case THROW -> fn.args[i] = new int[]{ in.readInt() }; // valueSlot
                         case CATCH_BIND -> fn.args[i] = new int[]{ in.readInt() }; // targetSlot
+                        case NEW_OBJ -> fn.args[i] = new int[]{ in.readInt(), in.readInt() }; // classNameIdx, targetSlot
+                        case INVOKE_METHOD -> {
+                            int objSlot = in.readInt();
+                            int methodNameIdx = in.readInt();
+                            int argc = in.readInt();
+                            if(argc < 0) throw new IllegalArgumentException("Invalid INVOKE_METHOD argc: " + argc);
+                            int[] payload = new int[argc + 4];
+                            payload[0] = objSlot;
+                            payload[1] = methodNameIdx;
+                            payload[2] = argc;
+                            for(int ai=0; ai<argc; ai++) payload[3 + ai] = in.readInt();
+                            payload[3 + argc] = in.readInt(); // destSlot
+                            fn.args[i] = payload;
+                        }
                     }
                 }
                 funcs[f] = fn;
@@ -105,9 +203,18 @@ public class BytecodeVM {
             // Validate bytecode (bounds, indices, types) before executing.
             validateBytecode(cp, funcs);
 
-            // Build name->index map
+            // Build name->index map and populate class method tables
             java.util.Map<String,Integer> fnIndex = new java.util.HashMap<>();
-            for(int i=0;i<fnCount;i++) fnIndex.put(funcs[i].name, i);
+            for(int i=0;i<fnCount;i++){
+                fnIndex.put(funcs[i].name, i);
+                Func fn = funcs[i];
+                if(!fn.isStatic && fn.ownerClassName != null){
+                    BcClassDef def = classTable.get(fn.ownerClassName);
+                    if(def != null && fn.simpleName != null){
+                        def.instanceMethods.put(fn.simpleName, i);
+                    }
+                }
+            }
 
             // Call stack
             java.util.Deque<Integer> stackFunc = new java.util.ArrayDeque<>();
@@ -197,11 +304,12 @@ public class BytecodeVM {
                         slots = prevSlots; curFunc = prevFunc; cur = funcs[curFunc]; pc = prevPc; continue;
                     }
                 }
+                try {
                 switch(opc){
                     case CONST -> slots[a[0]] = cp[a[1]];
                     case LOAD_LOCAL -> slots[a[1]] = slots[a[0]];
                     case STORE_LOCAL -> slots[a[1]] = slots[a[0]];
-                    case ADD, SUB, MUL, DIV -> {
+                    case ADD, SUB, MUL, DIV, MOD -> {
                         Object lv = slots[a[0]], rv = slots[a[1]];
                         if(opc==BytecodeOpcode.ADD && (!(lv instanceof Number) || !(rv instanceof Number))){
                             if(lv instanceof String || rv instanceof String) slots[a[2]] = String.valueOf(lv) + String.valueOf(rv);
@@ -210,10 +318,16 @@ public class BytecodeVM {
                             if(!(lv instanceof Number) || !(rv instanceof Number)) throw dhrlang.error.ErrorFactory.typeError("Operands must be numbers for operator: "+opc.name(), (dhrlang.error.SourceLocation) null);
                             Number l = (Number) lv;
                             Number r = (Number) rv;
-                            if(opc==BytecodeOpcode.DIV){
+                            if(opc==BytecodeOpcode.DIV || opc==BytecodeOpcode.MOD){
                                 double divisor = r.doubleValue();
                                 if(divisor==0.0) throw dhrlang.error.ErrorFactory.arithmeticError("Division by zero.", (dhrlang.error.SourceLocation) null);
-                                slots[a[2]] = l.doubleValue()/divisor;
+                                if(opc==BytecodeOpcode.DIV){
+                                    slots[a[2]] = l.doubleValue()/divisor;
+                                } else if(l instanceof Double || r instanceof Double){
+                                    slots[a[2]] = l.doubleValue() % divisor;
+                                } else {
+                                    slots[a[2]] = l.longValue() % r.longValue();
+                                }
                             } else if(l instanceof Double || r instanceof Double){
                                 double v = switch(opc){
                                     case ADD -> l.doubleValue()+r.doubleValue();
@@ -283,6 +397,12 @@ public class BytecodeVM {
                         slots[a[1]] = r;
                     }
                     case NOT -> { slots[a[1]] = !truthy(slots[a[0]]); }
+                    case BIT_AND -> { slots[a[2]] = ((Number)slots[a[0]]).longValue() & ((Number)slots[a[1]]).longValue(); }
+                    case BIT_OR -> { slots[a[2]] = ((Number)slots[a[0]]).longValue() | ((Number)slots[a[1]]).longValue(); }
+                    case BIT_XOR -> { slots[a[2]] = ((Number)slots[a[0]]).longValue() ^ ((Number)slots[a[1]]).longValue(); }
+                    case LSHIFT -> { slots[a[2]] = ((Number)slots[a[0]]).longValue() << ((Number)slots[a[1]]).longValue(); }
+                    case RSHIFT -> { slots[a[2]] = ((Number)slots[a[0]]).longValue() >> ((Number)slots[a[1]]).longValue(); }
+                    case BIT_NOT -> { slots[a[1]] = ~((Number)slots[a[0]]).longValue(); }
                     case NEW_ARRAY -> {
                         Object sz = slots[a[0]];
                         if(!(sz instanceof Long) && !(sz instanceof Integer)) throw dhrlang.error.ErrorFactory.typeError("Array size must be a number.", (dhrlang.error.SourceLocation) null);
@@ -331,12 +451,15 @@ public class BytecodeVM {
                     }
                     case GET_FIELD -> {
                         Object obj = slots[a[0]]; String field = (String) cp[a[1]];
-                        Object val = null; if(obj instanceof java.util.Map<?,?> m){ val = ((java.util.Map<?,?>)m).get(field); }
+                        Object val = null;
+                        if(obj instanceof BcObjectInstance inst){ val = inst.fields.get(field); }
+                        else if(obj instanceof java.util.Map<?,?> m){ val = ((java.util.Map<?,?>)m).get(field); }
                         slots[a[2]] = val;
                     }
                     case SET_FIELD -> {
                         Object obj = slots[a[0]]; String field = (String) cp[a[1]];
-                        if(obj instanceof java.util.Map<?,?>){ @SuppressWarnings("unchecked") java.util.Map<Object,Object> m = (java.util.Map<Object,Object>) obj; m.put(field, slots[a[2]]); }
+                        if(obj instanceof BcObjectInstance inst){ inst.fields.put(field, slots[a[2]]); }
+                        else if(obj instanceof java.util.Map<?,?>){ @SuppressWarnings("unchecked") java.util.Map<Object,Object> m = (java.util.Map<Object,Object>) obj; m.put(field, slots[a[2]]); }
                     }
                     case CALL -> {
                         int callee = a[0];
@@ -357,6 +480,38 @@ public class BytecodeVM {
                         if(a[4] >= 0) slots[3] = callerSlots[a[4]];
                         continue;
                     }
+                    case CALL_VAR -> {
+                        int callee = a[0];
+                        int argc = a[1];
+                        if(stackFunc.size() >= maxCallDepth){
+                            throw dhrlang.error.ErrorFactory.runtimeError("Execution aborted: exceeded max call depth ("+maxCallDepth+").", (dhrlang.error.SourceLocation) null);
+                        }
+                        int destSlot = a[2 + argc];
+                        // Save current state; next instruction will resume after call returns
+                        stackFunc.push(curFunc); stackPc.push(pc+1); stackSlots.push(slots); stackRetDest.push(destSlot);
+                        stackHandlers.push(handlers); stackPendingEx.push(pendingEx==null? NO_EXCEPTION : pendingEx);
+                        // Switch to callee
+                        curFunc = callee; cur = funcs[curFunc]; pc = 0; slots = new Object[256];
+                        handlers = new java.util.ArrayDeque<>(); pendingEx = null; catchValue = null;
+                        Object[] callerSlots = stackSlots.peek();
+                        for(int i=0; i<argc && i<slots.length; i++){
+                            int argSlot = a[2 + i];
+                            if(argSlot >= 0) slots[i] = callerSlots[argSlot];
+                        }
+                        continue;
+                    }
+                    case CALL_NATIVE -> {
+                        String functionName = (String) cp[a[0]];
+                        int argc = a[1];
+                        java.util.List<Object> args = new java.util.ArrayList<>(argc);
+                        for(int i=0; i<argc; i++){
+                            int slot = a[2 + i];
+                            args.add(slot >= 0 ? slots[slot] : null);
+                        }
+                        Object result = dhrlang.runtime.NativeRuntimeBridge.invoke(functionName, args);
+                        int destSlot = a[2 + argc];
+                        if(destSlot >= 0) slots[destSlot] = result;
+                    }
                     case TRY_PUSH -> { handlers.push(new Handler(a[0], (String) cp[a[1]])); }
                     case TRY_POP -> {
                         if(handlers.isEmpty()) throw new IllegalArgumentException("Invalid bytecode in "+cur.name+" @pc="+pc+": TRY_POP with empty handler stack");
@@ -364,6 +519,56 @@ public class BytecodeVM {
                     }
                     case THROW -> { pendingEx = slots[a[0]]; }
                     case CATCH_BIND -> { slots[a[0]] = catchValue; catchValue = null; }
+                    case NEW_OBJ -> {
+                        String className = (String) cp[a[0]];
+                        BcClassDef def = classTable.get(className);
+                        if(def == null) throw dhrlang.error.ErrorFactory.typeError("Cannot instantiate unknown class '" + className + "'.", (dhrlang.error.SourceLocation) null);
+                        slots[a[1]] = new BcObjectInstance(def);
+                    }
+                    case INVOKE_METHOD -> {
+                        int objSlot = a[0];
+                        String methodName = (String) cp[a[1]];
+                        int argc = a[2];
+                        int destSlot2 = a[3 + argc];
+                        Object target = slots[objSlot];
+                        // String method dispatch via native bridge
+                        if(target instanceof String strVal){
+                            java.util.List<Object> sArgs = new java.util.ArrayList<>(argc + 1);
+                            sArgs.add(strVal);
+                            for(int i2=0; i2<argc; i2++){
+                                int sl = a[3 + i2];
+                                sArgs.add(sl >= 0 ? slots[sl] : null);
+                            }
+                            Object sResult = dhrlang.runtime.NativeRuntimeBridge.invoke(methodName, sArgs);
+                            if(destSlot2 >= 0) slots[destSlot2] = sResult;
+                        } else if(target instanceof BcObjectInstance inst){
+                            int calleeIdx = inst.klass.findMethod(methodName);
+                            if(calleeIdx < 0){
+                                if(destSlot2 >= 0) slots[destSlot2] = null;
+                            } else {
+                                if(stackFunc.size() >= maxCallDepth){
+                                    throw dhrlang.error.ErrorFactory.runtimeError("Execution aborted: exceeded max call depth ("+maxCallDepth+").", (dhrlang.error.SourceLocation) null);
+                                }
+                                stackFunc.push(curFunc); stackPc.push(pc+1); stackSlots.push(slots); stackRetDest.push(destSlot2);
+                                stackHandlers.push(handlers); stackPendingEx.push(pendingEx==null? NO_EXCEPTION : pendingEx);
+                                curFunc = calleeIdx; cur = funcs[curFunc]; pc = 0; slots = new Object[256];
+                                handlers = new java.util.ArrayDeque<>(); pendingEx = null; catchValue = null;
+                                Object[] callerSlots2 = stackSlots.peek();
+                                slots[0] = inst; // this
+                                for(int i2=0; i2<argc && i2+1<slots.length; i2++){
+                                    int src = a[3 + i2];
+                                    slots[i2+1] = (src>=0) ? callerSlots2[src] : null;
+                                }
+                                continue;
+                            }
+                        } else {
+                            throw dhrlang.error.ErrorFactory.typeError("Can only call methods on object instances.", (dhrlang.error.SourceLocation) null);
+                        }
+                    }
+                }
+                } catch (dhrlang.interpreter.DhrRuntimeException ex) {
+                    pendingEx = ex.getMessage();
+                    continue;
                 }
                 if(handlers.size() > maxHandlersPerFrame){
                     throw dhrlang.error.ErrorFactory.runtimeError("Execution aborted: exceeded max try-handler depth ("+maxHandlersPerFrame+").", (dhrlang.error.SourceLocation) null);
@@ -393,14 +598,14 @@ public class BytecodeVM {
                 switch(opc){
                     case CONST -> { verifySlot(a[0], fn.name, pc, "targetSlot"); verifyCpIndex(a[1], cp.length, fn.name, pc, "constIndex"); }
                     case LOAD_LOCAL, STORE_LOCAL -> { verifySlot(a[0], fn.name, pc, "sourceSlot"); verifySlot(a[1], fn.name, pc, "targetSlot"); }
-                    case ADD, SUB, MUL, DIV, EQ, NEQ, LT, LE, GT, GE -> {
+                    case ADD, SUB, MUL, DIV, MOD, EQ, NEQ, LT, LE, GT, GE, BIT_AND, BIT_OR, BIT_XOR, LSHIFT, RSHIFT -> {
                         verifySlot(a[0], fn.name, pc, "leftSlot"); verifySlot(a[1], fn.name, pc, "rightSlot"); verifySlot(a[2], fn.name, pc, "targetSlot");
                     }
                     case JUMP -> verifyPcTarget(a[0], fn.insCount, fn.name, pc, "jumpTarget");
                     case JUMP_IF_FALSE -> { verifySlot(a[0], fn.name, pc, "condSlot"); verifyPcTarget(a[1], fn.insCount, fn.name, pc, "jumpTarget"); }
                     case PRINT -> verifySlot(a[0], fn.name, pc, "valueSlot");
                     case RETURN -> verifySlotAllowMinusOne(a[0], fn.name, pc, "returnSlot");
-                    case NEG, NOT -> { verifySlot(a[0], fn.name, pc, "sourceSlot"); verifySlot(a[1], fn.name, pc, "targetSlot"); }
+                    case NEG, NOT, BIT_NOT -> { verifySlot(a[0], fn.name, pc, "sourceSlot"); verifySlot(a[1], fn.name, pc, "targetSlot"); }
                     case NEW_ARRAY -> {
                         verifySlot(a[0], fn.name, pc, "sizeSlot"); verifySlot(a[1], fn.name, pc, "targetSlot");
                         if(a[2] != -1) verifyCpString(a[2], cp, fn.name, pc, "elementType");
@@ -417,6 +622,24 @@ public class BytecodeVM {
                         verifySlotAllowMinusOne(a[4], fn.name, pc, "arg3");
                         verifySlotAllowMinusOne(a[5], fn.name, pc, "destSlot");
                     }
+                    case CALL_VAR -> {
+                        int callee = a[0];
+                        int argc = a[1];
+                        if(callee < 0 || callee >= fnCount) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": invalid callee function index "+callee);
+                        if(argc < 0) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": negative CALL_VAR argc "+argc);
+                        if(a.length != argc + 3) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": malformed CALL_VAR payload");
+                        for(int ai=0; ai<argc; ai++) verifySlotAllowMinusOne(a[2 + ai], fn.name, pc, "arg"+ai);
+                        verifySlotAllowMinusOne(a[2 + argc], fn.name, pc, "destSlot");
+                    }
+                    case CALL_NATIVE -> {
+                        int fnNameIdx = a[0];
+                        int argc = a[1];
+                        verifyCpString(fnNameIdx, cp, fn.name, pc, "nativeFunctionName");
+                        if(argc < 0) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": negative CALL_NATIVE argc "+argc);
+                        if(a.length != argc + 3) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": malformed CALL_NATIVE payload");
+                        for(int ai=0; ai<argc; ai++) verifySlotAllowMinusOne(a[2 + ai], fn.name, pc, "arg"+ai);
+                        verifySlotAllowMinusOne(a[2 + argc], fn.name, pc, "destSlot");
+                    }
                     case GET_STATIC -> { verifyCpString(a[0], cp, fn.name, pc, "className"); verifyCpString(a[1], cp, fn.name, pc, "fieldName"); verifySlot(a[2], fn.name, pc, "targetSlot"); }
                     case SET_STATIC -> { verifyCpString(a[0], cp, fn.name, pc, "className"); verifyCpString(a[1], cp, fn.name, pc, "fieldName"); verifySlot(a[2], fn.name, pc, "valueSlot"); }
                     case GET_FIELD -> { verifySlot(a[0], fn.name, pc, "objectSlot"); verifyCpString(a[1], cp, fn.name, pc, "fieldName"); verifySlot(a[2], fn.name, pc, "targetSlot"); }
@@ -425,6 +648,16 @@ public class BytecodeVM {
                     case TRY_POP -> {}
                     case THROW -> verifySlot(a[0], fn.name, pc, "valueSlot");
                     case CATCH_BIND -> verifySlot(a[0], fn.name, pc, "targetSlot");
+                    case NEW_OBJ -> { verifyCpString(a[0], cp, fn.name, pc, "className"); verifySlot(a[1], fn.name, pc, "targetSlot"); }
+                    case INVOKE_METHOD -> {
+                        verifySlot(a[0], fn.name, pc, "objectSlot");
+                        verifyCpString(a[1], cp, fn.name, pc, "methodName");
+                        int argc = a[2];
+                        if(argc < 0) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": negative INVOKE_METHOD argc "+argc);
+                        if(a.length != argc + 4) throw new IllegalArgumentException("Invalid bytecode in "+fn.name+" @pc="+pc+": malformed INVOKE_METHOD payload");
+                        for(int ai=0; ai<argc; ai++) verifySlotAllowMinusOne(a[3 + ai], fn.name, pc, "arg"+ai);
+                        verifySlotAllowMinusOne(a[3 + argc], fn.name, pc, "destSlot");
+                    }
                 }
 
                 if(opc == BytecodeOpcode.TRY_PUSH){

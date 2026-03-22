@@ -4,13 +4,31 @@ import dhrlang.ast.*;
 import dhrlang.error.ErrorFactory;
 import dhrlang.error.ErrorReporter;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /** Very small subset lowering (Phase 1 slice): literals, var decls with literal init, addition, return void. */
 public class AstToIrLowerer {
     private final ErrorReporter errorReporter;
+    private final Map<String, ClassDecl> classIndex = new HashMap<>();
     public AstToIrLowerer(ErrorReporter er){ this.errorReporter = er; }
 
     public IrProgram lower(Program program){
         IrProgram ir = new IrProgram();
+        classIndex.clear();
+        for (ClassDecl cd : program.getClasses()) {
+            classIndex.put(cd.getName(), cd);
+            IrClassDef classDef = new IrClassDef(
+                    cd.getName(),
+                    cd.getSuperclass() != null ? cd.getSuperclass().getName().getLexeme() : null
+            );
+            for (VarDecl field : cd.getVariables()) {
+                if (!field.hasModifier(Modifier.STATIC)) {
+                    classDef.instanceFields.add(new IrFieldDef(field.getName(), field.getType()));
+                }
+            }
+            ir.classes.add(classDef);
+        }
         // Select an entrypoint and add it first.
         // Prefer Main.main if present; otherwise first static *.main.
         String entryQualifiedName = null;
@@ -22,7 +40,7 @@ public class AstToIrLowerer {
         if(preferredMainClass != null){
             for(FunctionDecl f : preferredMainClass.getFunctions()){
                 if("main".equals(f.getName()) && f.hasModifier(dhrlang.ast.Modifier.STATIC)){
-                    IrFunction irEntry = lowerFunction(f, preferredMainClass.getName());
+                    IrFunction irEntry = lowerFunction(f, preferredMainClass.getName(), true);
                     entryQualifiedName = irEntry.name;
                     ir.functions.add(irEntry);
                     break;
@@ -34,7 +52,7 @@ public class AstToIrLowerer {
             for(ClassDecl cd: program.getClasses()){
                 for(FunctionDecl f : cd.getFunctions()){
                     if("main".equals(f.getName()) && f.hasModifier(dhrlang.ast.Modifier.STATIC)){
-                        IrFunction irEntry = lowerFunction(f, cd.getName());
+                        IrFunction irEntry = lowerFunction(f, cd.getName(), true);
                         entryQualifiedName = irEntry.name;
                         ir.functions.add(irEntry);
                         break outer;
@@ -43,22 +61,48 @@ public class AstToIrLowerer {
             }
         }
 
-        // Add all other static functions across classes.
+        // Add all remaining functions across classes, including instance methods.
         for(ClassDecl cd: program.getClasses()){
             for(FunctionDecl f: cd.getFunctions()){
-                if(f.hasModifier(dhrlang.ast.Modifier.STATIC)){
-                    IrFunction lowered = lowerFunction(f, cd.getName());
-                    if(entryQualifiedName != null && entryQualifiedName.equals(lowered.name)) continue;
-                    ir.functions.add(lowered);
-                }
+                IrFunction lowered = lowerFunction(f, cd.getName(), f.hasModifier(dhrlang.ast.Modifier.STATIC));
+                if(entryQualifiedName != null && entryQualifiedName.equals(lowered.name)) continue;
+                ir.functions.add(lowered);
             }
         }
+
+        // Generate static field initializers and prepend to the entry function.
+        // We use a temporary IrFunction to collect the init instructions (with their own
+        // slot numbering), then prepend them to the real entry function's body.
+        if(!ir.functions.isEmpty()){
+            IrFunction entry = ir.functions.get(0);
+            IrFunction initFunc = new IrFunction("$staticInit", null, "$staticInit", true);
+            LoweringContext initCtx = new LoweringContext();
+            boolean hasStaticInits = false;
+            for(ClassDecl cd : program.getClasses()){
+                for(VarDecl field : cd.getVariables()){
+                    if(field.hasModifier(Modifier.STATIC) && field.getInitializer() != null){
+                        int val = lowerExpr(field.getInitializer(), initFunc, initCtx, cd.getName());
+                        initFunc.instructions.add(new IrSetStatic(cd.getName(), field.getName(), val));
+                        hasStaticInits = true;
+                    }
+                }
+            }
+            if(hasStaticInits){
+                initFunc.instructions.addAll(entry.instructions);
+                entry.instructions.clear();
+                entry.instructions.addAll(initFunc.instructions);
+            }
+        }
+
         return ir;
     }
 
-    private IrFunction lowerFunction(FunctionDecl f, String currentClass){
-        IrFunction irf = new IrFunction(currentClass + "." + f.getName());
+    private IrFunction lowerFunction(FunctionDecl f, String currentClass, boolean isStatic){
+        IrFunction irf = new IrFunction(currentClass + "." + f.getName(), currentClass, f.getName(), isStatic);
         LoweringContext ctx = new LoweringContext();
+        if(!isStatic){
+            ctx.allocSlot("this");
+        }
         // Allocate slots for parameters in order so they map to slots[0..n-1]
         if(f.getParameters()!=null){
             for(VarDecl p: f.getParameters()){
@@ -217,6 +261,22 @@ public class AstToIrLowerer {
     }
 
     private int lowerExpr(Expression e, IrFunction out, LoweringContext ctx, String currentClass){
+        if(e instanceof ThisExpr){
+            int thisSlot = ctx.getSlot("this");
+            int t = ctx.newTemp();
+            if(thisSlot >= 0) out.instructions.add(new IrLoadLocal(thisSlot, t));
+            else out.instructions.add(new IrConst(t, null));
+            return t;
+        }
+        if(e instanceof SuperExpr se){
+            // Standalone super.method (outside of a call) — not supported as a value
+            errorReporter.error(ErrorFactory.getLocation(se),
+                    "IR backend does not support 'super' as a standalone expression. Use super.method(...) as a call.",
+                    "Call the superclass method directly, e.g. super.method(args).");
+            int t = ctx.newTemp();
+            out.instructions.add(new IrConst(t, null));
+            return t;
+        }
         if(e instanceof StaticAccessExpr sae){
             String cls = sae.className.getName().getLexeme();
             String mem = sae.memberName.getLexeme();
@@ -246,6 +306,20 @@ public class AstToIrLowerer {
             int t = ctx.newTemp();
             out.instructions.add(new IrConst(t, literalValue(le)));
             return t;
+        } else if(e instanceof TernaryExpr te){
+            int cond = lowerExpr(te.getCondition(), out, ctx, currentClass);
+            String elseL = freshLabel("ternary_else");
+            String endL = freshLabel("ternary_end");
+            int result = ctx.newTemp();
+            out.instructions.add(new IrJumpIfFalse(cond, elseL));
+            int thenVal = lowerExpr(te.getThenBranch(), out, ctx, currentClass);
+            out.instructions.add(new IrStoreLocal(thenVal, result));
+            out.instructions.add(new IrJump(endL));
+            out.instructions.add(new IrLabel(elseL));
+            int elseVal = lowerExpr(te.getElseBranch(), out, ctx, currentClass);
+            out.instructions.add(new IrStoreLocal(elseVal, result));
+            out.instructions.add(new IrLabel(endL));
+            return result;
         } else if(e instanceof ArrayExpr arr){
             // Lower array literal by allocating and storing each element
             java.util.List<Expression> elems = arr.getElements();
@@ -258,16 +332,39 @@ public class AstToIrLowerer {
             }
             return arrSlot;
         } else if(e instanceof NewArrayExpr na){
-            // Only support first dimension now
             java.util.List<Expression> sizes = na.getSizes();
-            Expression sExpr = (sizes!=null && !sizes.isEmpty())? sizes.get(0): na.getSize();
-            if(sizes!=null && sizes.size()>1){
-                errorReporter.error(ErrorFactory.getLocation(na),
-                        "IR backend does not support multi-dimensional array allocation yet.",
-                        "Use the AST backend, or allocate dimensions manually.");
+            if(sizes == null || sizes.isEmpty()){
+                Expression singleSize = na.getSize();
+                int sz = lowerExpr(singleSize, out, ctx, currentClass);
+                int arrSlot = ctx.newTemp();
+                out.instructions.add(new IrNewArray(sz, arrSlot, na.getElementType()));
+                return arrSlot;
             }
-            int sz = lowerExpr(sExpr, out, ctx, currentClass);
-            int arrSlot = ctx.newTemp(); out.instructions.add(new IrNewArray(sz, arrSlot, na.getElementType()));
+
+            java.util.List<Integer> sizeSlots = new java.util.ArrayList<>();
+            boolean jagged = false;
+            for(Expression sizeExpr : sizes){
+                if(sizeExpr == null){
+                    jagged = true;
+                    break;
+                }
+                sizeSlots.add(lowerExpr(sizeExpr, out, ctx, currentClass));
+            }
+            if(sizeSlots.isEmpty()){
+                errorReporter.error(ErrorFactory.getLocation(na),
+                        "IR backend requires at least one array dimension size.",
+                        "Provide an explicit size for the first array dimension.");
+                int t = ctx.newTemp();
+                out.instructions.add(new IrConst(t, null));
+                return t;
+            }
+
+            boolean rootIsLeaf = sizeSlots.size() == 1 && !jagged;
+            int arrSlot = ctx.newTemp();
+            out.instructions.add(new IrNewArray(sizeSlots.get(0), arrSlot, rootIsLeaf ? na.getElementType() : null));
+            if(sizeSlots.size() > 1){
+                emitNestedArrayPopulation(out, ctx, currentClass, arrSlot, sizeSlots, 0, na.getElementType(), jagged);
+            }
             return arrSlot;
         } else if(e instanceof IndexExpr ie){
             int arrS = lowerExpr(ie.getObject(), out, ctx, currentClass);
@@ -286,6 +383,47 @@ public class AstToIrLowerer {
             // Lower selected native calls directly: print/printLine/arrayLength
             Expression callee = ce.getCallee();
             java.util.List<Expression> args = ce.getArguments();
+            // super.method(args...) — non-virtual call to superclass method
+            if(callee instanceof SuperExpr se){
+                String methodName = se.method.getLexeme();
+                ClassDecl cd = classIndex.get(currentClass);
+                if(cd == null || cd.getSuperclass() == null){
+                    errorReporter.error(ErrorFactory.getLocation(se),
+                            "Cannot use 'super' in a class with no superclass.",
+                            "Ensure the current class extends another class.");
+                    int t = ctx.newTemp(); out.instructions.add(new IrConst(t, null)); return t;
+                }
+                String superName = cd.getSuperclass().getName().getLexeme();
+                String qn = superName + "." + methodName;
+                // Pass 'this' as first arg, then call args
+                int thisSlot = ctx.getSlot("this");
+                int thisTemp = ctx.newTemp();
+                if(thisSlot >= 0) out.instructions.add(new IrLoadLocal(thisSlot, thisTemp));
+                else out.instructions.add(new IrConst(thisTemp, null));
+                int[] argSlots = new int[args.size() + 1];
+                argSlots[0] = thisTemp;
+                for(int i = 0; i < args.size(); i++) argSlots[i + 1] = lowerExpr(args.get(i), out, ctx, currentClass);
+                int dest = ctx.newTemp();
+                out.instructions.add(new IrCall(qn, argSlots, dest));
+                return dest;
+            }
+            if(callee instanceof GetExpr ge){
+                int obj = lowerExpr(ge.getObject(), out, ctx, currentClass);
+                String methodName = ge.getName().getLexeme();
+                if(isNativeStringMethod(methodName)){
+                    int[] argSlots = new int[args.size() + 1];
+                    argSlots[0] = obj;
+                    for(int i=0;i<args.size();i++) argSlots[i + 1] = lowerExpr(args.get(i), out, ctx, currentClass);
+                    int dest = ctx.newTemp();
+                    out.instructions.add(new IrCallNative(methodName, argSlots, dest));
+                    return dest;
+                }
+                int[] argSlots = new int[args.size()];
+                for(int i=0;i<args.size();i++) argSlots[i] = lowerExpr(args.get(i), out, ctx, currentClass);
+                int dest = ctx.newTemp();
+                out.instructions.add(new IrInvokeMethod(obj, methodName, argSlots, dest));
+                return dest;
+            }
             if(callee instanceof VariableExpr ve){
                 String name = ve.getName()!=null? ve.getName().getLexeme(): "";
                 if(("print".equals(name) || "printLine".equals(name)) && args.size()==1){
@@ -299,9 +437,16 @@ public class AstToIrLowerer {
                     int t = ctx.newTemp(); out.instructions.add(new IrArrayLength(arrS, t));
                     return t;
                 }
+                if(dhrlang.stdlib.NativeSignatures.exists(name)){
+                    int[] argSlots = new int[args.size()];
+                    for(int i=0;i<args.size();i++) argSlots[i] = lowerExpr(args.get(i), out, ctx, currentClass);
+                    int dest = ctx.newTemp();
+                    out.instructions.add(new IrCallNative(name, argSlots, dest));
+                    return dest;
+                }
                 // Attempt to lower a user-defined function call in the same class (up to 4 args)
                 String qn = name.contains(".")? name : (currentClass + "." + name);
-                int argc = Math.min(args.size(), 4);
+                int argc = args.size();
                 int[] argSlots = new int[argc];
                 for(int i=0;i<argc;i++) argSlots[i] = lowerExpr(args.get(i), out, ctx, currentClass);
                 int dest = ctx.newTemp();
@@ -312,7 +457,7 @@ public class AstToIrLowerer {
                 String cls = sae.className.getName().getLexeme();
                 String mem = sae.memberName.getLexeme();
                 String qn = cls + "." + mem;
-                int argc = Math.min(args.size(), 4);
+                int argc = args.size();
                 int[] argSlots = new int[argc];
                 for(int i=0;i<argc;i++) argSlots[i] = lowerExpr(args.get(i), out, ctx, currentClass);
                 int dest = ctx.newTemp();
@@ -323,6 +468,23 @@ public class AstToIrLowerer {
                     "IR backend does not support this kind of call target.",
                     "Only simple function calls (name(...) or ClassName.method(...)) are currently supported.");
             int t = ctx.newTemp(); out.instructions.add(new IrConst(t, null)); return t;
+        } else if(e instanceof NewExpr ne){
+            String className = baseClassName(ne.getClassName());
+            int obj = ctx.newTemp();
+            out.instructions.add(new IrNewObject(className, obj));
+            boolean hasInitializer = findMethodInHierarchy(className, "init") != null;
+            if(!ne.getArguments().isEmpty() || hasInitializer){
+                if(!hasInitializer && !ne.getArguments().isEmpty()){
+                    errorReporter.error(ErrorFactory.getLocation(ne),
+                            "IR backend could not find constructor 'init' for class '" + className + "'.",
+                            "Add an init(...) method to the class, or instantiate it with no arguments.");
+                    return obj;
+                }
+                int[] argSlots = new int[ne.getArguments().size()];
+                for(int i=0;i<ne.getArguments().size();i++) argSlots[i] = lowerExpr(ne.getArguments().get(i), out, ctx, currentClass);
+                out.instructions.add(new IrInvokeMethod(obj, "init", argSlots, -1));
+            }
+            return obj;
         } else if(e instanceof AssignmentExpr ae){
             // Lower RHS then store into existing local slot if present.
             int valueSlot = lowerExpr(ae.getValue(), out, ctx, currentClass);
@@ -339,6 +501,33 @@ public class AstToIrLowerer {
             int t = ctx.newTemp();
             out.instructions.add(new IrLoadLocal(slot, t));
             return t;
+        } else if(e instanceof PrefixIncrementExpr pie){
+            // Support only simple variable targets for now
+            Expression target = pie.getTarget();
+            if(target instanceof VariableExpr ve){
+                String name = ve.getName()!=null? ve.getName().getLexeme(): "";
+                int slot = ctx.getSlot(name);
+                if(slot < 0){
+                    slot = ctx.allocSlot(name);
+                }
+                int oldVal = ctx.newTemp();
+                out.instructions.add(new IrLoadLocal(slot, oldVal));
+                int one = ctx.newTemp();
+                out.instructions.add(new IrConst(one, 1L));
+                int newVal = ctx.newTemp();
+                if(pie.isIncrement()){
+                    out.instructions.add(new IrBinOp(IrBinOp.Op.ADD, oldVal, one, newVal));
+                } else {
+                    out.instructions.add(new IrBinOp(IrBinOp.Op.SUB, oldVal, one, newVal));
+                }
+                out.instructions.add(new IrStoreLocal(newVal, slot));
+                // Prefix returns new value
+                return newVal;
+            } else {
+                int t = ctx.newTemp();
+                out.instructions.add(new IrConst(t, null));
+                return t;
+            }
         } else if(e instanceof PostfixIncrementExpr pie){
             // Support only simple variable targets for now
             Expression target = pie.getTarget();
@@ -412,6 +601,12 @@ public class AstToIrLowerer {
                     case "-" -> out.instructions.add(new IrBinOp(IrBinOp.Op.SUB, l, r, t));
                     case "*" -> out.instructions.add(new IrBinOp(IrBinOp.Op.MUL, l, r, t));
                     case "/" -> out.instructions.add(new IrBinOp(IrBinOp.Op.DIV, l, r, t));
+                    case "%" -> out.instructions.add(new IrBinOp(IrBinOp.Op.MOD, l, r, t));
+                    case "&" -> out.instructions.add(new IrBinOp(IrBinOp.Op.BIT_AND, l, r, t));
+                    case "|" -> out.instructions.add(new IrBinOp(IrBinOp.Op.BIT_OR, l, r, t));
+                    case "^" -> out.instructions.add(new IrBinOp(IrBinOp.Op.BIT_XOR, l, r, t));
+                    case "<<" -> out.instructions.add(new IrBinOp(IrBinOp.Op.LSHIFT, l, r, t));
+                    case ">>" -> out.instructions.add(new IrBinOp(IrBinOp.Op.RSHIFT, l, r, t));
                     case "==" -> out.instructions.add(new IrCompare(IrCompare.Op.EQ, l, r, t));
                     case "!=" -> out.instructions.add(new IrCompare(IrCompare.Op.NEQ, l, r, t));
                     case "<" -> out.instructions.add(new IrCompare(IrCompare.Op.LT, l, r, t));
@@ -434,6 +629,7 @@ public class AstToIrLowerer {
             switch(op){
                 case "-" -> out.instructions.add(new IrUnaryOp(IrUnaryOp.Op.NEG, inner, t));
                 case "!" -> out.instructions.add(new IrUnaryOp(IrUnaryOp.Op.NOT, inner, t));
+                case "~" -> out.instructions.add(new IrUnaryOp(IrUnaryOp.Op.BIT_NOT, inner, t));
                 default -> {
                     errorReporter.error(ErrorFactory.getLocation(ue),
                             "IR backend does not support unary operator '"+op+"'.",
@@ -460,6 +656,67 @@ public class AstToIrLowerer {
 
     private Object literalValue(LiteralExpr le){
         return le.getValue();
+    }
+
+    private String baseClassName(String className){
+        if(className == null) return "";
+        int genericStart = className.indexOf('<');
+        return genericStart >= 0 ? className.substring(0, genericStart) : className;
+    }
+
+    private void emitNestedArrayPopulation(IrFunction out, LoweringContext ctx, String currentClass,
+                                           int parentArraySlot, java.util.List<Integer> sizeSlots,
+                                           int depth, String elementType, boolean jagged){
+        if(depth >= sizeSlots.size() - 1) return;
+
+        int indexSlot = ctx.allocSlot(freshLabel("arr_idx_slot"));
+        int zero = ctx.newTemp();
+        out.instructions.add(new IrConst(zero, 0L));
+        out.instructions.add(new IrStoreLocal(zero, indexSlot));
+
+        String loopLabel = freshLabel("arr_loop");
+        String endLabel = freshLabel("arr_loop_end");
+        out.instructions.add(new IrLabel(loopLabel));
+
+        int currentIndex = ctx.newTemp();
+        out.instructions.add(new IrLoadLocal(indexSlot, currentIndex));
+        int cond = ctx.newTemp();
+        out.instructions.add(new IrCompare(IrCompare.Op.LT, currentIndex, sizeSlots.get(depth), cond));
+        out.instructions.add(new IrJumpIfFalse(cond, endLabel));
+
+        boolean childIsLeaf = depth + 1 == sizeSlots.size() - 1 && !jagged;
+        int childArray = ctx.newTemp();
+        out.instructions.add(new IrNewArray(sizeSlots.get(depth + 1), childArray, childIsLeaf ? elementType : null));
+        out.instructions.add(new IrStoreElement(parentArraySlot, currentIndex, childArray));
+        emitNestedArrayPopulation(out, ctx, currentClass, childArray, sizeSlots, depth + 1, elementType, jagged);
+
+        int one = ctx.newTemp();
+        out.instructions.add(new IrConst(one, 1L));
+        int nextIndex = ctx.newTemp();
+        out.instructions.add(new IrBinOp(IrBinOp.Op.ADD, currentIndex, one, nextIndex));
+        out.instructions.add(new IrStoreLocal(nextIndex, indexSlot));
+        out.instructions.add(new IrJump(loopLabel));
+        out.instructions.add(new IrLabel(endLabel));
+    }
+
+    private boolean isNativeStringMethod(String methodName){
+        return switch(methodName){
+            case "length", "substring", "charAt", "toUpperCase", "toLowerCase", "indexOf", "replace",
+                    "startsWith", "endsWith", "trim", "split", "join", "repeat", "reverse", "padLeft",
+                    "padRight" -> true;
+            default -> false;
+        };
+    }
+
+    private FunctionDecl findMethodInHierarchy(String className, String methodName){
+        ClassDecl cd = classIndex.get(className);
+        if(cd == null) return null;
+        FunctionDecl local = cd.findMethod(methodName);
+        if(local != null) return local;
+        if(cd.getSuperclass() != null){
+            return findMethodInHierarchy(cd.getSuperclass().getName().getLexeme(), methodName);
+        }
+        return null;
     }
 
     private int labelCounter = 0;

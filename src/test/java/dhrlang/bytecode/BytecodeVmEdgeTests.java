@@ -10,6 +10,27 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class BytecodeVmEdgeTests {
 
+    private static final int MAGIC = 0x44484243;
+    private static final int V3 = 3;
+
+    /** Writes magic, version, then 0 classes (v3 format preamble after cp). */
+    private static void writeV3Preamble(DataOutputStream out) throws IOException {
+        out.writeInt(MAGIC);
+        out.writeInt(V3);
+    }
+
+    /** Writes 0 class definitions (placed between cp and function sections). */
+    private static void writeNoClasses(DataOutputStream out) throws IOException {
+        out.writeInt(0);
+    }
+
+    /** Writes the function metadata fields added in v3: ownerClassName, simpleName, isStatic. */
+    private static void writeFuncMeta(DataOutputStream out) throws IOException {
+        out.writeUTF(""); // ownerClassName
+        out.writeUTF(""); // simpleName
+        out.writeBoolean(true); // isStatic
+    }
+
     private static String runVm(IrProgram program) {
         byte[] bc = new BytecodeWriter().write(program);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -57,8 +78,7 @@ public class BytecodeVmEdgeTests {
     void rejectsUnknownConstTag() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(1);
             out.writeByte(99);
             out.writeInt(0);
@@ -73,11 +93,12 @@ public class BytecodeVmEdgeTests {
     void rejectsUnknownOpcode() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(0);
+            writeNoClasses(out);
             out.writeInt(1);
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1);
             out.writeInt(999);
             out.flush();
@@ -91,11 +112,12 @@ public class BytecodeVmEdgeTests {
     void rejectsInvalidJumpTarget() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(0); // cp
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1); // 1 instruction
             out.writeInt(BytecodeOpcode.JUMP.code);
             out.writeInt(-1); // invalid target
@@ -110,11 +132,12 @@ public class BytecodeVmEdgeTests {
     void rejectsInvalidConstPoolIndex() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(0); // cp
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1);
             out.writeInt(BytecodeOpcode.CONST.code);
             out.writeInt(0); // target slot
@@ -130,13 +153,14 @@ public class BytecodeVmEdgeTests {
     void rejectsConstPoolWrongTypeForGetStatic() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(1); // cp count
             out.writeByte(1); // LONG tag
             out.writeLong(1L);
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1);
             out.writeInt(BytecodeOpcode.GET_STATIC.code);
             out.writeInt(0); // className idx (but it's LONG)
@@ -153,11 +177,12 @@ public class BytecodeVmEdgeTests {
     void rejectsInvalidCalleeIndexInsteadOfSkipping() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(0); // cp
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1);
             out.writeInt(BytecodeOpcode.CALL.code);
             out.writeInt(999); // invalid callee
@@ -177,11 +202,12 @@ public class BytecodeVmEdgeTests {
         try {
             byte[] bytes;
             try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-                out.writeInt(0x44484243);
-                out.writeInt(2);
+                writeV3Preamble(out);
                 out.writeInt(0); // cp
+                writeNoClasses(out);
                 out.writeInt(1); // fn
                 out.writeUTF("Foo.bar");
+                writeFuncMeta(out);
                 out.writeInt(1);
                 out.writeInt(BytecodeOpcode.RETURN.code);
                 out.writeInt(-1);
@@ -205,11 +231,12 @@ public class BytecodeVmEdgeTests {
         try {
             byte[] bytes;
             try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-                out.writeInt(0x44484243);
-                out.writeInt(2);
+                writeV3Preamble(out);
                 out.writeInt(0); // cp
+                writeNoClasses(out);
                 out.writeInt(1); // fn
                 out.writeUTF("Foo.bar");
+                writeFuncMeta(out);
                 out.writeInt(1);
                 out.writeInt(BytecodeOpcode.RETURN.code);
                 out.writeInt(-1);
@@ -235,11 +262,12 @@ public class BytecodeVmEdgeTests {
         try {
             byte[] bytes;
             try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-                out.writeInt(0x44484243);
-                out.writeInt(2);
+                writeV3Preamble(out);
                 out.writeInt(0); // cp
+                writeNoClasses(out);
                 out.writeInt(1); // fn
                 out.writeUTF("Foo.bar");
+                writeFuncMeta(out);
                 out.writeInt(1);
                 out.writeInt(BytecodeOpcode.RETURN.code);
                 out.writeInt(-1);
@@ -259,11 +287,12 @@ public class BytecodeVmEdgeTests {
     void rejectsTryPopUnderflowAtRuntime() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(0); // cp
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(1);
             out.writeInt(BytecodeOpcode.TRY_POP.code);
             out.flush();
@@ -277,13 +306,14 @@ public class BytecodeVmEdgeTests {
     void rejectsCatchEntryNotStartingWithCatchBind() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(1); // cp
             out.writeByte(3); // STRING
             out.writeUTF("any");
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(2);
             out.writeInt(BytecodeOpcode.TRY_PUSH.code);
             out.writeInt(1); // catchPc
@@ -301,13 +331,14 @@ public class BytecodeVmEdgeTests {
     void rejectsNormalControlFlowEnteringCatchEntry() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(1); // cp
             out.writeByte(3); // STRING
             out.writeUTF("any");
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(3);
             out.writeInt(BytecodeOpcode.TRY_PUSH.code);
             out.writeInt(2); // catchPc
@@ -327,13 +358,14 @@ public class BytecodeVmEdgeTests {
     void rejectsInconsistentTryDepthOnMerge() throws Exception {
         byte[] bytes;
         try (var baos = new ByteArrayOutputStream(); var out = new DataOutputStream(baos)) {
-            out.writeInt(0x44484243);
-            out.writeInt(2);
+            writeV3Preamble(out);
             out.writeInt(2); // cp
             out.writeByte(3); out.writeUTF("any");
             out.writeByte(4); out.writeBoolean(false);
+            writeNoClasses(out);
             out.writeInt(1); // fn
             out.writeUTF("Main.main");
+            writeFuncMeta(out);
             out.writeInt(6);
             // 0: TRY_PUSH catch=5 (unreachable normal-flow handler entry)
             out.writeInt(BytecodeOpcode.TRY_PUSH.code);

@@ -32,17 +32,22 @@ public final class AbiGenerator {
      * @return ordered list of ABI entries (each a {@code Map<String,Object>})
      */
     public static List<Map<String, Object>> generate(ClassDecl classDecl) {
-        List<Map<String, Object>> abi = new ArrayList<>();
+        return generate(classDecl, Map.of());
+    }
 
-        for (FunctionDecl fn : classDecl.getFunctions()) {
-            if (fn.isContractConstructor()) {
-                abi.add(buildConstructorEntry(fn));
-            } else if (fn.hasContractAnnotation(ContractAnnotation.EVENT)) {
-                abi.add(buildEventEntry(fn));
-            } else {
-                abi.add(buildFunctionEntry(fn));
-            }
-        }
+    /**
+     * Generate the full ABI including inherited functions.
+     *
+     * @param classDecl     a {@code @contract} annotated class declaration
+     * @param classRegistry maps class names to ClassDecl for superclass resolution
+     * @return ordered list of ABI entries
+     */
+    public static List<Map<String, Object>> generate(ClassDecl classDecl, Map<String, ClassDecl> classRegistry) {
+        List<Map<String, Object>> abi = new ArrayList<>();
+        java.util.Set<String> seenNames = new java.util.HashSet<>();
+
+        // Collect functions from this class and superclasses (most-derived first)
+        collectAbiFunctions(classDecl, classRegistry, abi, seenNames);
 
         // Receive function — implied for @payable contracts
         if (classDecl.hasContractAnnotation(ContractAnnotation.PAYABLE)) {
@@ -50,6 +55,33 @@ public final class AbiGenerator {
         }
 
         return abi;
+    }
+
+    private static void collectAbiFunctions(ClassDecl cls, Map<String, ClassDecl> classRegistry,
+                                            List<Map<String, Object>> abi, java.util.Set<String> seenNames) {
+        for (FunctionDecl fn : cls.getFunctions()) {
+            if (fn.isContractConstructor()) {
+                if (seenNames.add("@constructor")) {
+                    abi.add(buildConstructorEntry(fn));
+                }
+            } else if (fn.hasContractAnnotation(ContractAnnotation.EVENT)) {
+                if (seenNames.add("@event:" + fn.getName())) {
+                    abi.add(buildEventEntry(fn));
+                }
+            } else {
+                if (seenNames.add(fn.getName())) {
+                    abi.add(buildFunctionEntry(fn));
+                }
+            }
+        }
+        // Walk superclass
+        if (cls.getSuperclass() != null) {
+            String superName = cls.getSuperclass().getName().getLexeme();
+            ClassDecl superDecl = classRegistry.get(superName);
+            if (superDecl != null) {
+                collectAbiFunctions(superDecl, classRegistry, abi, seenNames);
+            }
+        }
     }
 
     /**

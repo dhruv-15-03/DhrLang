@@ -41,6 +41,11 @@ public final class EvmCodeGen {
      */
     private static final int SLOT_SIZE = 0x20;  // 32
 
+    /**
+     * Reserved storage slot for reentrancy lock.
+     */
+    private static final int REENTRANCY_LOCK_SLOT = 0xFFFF;
+
     // ── State ────────────────────────────────────────────────────────────
 
     private final ClassDecl contract;
@@ -53,17 +58,28 @@ public final class EvmCodeGen {
     /** Maps storage variable names to their slot indices. */
     private final Map<String, Integer> storageSlots = new LinkedHashMap<>();
 
+    /** Class registry — maps class name to ClassDecl for inheritance resolution. */
+    private final Map<String, ClassDecl> classRegistry;
+
     private EvmCodeBuffer buf;
 
     // Loop control — break/continue labels
     private final Deque<String> breakLabels = new ArrayDeque<>();
     private final Deque<String> continueLabels = new ArrayDeque<>();
 
+    // Reentrancy guard state — true when inside a @nonreentrant function
+    private boolean insideNonReentrant = false;
+
     // ── Constructor ──────────────────────────────────────────────────────
 
     public EvmCodeGen(ClassDecl contract, ContractLayout layout) {
+        this(contract, layout, Map.of());
+    }
+
+    public EvmCodeGen(ClassDecl contract, ContractLayout layout, Map<String, ClassDecl> classRegistry) {
         this.contract = contract;
         this.layout = layout;
+        this.classRegistry = classRegistry;
 
         // Pre-populate storage slot map
         if (layout != null) {
@@ -81,7 +97,7 @@ public final class EvmCodeGen {
     public CompilationResult compile() {
         byte[] runtimeBytecode = compileRuntime();
         byte[] creationBytecode = compileCreation(runtimeBytecode);
-        List<Map<String, Object>> abi = AbiGenerator.generate(contract);
+        List<Map<String, Object>> abi = AbiGenerator.generate(contract, classRegistry);
         return new CompilationResult(
                 creationBytecode,
                 runtimeBytecode,
@@ -100,6 +116,19 @@ public final class EvmCodeGen {
     private byte[] compileRuntime() {
         buf = new EvmCodeBuffer();
 
+        // Find receive() and fallback() functions if they exist
+        FunctionDecl receiveFunc = findNamedFunction("receive");
+        FunctionDecl fallbackFunc = findNamedFunction("fallback");
+        String receiveLabel = receiveFunc != null ? buf.newLabel() : null;
+        String fallbackLabel = fallbackFunc != null ? buf.newLabel() : null;
+
+        // ── Receive routing (empty calldata + ETH sent) ──────────
+        if (receiveFunc != null) {
+            buf.emit(EvmOpcode.CALLDATASIZE);      // calldatasize
+            buf.emit(EvmOpcode.ISZERO);             // calldatasize == 0?
+            buf.jumpIf(receiveLabel);               // jump to receive()
+        }
+
         // ── Function dispatcher ──────────────────────────────────
         // Load first 4 bytes of calldata as function selector
         buf.pushInt(0);                         // offset 0
@@ -107,14 +136,10 @@ public final class EvmCodeGen {
         buf.pushInt(0xE0);                      // shift right by 224 bits
         buf.emit(EvmOpcode.SHR);                // → 4-byte selector on stack
 
-        // Collect non-constructor, non-event functions
+        // Collect non-constructor, non-event functions (including inherited)
         List<FunctionDecl> publicFunctions = new ArrayList<>();
-        for (FunctionDecl fn : contract.getFunctions()) {
-            if (!fn.isContractConstructor()
-                    && !fn.hasContractAnnotation(ContractAnnotation.EVENT)) {
-                publicFunctions.add(fn);
-            }
-        }
+        Set<String> seenSelectors = new HashSet<>();
+        collectDispatchFunctions(contract, publicFunctions, seenSelectors);
 
         // Compare selector → jump to matching function
         String[] functionLabels = new String[publicFunctions.size()];
@@ -128,12 +153,27 @@ public final class EvmCodeGen {
             buf.jumpIf(functionLabels[i]);             // jump if match
         }
 
-        // No match → revert
-        buf.revert0();
+        // No match → fallback or revert
+        if (fallbackFunc != null) {
+            buf.emit(EvmOpcode.POP);                   // pop selector
+            buf.jumpTo(fallbackLabel);
+        } else {
+            buf.revert0();
+        }
 
         // ── Function bodies ──────────────────────────────────────
         for (int i = 0; i < publicFunctions.size(); i++) {
             emitFunction(publicFunctions.get(i), functionLabels[i]);
+        }
+
+        // ── Receive function body ────────────────────────────────
+        if (receiveFunc != null) {
+            emitFunction(receiveFunc, receiveLabel);
+        }
+
+        // ── Fallback function body ───────────────────────────────
+        if (fallbackFunc != null) {
+            emitFunction(fallbackFunc, fallbackLabel);
         }
 
         return buf.resolve();
@@ -151,8 +191,21 @@ public final class EvmCodeGen {
         // Run constructor if it exists
         FunctionDecl ctor = findConstructor();
         if (ctor != null) {
-            EvmCodeGen ctorGen = new EvmCodeGen(contract, layout);
+            EvmCodeGen ctorGen = new EvmCodeGen(contract, layout, classRegistry);
             ctorGen.buf = creation;
+
+            // Decode constructor parameters from calldata.
+            // At deploy time, constructor args are ABI-encoded in calldata
+            // (no 4-byte selector prefix for constructors).
+            List<VarDecl> ctorParams = ctor.getParameters();
+            for (int i = 0; i < ctorParams.size(); i++) {
+                String name = ctorParams.get(i).getName();
+                int offset = ctorGen.allocLocal(name);
+                creation.pushInt(i * 32);
+                creation.emit(EvmOpcode.CALLDATALOAD);
+                creation.mstoreAt(offset);
+            }
+
             ctorGen.emitFunctionBody(ctor);
         }
 
@@ -223,8 +276,31 @@ public final class EvmCodeGen {
             buf.mstoreAt(offset);
         }
 
+        // @nonreentrant guard: check lock, set lock, emit body, clear lock
+        boolean guarded = fn.hasContractAnnotation(ContractAnnotation.NONREENTRANT);
+        if (guarded) {
+            // Check: SLOAD(REENTRANCY_LOCK_SLOT) must be 0
+            buf.sloadSlot(REENTRANCY_LOCK_SLOT);
+            String notLockedLabel = buf.newLabel();
+            buf.emit(EvmOpcode.ISZERO);
+            buf.jumpIf(notLockedLabel);
+            buf.revert0();  // revert if already locked
+            buf.placeLabel(notLockedLabel);
+            // Set lock = 1
+            buf.pushInt(1);
+            buf.sstoreSlot(REENTRANCY_LOCK_SLOT);
+            insideNonReentrant = true;
+        }
+
         // Emit function body
         emitFunctionBody(fn);
+
+        // Clear reentrancy lock before implicit return
+        if (guarded) {
+            buf.pushInt(0);
+            buf.sstoreSlot(REENTRANCY_LOCK_SLOT);
+            insideNonReentrant = false;
+        }
 
         // Implicit return (stop) if no explicit return was encountered
         buf.emit(EvmOpcode.STOP);
@@ -323,9 +399,14 @@ public final class EvmCodeGen {
     }
 
     private void emitReturnStmt(ReturnStmt stmt) {
+        // Clear reentrancy lock before returning
+        if (insideNonReentrant) {
+            buf.pushInt(0);
+            buf.sstoreSlot(REENTRANCY_LOCK_SLOT);
+        }
         if (stmt.getValue() != null) {
             emitExpression(stmt.getValue());
-            // Store result in memory at offset 0 and return 32 bytes
+            // ABI-encode return value: store at memory offset 0, return 32 bytes
             buf.pushInt(0);
             buf.emit(EvmOpcode.MSTORE);
             buf.pushInt(32);
@@ -334,6 +415,18 @@ public final class EvmCodeGen {
         } else {
             buf.emit(EvmOpcode.STOP);
         }
+    }
+
+    /**
+     * Encode multiple return values in ABI format at memory starting at offset 0.
+     * Each value is stored as a 32-byte word. Returns total encoded size.
+     */
+    private int emitAbiEncodeValues(List<Expression> values) {
+        for (int i = 0; i < values.size(); i++) {
+            emitExpression(values.get(i));
+            buf.mstoreAt(i * 32);
+        }
+        return values.size() * 32;
     }
 
     // ── Expression emission ──────────────────────────────────────────────
@@ -364,6 +457,8 @@ public final class EvmCodeGen {
             emitPrefixIncrement((PrefixIncrementExpr) expr);
         } else if (expr instanceof PostfixIncrementExpr) {
             emitPostfixIncrement((PostfixIncrementExpr) expr);
+        } else if (expr instanceof TernaryExpr) {
+            emitTernary((TernaryExpr) expr);
         } else {
             // Unsupported expression → push 0
             buf.pushInt(0);
@@ -406,6 +501,18 @@ public final class EvmCodeGen {
             buf.emit(EvmOpcode.CALLVALUE);
         } else if ("block.timestamp".equals(name)) {
             buf.emit(EvmOpcode.TIMESTAMP);
+        } else if ("block.number".equals(name)) {
+            buf.emit(EvmOpcode.NUMBER);
+        } else if ("block.coinbase".equals(name)) {
+            buf.emit(EvmOpcode.COINBASE);
+        } else if ("block.gaslimit".equals(name)) {
+            buf.emit(EvmOpcode.GASLIMIT);
+        } else if ("block.chainid".equals(name)) {
+            buf.emit(EvmOpcode.CHAINID);
+        } else if ("tx.origin".equals(name)) {
+            buf.emit(EvmOpcode.ORIGIN);
+        } else if ("tx.gasprice".equals(name)) {
+            buf.emit(EvmOpcode.GASPRICE);
         } else {
             // Unknown variable — push 0
             buf.pushInt(0);
@@ -471,6 +578,11 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.SLT);
                 buf.emit(EvmOpcode.ISZERO);
                 break;
+            case BIT_AND:  buf.emit(EvmOpcode.AND);     break;
+            case BIT_OR:   buf.emit(EvmOpcode.OR);      break;
+            case BIT_XOR:  buf.emit(EvmOpcode.XOR);     break;
+            case LSHIFT:   buf.emit(EvmOpcode.SHL);     break;
+            case RSHIFT:   buf.emit(EvmOpcode.SHR);     break;
             default:
                 // Fallback: pop one operand, leave the other
                 buf.emit(EvmOpcode.POP);
@@ -494,9 +606,25 @@ public final class EvmCodeGen {
             case NOT:
                 buf.emit(EvmOpcode.ISZERO);
                 break;
+            case BIT_NOT:
+                buf.emit(EvmOpcode.NOT);
+                break;
             default:
                 break;
         }
+    }
+
+    private void emitTernary(TernaryExpr expr) {
+        emitExpression(expr.getCondition());
+        String elseLabel = buf.newLabel();
+        String endLabel = buf.newLabel();
+        buf.emit(EvmOpcode.ISZERO);
+        buf.jumpIf(elseLabel);
+        emitExpression(expr.getThenBranch());
+        buf.jumpTo(endLabel);
+        buf.placeLabel(elseLabel);
+        emitExpression(expr.getElseBranch());
+        buf.placeLabel(endLabel);
     }
 
     private void emitAssignment(AssignmentExpr expr) {
@@ -515,14 +643,28 @@ public final class EvmCodeGen {
     private void emitCall(CallExpr expr) {
         Expression callee = expr.getCallee();
 
-        // Pattern: require(condition) → revert if false
+        // Pattern: gasleft() → GAS opcode
+        if (callee instanceof VariableExpr
+                && "gasleft".equals(((VariableExpr) callee).getName().getLexeme())) {
+            buf.emit(EvmOpcode.GAS);
+            return;
+        }
+
+        // Pattern: require(condition) or require(condition, "message") → revert if false
         if (callee instanceof VariableExpr
                 && "require".equals(((VariableExpr) callee).getName().getLexeme())) {
             if (!expr.getArguments().isEmpty()) {
                 emitExpression(expr.getArguments().get(0));
                 String okLabel = buf.newLabel();
                 buf.jumpIf(okLabel);
-                buf.revert0();
+                // Revert with message if second arg is a string literal
+                if (expr.getArguments().size() >= 2
+                        && expr.getArguments().get(1) instanceof LiteralExpr lit
+                        && lit.getValue() instanceof String msg) {
+                    buf.revertWithMessage(msg);
+                } else {
+                    buf.revert0();
+                }
                 buf.placeLabel(okLabel);
             }
             buf.pushInt(1);  // require returns a truthy value for expression context
@@ -550,6 +692,13 @@ public final class EvmCodeGen {
                     emitExternalTransfer(expr.getArguments());
                     return;
                 }
+                // contract.functionName(args) → external CALL or STATICCALL
+                // Check if the callee object is a local variable (address of external contract)
+                if (locals.containsKey(objName) || storageSlots.containsKey(objName)) {
+                    // Use STATICCALL for @view annotated functions, CALL otherwise
+                    emitExternalContractCall(obj, member, expr.getArguments());
+                    return;
+                }
             }
         }
 
@@ -574,15 +723,26 @@ public final class EvmCodeGen {
             }
         }
 
-        // block.timestamp, block.number
+        // block.timestamp, block.number, block.coinbase, block.gaslimit, block.chainid
         if (obj instanceof VariableExpr
                 && "block".equals(((VariableExpr) obj).getName().getLexeme())) {
-            if ("timestamp".equals(member)) {
-                buf.emit(EvmOpcode.TIMESTAMP);
-                return;
-            } else if ("number".equals(member)) {
-                buf.emit(EvmOpcode.NUMBER);
-                return;
+            switch (member) {
+                case "timestamp" -> { buf.emit(EvmOpcode.TIMESTAMP); return; }
+                case "number" -> { buf.emit(EvmOpcode.NUMBER); return; }
+                case "coinbase" -> { buf.emit(EvmOpcode.COINBASE); return; }
+                case "gaslimit" -> { buf.emit(EvmOpcode.GASLIMIT); return; }
+                case "chainid" -> { buf.emit(EvmOpcode.CHAINID); return; }
+                default -> {}
+            }
+        }
+
+        // tx.origin, tx.gasprice
+        if (obj instanceof VariableExpr
+                && "tx".equals(((VariableExpr) obj).getName().getLexeme())) {
+            switch (member) {
+                case "origin" -> { buf.emit(EvmOpcode.ORIGIN); return; }
+                case "gasprice" -> { buf.emit(EvmOpcode.GASPRICE); return; }
+                default -> {}
             }
         }
 
@@ -610,14 +770,61 @@ public final class EvmCodeGen {
     }
 
     private void emitIndexAccess(IndexExpr expr) {
-        // For mappings stored in storage: compute keccak256(key . slot)
-        // For now, push 0 as placeholder
-        buf.pushInt(0);
+        // For mappings stored in storage: compute keccak256(key . baseSlot) then SLOAD
+        Integer baseSlot = resolveMappingBaseSlot(expr.getObject());
+        if (baseSlot != null) {
+            // Compute runtime mapping slot: keccak256(key || baseSlot)
+            // 1. Store key at memory scratch area 0x00
+            emitExpression(expr.getIndex());
+            buf.mstoreAt(0x00);
+            // 2. Store base slot at memory scratch area 0x20
+            buf.pushInt(baseSlot);
+            buf.mstoreAt(0x20);
+            // 3. SHA3(0x00, 64) → slot hash on stack
+            buf.pushInt(64);
+            buf.pushInt(0);
+            buf.emit(EvmOpcode.SHA3);
+            // 4. SLOAD from computed slot
+            buf.emit(EvmOpcode.SLOAD);
+        } else {
+            // Fallback: treat as array-like access (push 0 for now)
+            buf.pushInt(0);
+        }
     }
 
     private void emitIndexAssign(IndexAssignExpr expr) {
-        // For mappings: SSTORE to computed slot
-        emitExpression(expr.getValue());
+        // For mappings: compute slot via keccak256(key . baseSlot) then SSTORE
+        Integer baseSlot = resolveMappingBaseSlot(expr.getObject());
+        if (baseSlot != null) {
+            // 1. Compute slot
+            emitExpression(expr.getIndex());
+            buf.mstoreAt(0x00);
+            buf.pushInt(baseSlot);
+            buf.mstoreAt(0x20);
+            buf.pushInt(64);
+            buf.pushInt(0);
+            buf.emit(EvmOpcode.SHA3);
+            // 2. Evaluate value and store
+            emitExpression(expr.getValue());
+            buf.emit(EvmOpcode.SWAP1);
+            buf.emit(EvmOpcode.SSTORE);
+        } else {
+            // Fallback: just evaluate value (no storage)
+            emitExpression(expr.getValue());
+        }
+    }
+
+    /** Resolve the storage base slot if the expression refers to a this.mapping field. */
+    private Integer resolveMappingBaseSlot(Expression obj) {
+        if (obj instanceof GetExpr ge && ge.getObject() instanceof ThisExpr) {
+            String fieldName = ge.getName().getLexeme();
+            return storageSlots.get(fieldName);
+        }
+        if (obj instanceof VariableExpr ve) {
+            String name = ve.getName().getLexeme();
+            return storageSlots.get(name);
+        }
+        return null;
     }
 
     private void emitPrefixIncrement(PrefixIncrementExpr expr) {
@@ -670,32 +877,88 @@ public final class EvmCodeGen {
     // ── Event emission ───────────────────────────────────────────────────
 
     private void emitEvent(String eventName, List<Expression> args) {
-        // Compute event topic hash
+        // Look up event function declaration for proper parameter types
+        FunctionDecl eventDecl = findEventFunction(eventName);
+        List<VarDecl> params = eventDecl != null ? eventDecl.getParameters() : null;
+
+        // Build event signature for topic hash using declared types
         StringBuilder sig = new StringBuilder(eventName).append('(');
         for (int i = 0; i < args.size(); i++) {
             if (i > 0) sig.append(',');
-            sig.append("uint256");  // Simplified: assume uint256 params
+            sig.append(toSolidityType(params, i));
         }
         sig.append(')');
-        byte[] topic = FunctionSelector.keccak256(
+        byte[] topicHash = FunctionSelector.keccak256(
                 sig.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-        // Store first non-indexed arg in memory for log data
-        if (!args.isEmpty()) {
-            emitExpression(args.get(0));
-            buf.pushInt(0);
-            buf.emit(EvmOpcode.MSTORE);
+        // Determine indexed parameters (first N params, up to 3 max for LOG4)
+        int maxIndexed = Math.min(args.size(), 3); // LOG4 supports at most 4 topics = 1 sig + 3 indexed
+        int indexedCount = maxIndexed;
+        // Separate indexed and non-indexed args
+        List<Integer> indexedIndices = new ArrayList<>();
+        List<Integer> dataIndices = new ArrayList<>();
+        for (int i = 0; i < args.size(); i++) {
+            if (i < indexedCount) {
+                indexedIndices.add(i);
+            } else {
+                dataIndices.add(i);
+            }
         }
 
-        // Push topic
-        buf.push32(new java.math.BigInteger(1, topic));
+        // Store non-indexed args in memory as 32-byte words
+        int dataSize = dataIndices.size() * 32;
+        for (int d = 0; d < dataIndices.size(); d++) {
+            emitExpression(args.get(dataIndices.get(d)));
+            buf.mstoreAt(d * 32);
+        }
 
-        // LOG1(offset=0, size=32, topic)
-        buf.pushInt(32);   // size
-        buf.pushInt(0);    // offset
-        buf.emit(EvmOpcode.LOG1);
+        // Push indexed topics in reverse order (EVM stack ordering)
+        for (int t = indexedIndices.size() - 1; t >= 0; t--) {
+            emitExpression(args.get(indexedIndices.get(t)));
+        }
+
+        // Push event signature topic
+        buf.push32(new java.math.BigInteger(1, topicHash));
+
+        // Push data size and offset
+        buf.pushInt(dataSize);
+        buf.pushInt(0);
+
+        // Emit appropriate LOG opcode: LOG1 (sig only) .. LOG4 (sig + 3 indexed)
+        int totalTopics = 1 + indexedCount; // sig topic + indexed params
+        switch (totalTopics) {
+            case 1 -> buf.emit(EvmOpcode.LOG1);
+            case 2 -> buf.emit(EvmOpcode.LOG2);
+            case 3 -> buf.emit(EvmOpcode.LOG3);
+            case 4 -> buf.emit(EvmOpcode.LOG4);
+            default -> buf.emit(EvmOpcode.LOG1); // fallback
+        }
 
         buf.pushInt(1);  // Expression result
+    }
+
+    private FunctionDecl findEventFunction(String name) {
+        for (FunctionDecl fn : contract.getFunctions()) {
+            if (fn.getName().equals(name)
+                    && fn.hasContractAnnotation(ContractAnnotation.EVENT)) {
+                return fn;
+            }
+        }
+        return null;
+    }
+
+    private String toSolidityType(List<VarDecl> params, int index) {
+        if (params == null || index >= params.size()) return "uint256";
+        String type = params.get(index).getType();
+        if (type == null) return "uint256";
+        return switch (type) {
+            case "num" -> "uint256";
+            case "duo" -> "uint256";
+            case "kya" -> "bool";
+            case "sab" -> "string";
+            case "address" -> "address";
+            default -> "uint256";
+        };
     }
 
     // ── External transfer ────────────────────────────────────────────────
@@ -727,6 +990,147 @@ public final class EvmCodeGen {
         }
     }
 
+    // ── External contract call ───────────────────────────────────────────
+
+    /**
+     * Emit an external contract call: contract.functionName(args...)
+     * Encodes the function selector + ABI-encoded arguments as calldata,
+     * then uses CALL opcode.
+     *
+     * @param target   the contract address expression
+     * @param fnName   the function name to call
+     * @param args     the function arguments
+     */
+    private void emitExternalContractCall(Expression target, String fnName, List<Expression> args) {
+        // Build function signature for selector
+        StringBuilder sig = new StringBuilder(fnName).append('(');
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) sig.append(',');
+            sig.append("uint256"); // default type for external calls
+        }
+        sig.append(')');
+        byte[] selector = FunctionSelector.compute(sig.toString());
+
+        // Store selector at memory[0x00] (left-aligned in 32-byte word)
+        buf.push32(new java.math.BigInteger(1, selector).shiftLeft(224));
+        buf.mstoreAt(0x00);
+
+        // ABI-encode arguments starting at memory[0x04]
+        for (int i = 0; i < args.size(); i++) {
+            emitExpression(args.get(i));
+            buf.mstoreAt(4 + i * 32);
+        }
+        int calldataSize = 4 + args.size() * 32;
+
+        // CALL(gas, to, value=0, inOffset=0, inSize, outOffset, outSize)
+        buf.pushInt(32);           // outSize (expect 32-byte return)
+        buf.pushInt(calldataSize); // outOffset (reuse after calldata)
+        buf.pushInt(calldataSize); // inSize
+        buf.pushInt(0);            // inOffset
+        buf.pushInt(0);            // value = 0 (no ETH sent)
+        emitExpression(target);    // to address
+        buf.emit(EvmOpcode.GAS);   // gas = remaining gas
+        buf.emit(EvmOpcode.CALL);
+
+        // Check success — if failed, revert
+        String okLabel = buf.newLabel();
+        buf.jumpIf(okLabel);
+        buf.revert0();
+        buf.placeLabel(okLabel);
+
+        // Load return value from memory
+        buf.mloadAt(calldataSize);
+    }
+
+    /**
+     * Emit a STATICCALL for view/pure functions on external contracts.
+     * Same as external call but uses STATICCALL (read-only, no state modification).
+     */
+    private void emitStaticCall(Expression target, String fnName, List<Expression> args) {
+        // Build function signature for selector
+        StringBuilder sig = new StringBuilder(fnName).append('(');
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) sig.append(',');
+            sig.append("uint256");
+        }
+        sig.append(')');
+        byte[] selector = FunctionSelector.compute(sig.toString());
+
+        // Store selector at memory[0x00]
+        buf.push32(new java.math.BigInteger(1, selector).shiftLeft(224));
+        buf.mstoreAt(0x00);
+
+        // ABI-encode arguments
+        for (int i = 0; i < args.size(); i++) {
+            emitExpression(args.get(i));
+            buf.mstoreAt(4 + i * 32);
+        }
+        int calldataSize = 4 + args.size() * 32;
+
+        // STATICCALL(gas, to, inOffset, inSize, outOffset, outSize)
+        buf.pushInt(32);           // outSize
+        buf.pushInt(calldataSize); // outOffset
+        buf.pushInt(calldataSize); // inSize
+        buf.pushInt(0);            // inOffset
+        emitExpression(target);    // to address
+        buf.emit(EvmOpcode.GAS);   // gas
+        buf.emit(EvmOpcode.STATICCALL);
+
+        // Check success
+        String okLabel = buf.newLabel();
+        buf.jumpIf(okLabel);
+        buf.revert0();
+        buf.placeLabel(okLabel);
+
+        // Load return value from memory
+        buf.mloadAt(calldataSize);
+    }
+
+    /**
+     * Emit a DELEGATECALL to another contract.
+     * DELEGATECALL preserves msg.sender and msg.value from the calling contract.
+     * Used for proxy patterns and library calls.
+     */
+    private void emitDelegateCall(Expression target, String fnName, List<Expression> args) {
+        // Build function signature for selector
+        StringBuilder sig = new StringBuilder(fnName).append('(');
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) sig.append(',');
+            sig.append("uint256");
+        }
+        sig.append(')');
+        byte[] selector = FunctionSelector.compute(sig.toString());
+
+        // Store selector at memory[0x00]
+        buf.push32(new java.math.BigInteger(1, selector).shiftLeft(224));
+        buf.mstoreAt(0x00);
+
+        // ABI-encode arguments
+        for (int i = 0; i < args.size(); i++) {
+            emitExpression(args.get(i));
+            buf.mstoreAt(4 + i * 32);
+        }
+        int calldataSize = 4 + args.size() * 32;
+
+        // DELEGATECALL(gas, to, inOffset, inSize, outOffset, outSize)
+        buf.pushInt(32);           // outSize
+        buf.pushInt(calldataSize); // outOffset
+        buf.pushInt(calldataSize); // inSize
+        buf.pushInt(0);            // inOffset
+        emitExpression(target);    // to address
+        buf.emit(EvmOpcode.GAS);   // gas
+        buf.emit(EvmOpcode.DELEGATECALL);
+
+        // Check success
+        String okLabel = buf.newLabel();
+        buf.jumpIf(okLabel);
+        buf.revert0();
+        buf.placeLabel(okLabel);
+
+        // Load return value from memory
+        buf.mloadAt(calldataSize);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private FunctionDecl findConstructor() {
@@ -734,6 +1138,45 @@ public final class EvmCodeGen {
             if (fn.isContractConstructor()) return fn;
         }
         return null;
+    }
+
+    private FunctionDecl findNamedFunction(String name) {
+        for (FunctionDecl fn : contract.getFunctions()) {
+            if (name.equals(fn.getName())) return fn;
+        }
+        return null;
+    }
+
+    /** Collect dispatchable functions from this class and all superclasses.
+     *  Subclass methods override superclass methods with the same selector. */
+    private void collectDispatchFunctions(ClassDecl cls, List<FunctionDecl> out, Set<String> seenSelectors) {
+        // Add own functions first (most derived wins)
+        for (FunctionDecl fn : cls.getFunctions()) {
+            if (fn.isContractConstructor()
+                    || fn.hasContractAnnotation(ContractAnnotation.EVENT)
+                    || "fallback".equals(fn.getName())
+                    || "receive".equals(fn.getName())) {
+                continue;
+            }
+            String selHex = bytesToHex(AbiGenerator.functionSelector(fn));
+            if (seenSelectors.add(selHex)) {
+                out.add(fn);
+            }
+        }
+        // Walk superclass chain
+        if (cls.getSuperclass() != null) {
+            String superName = cls.getSuperclass().getName().getLexeme();
+            ClassDecl superDecl = classRegistry.get(superName);
+            if (superDecl != null) {
+                collectDispatchFunctions(superDecl, out, seenSelectors);
+            }
+        }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     private boolean isEventFunction(String name) {

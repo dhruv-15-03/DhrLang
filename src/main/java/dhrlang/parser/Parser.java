@@ -388,11 +388,21 @@ public class Parser {
             Token forToken = previous();
             return parseFor(forToken);
         }
+        if (match(TokenType.SWITCH)) {
+            return parseSwitchStmt();
+        }
+        if (match(TokenType.DO)) {
+            return parseDoWhile();
+        }
         if (match(TokenType.TRY)) {
             return parseTryStmt();
         }
         if (match(TokenType.THROW)) {
             return parseThrowStmt();
+        }
+        if (match(TokenType.EMIT)) {
+            // emit EventName(args...) → syntactic sugar for EventName(args...)
+            return parseExpressionStmt();
         }
 
         if (isVariableDeclaration()) {
@@ -470,7 +480,7 @@ public class Parser {
     }
 
     private Expression parseAssignment() {
-        Expression expr = parseLogicalOr();
+        Expression expr = parseTernary();
         if (match(TokenType.ASSIGN)) {
             Token equals = previous();
             Expression value = parseAssignment();
@@ -498,6 +508,19 @@ public class Parser {
         return expr;
     }
 
+    private Expression parseTernary() {
+        Expression expr = parseLogicalOr();
+        if (match(TokenType.QUESTION)) {
+            Expression thenBranch = parseExpression();
+            consume(TokenType.COLON, "Expected ':' after then-branch of ternary expression.");
+            Expression elseBranch = parseTernary();
+            TernaryExpr ternary = new TernaryExpr(expr, thenBranch, elseBranch);
+            ternary.setSourceLocation(expr.getSourceLocation());
+            return ternary;
+        }
+        return expr;
+    }
+
     private Expression parseLogicalOr() {
         Expression expr = parseLogicalAnd();
         while (match(TokenType.OR)) {
@@ -511,13 +534,46 @@ public class Parser {
     }
 
     private Expression parseLogicalAnd() {
-        Expression expr = parseEquality();
+        Expression expr = parseBitwiseOr();
         while (match(TokenType.AND)) {
             Token operator = previous();
-            Expression right = parseEquality();
+            Expression right = parseBitwiseOr();
             BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
             binaryExpr.setSourceLocation(operator.getLocation());
             expr = binaryExpr;
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseOr() {
+        Expression expr = parseBitwiseXor();
+        while (match(TokenType.BIT_OR)) {
+            Token operator = previous();
+            Expression right = parseBitwiseXor();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseXor() {
+        Expression expr = parseBitwiseAnd();
+        while (match(TokenType.BIT_XOR)) {
+            Token operator = previous();
+            Expression right = parseBitwiseAnd();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseAnd() {
+        Expression expr = parseEquality();
+        while (match(TokenType.BIT_AND)) {
+            Token operator = previous();
+            Expression right = parseEquality();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
         }
         return expr;
     }
@@ -535,13 +591,24 @@ public class Parser {
     }
 
     private Expression parseComparison() {
-        Expression expr = parseTerm();
+        Expression expr = parseShift();
         while (match(TokenType.LESS, TokenType.LEQ, TokenType.GREATER, TokenType.GEQ)) {
             Token operator = previous();
-            Expression right = parseTerm();
+            Expression right = parseShift();
             BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
             binaryExpr.setSourceLocation(operator.getLocation());
             expr = binaryExpr;
+        }
+        return expr;
+    }
+
+    private Expression parseShift() {
+        Expression expr = parseTerm();
+        while (match(TokenType.LSHIFT, TokenType.RSHIFT)) {
+            Token operator = previous();
+            Expression right = parseTerm();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
         }
         return expr;
     }
@@ -584,7 +651,7 @@ public class Parser {
             return prefixExpr;
         }
 
-        if (match(TokenType.MINUS, TokenType.NOT)) {
+        if (match(TokenType.MINUS, TokenType.NOT, TokenType.BIT_NOT)) {
             Token operator = previous();
             Expression right = parseUnary();
             UnaryExpr unaryExpr = new UnaryExpr(operator, right);
@@ -655,6 +722,11 @@ public class Parser {
         }
         if (match(TokenType.BOOLEAN)) {
             LiteralExpr expr = new LiteralExpr(Boolean.parseBoolean(previous().getLexeme()));
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
+        }
+        if (match(TokenType.NULL)) {
+            LiteralExpr expr = new LiteralExpr(null);
             expr.setSourceLocation(previous().getLocation());
             return expr;
         }
@@ -790,6 +862,20 @@ public class Parser {
     private Statement parseFor(Token forToken) {
         consume(TokenType.LPAREN, "Expect '(' after 'for'.");
         
+        // Detect for-each: for(Type name : expr)
+        if (checkType()) {
+            int saved = current;
+            Token typeToken = consumeType("Expected variable type.");
+            if (check(TokenType.IDENTIFIER)) {
+                Token nameToken = advance();
+                if (match(TokenType.COLON)) {
+                    return parseForEach(forToken, typeToken, nameToken);
+                }
+            }
+            // Not a for-each — reset and fall through to standard for
+            current = saved;
+        }
+
         Statement initializer = null;
         if (match(TokenType.SEMICOLON)) {
         } else if (checkType()) {
@@ -846,6 +932,190 @@ public class Parser {
             }
             return whileStmt;
         }
+    }
+
+    /**
+     * Desugar for-each: for(Type name : arr) body
+     * →  { Type[] $arr = arr; num $i = 0; while($i < arrayLength($arr)) { Type name = $arr[$i]; body; $i = $i + 1; } }
+     * Uses synthetic variable names that can't collide with user code.
+     */
+    private Statement parseForEach(Token forToken, Token typeToken, Token nameToken) {
+        Expression collection = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after for-each clause.");
+        Statement body = parseStatement();
+
+        // Synthetic tokens for desugared variables
+        Token arrVar = syntheticToken("$forEach_arr", forToken);
+        Token idxVar = syntheticToken("$forEach_i", forToken);
+        Token numType = syntheticToken("num", forToken);
+
+        // $arr = collection
+        VarDecl arrDecl = new VarDecl(typeToken.getLexeme() + "[]", arrVar.getLexeme(), collection, Set.of());
+        arrDecl.setSourceLocation(forToken.getLocation());
+
+        // $i = 0
+        LiteralExpr zero = new LiteralExpr(0L); zero.setSourceLocation(forToken.getLocation());
+        VarDecl idxDecl = new VarDecl("num", idxVar.getLexeme(), zero, Set.of());
+        idxDecl.setSourceLocation(forToken.getLocation());
+
+        // condition: $i < arrayLength($arr)
+        VariableExpr arrRef = new VariableExpr(arrVar); arrRef.setSourceLocation(forToken.getLocation());
+        CallExpr lenCall = new CallExpr(new VariableExpr(syntheticToken("arrayLength", forToken)), List.of(arrRef));
+        lenCall.setSourceLocation(forToken.getLocation());
+        VariableExpr idxRef = new VariableExpr(idxVar); idxRef.setSourceLocation(forToken.getLocation());
+        BinaryExpr cond = new BinaryExpr(idxRef, syntheticToken("<", forToken, TokenType.LESS), lenCall);
+        cond.setSourceLocation(forToken.getLocation());
+
+        // Type name = $arr[$i]
+        VariableExpr arrRef2 = new VariableExpr(arrVar); arrRef2.setSourceLocation(forToken.getLocation());
+        VariableExpr idxRef2 = new VariableExpr(idxVar); idxRef2.setSourceLocation(forToken.getLocation());
+        IndexExpr elemAccess = new IndexExpr(arrRef2, idxRef2); elemAccess.setSourceLocation(forToken.getLocation());
+        VarDecl elemDecl = new VarDecl(typeToken.getLexeme(), nameToken.getLexeme(), elemAccess, Set.of());
+        elemDecl.setSourceLocation(forToken.getLocation());
+
+        // $i = $i + 1
+        VariableExpr idxRef3 = new VariableExpr(idxVar); idxRef3.setSourceLocation(forToken.getLocation());
+        LiteralExpr one = new LiteralExpr(1L); one.setSourceLocation(forToken.getLocation());
+        BinaryExpr incr = new BinaryExpr(idxRef3, syntheticToken("+", forToken, TokenType.PLUS), one);
+        incr.setSourceLocation(forToken.getLocation());
+        AssignmentExpr incrAssign = new AssignmentExpr(idxVar, incr);
+        incrAssign.setSourceLocation(forToken.getLocation());
+        ExpressionStmt incrStmt = new ExpressionStmt(incrAssign);
+        incrStmt.setSourceLocation(forToken.getLocation());
+
+        // loop body = { Type name = $arr[$i]; <original body>; $i = $i + 1; }
+        Block loopBlock = new Block(List.of(elemDecl, body, incrStmt));
+        loopBlock.setSourceLocation(forToken.getLocation());
+        loopBlock.markAsDesugaredForLoopBody();
+
+        WhileStmt whileStmt = new WhileStmt(cond, loopBlock);
+        whileStmt.setSourceLocation(forToken.getLocation());
+
+        Block outerBlock = new Block(List.of(arrDecl, idxDecl, whileStmt));
+        outerBlock.setSourceLocation(forToken.getLocation());
+        return outerBlock;
+    }
+
+    private Token syntheticToken(String lexeme, Token ref) {
+        return new Token(TokenType.IDENTIFIER, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+    }
+
+    private Token syntheticToken(String lexeme, Token ref, TokenType type) {
+        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+    }
+
+    /**
+     * Desugar switch(expr) { case v1: { ... } case v2: { ... } default: { ... } }
+     * →  { sab $sw = expr; if($sw == v1) { ... } else if($sw == v2) { ... } else { ... } }
+     * Uses a synthetic temp variable to evaluate the switch expression once.
+     */
+    private Statement parseSwitchStmt() {
+        Token switchToken = previous();
+        consume(TokenType.LPAREN, "Expect '(' after 'switch'.");
+        Expression switchExpr = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after switch expression.");
+        consume(TokenType.LBRACE, "Expect '{' after switch expression.");
+
+        // Store switch expr in a synthetic variable
+        Token swVar = syntheticToken("$switch_val", switchToken);
+        // Use "any" type so any value can be compared
+        VarDecl swDecl = new VarDecl("any", swVar.getLexeme(), switchExpr, Set.of());
+        swDecl.setSourceLocation(switchToken.getLocation());
+
+        List<Expression> caseValues = new ArrayList<>();
+        List<Statement> caseBodies = new ArrayList<>();
+        Statement defaultBody = null;
+
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            if (match(TokenType.CASE)) {
+                Expression caseVal = parseExpression();
+                consume(TokenType.COLON, "Expect ':' after case value.");
+                Statement caseBody = parseCaseBody();
+                caseValues.add(caseVal);
+                caseBodies.add(caseBody);
+            } else if (match(TokenType.DEFAULT)) {
+                consume(TokenType.COLON, "Expect ':' after 'default'.");
+                defaultBody = parseCaseBody();
+            } else {
+                throw error(peek(), "Expected 'case' or 'default' in switch statement.");
+            }
+        }
+        consume(TokenType.RBRACE, "Expect '}' after switch body.");
+
+        // Build if-else chain from bottom up
+        Statement result = defaultBody;
+        for (int i = caseValues.size() - 1; i >= 0; i--) {
+            VariableExpr swRef = new VariableExpr(swVar);
+            swRef.setSourceLocation(switchToken.getLocation());
+            BinaryExpr cond = new BinaryExpr(swRef,
+                    syntheticToken("==", switchToken, TokenType.EQUALITY),
+                    caseValues.get(i));
+            cond.setSourceLocation(switchToken.getLocation());
+            IfStmt ifStmt = new IfStmt(cond, caseBodies.get(i), result);
+            ifStmt.setSourceLocation(switchToken.getLocation());
+            result = ifStmt;
+        }
+
+        if (result == null) {
+            // Empty switch — just evaluate the expression
+            return new ExpressionStmt(switchExpr);
+        }
+
+        Block outerBlock = new Block(List.of(swDecl, result));
+        outerBlock.setSourceLocation(switchToken.getLocation());
+        return outerBlock;
+    }
+
+    private Statement parseCaseBody() {
+        if (check(TokenType.LBRACE)) {
+            return parseBlock();
+        }
+        // Allow single or multiple statements until next case/default/rbrace
+        List<Statement> stmts = new ArrayList<>();
+        while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !isAtEnd()) {
+            stmts.add(parseStatement());
+        }
+        Block block = new Block(stmts);
+        if (!stmts.isEmpty()) {
+            block.setSourceLocation(stmts.get(0).getSourceLocation());
+        }
+        return block;
+    }
+
+    /**
+     * do { body } while(condition);
+     * Desugars to: { body; while(condition) { body } }
+     * Actually desugar to a while(true) with condition check at end.
+     */
+    private Statement parseDoWhile() {
+        Token doToken = previous();
+        Statement body = parseStatement();
+        consume(TokenType.WHILE, "Expect 'while' after do-block.");
+        consume(TokenType.LPAREN, "Expect '(' after 'while'.");
+        Expression condition = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after while condition.");
+        consume(TokenType.SEMICOLON, "Expect ';' after do-while statement.");
+
+        // Desugar: run body once, then while(condition) body
+        // Use: { body; while(condition) { body } }
+        // But body may have side effects from variable declarations that can't be duplicated.
+        // Better approach: while(true) { body; if(!condition) break; }
+        LiteralExpr trueExpr = new LiteralExpr(true);
+        trueExpr.setSourceLocation(doToken.getLocation());
+
+        UnaryExpr notCond = new UnaryExpr(syntheticToken("!", doToken, TokenType.NOT), condition);
+        notCond.setSourceLocation(doToken.getLocation());
+        BreakStmt breakStmt = new BreakStmt();
+        breakStmt.setSourceLocation(doToken.getLocation());
+        IfStmt breakIf = new IfStmt(notCond, breakStmt, null);
+        breakIf.setSourceLocation(doToken.getLocation());
+
+        Block loopBody = new Block(List.of(body, breakIf));
+        loopBody.setSourceLocation(doToken.getLocation());
+
+        WhileStmt whileStmt = new WhileStmt(trueExpr, loopBody);
+        whileStmt.setSourceLocation(doToken.getLocation());
+        return whileStmt;
     }
 
     

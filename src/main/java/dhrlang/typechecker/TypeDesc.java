@@ -53,6 +53,8 @@ public final class TypeDesc {
         if(from==null||to==null) return false;
         if(from==to || from.equals(to)) return true;
         if(from.kind==TypeKind.ANY || to.kind==TypeKind.ANY) return true;
+        // null is assignable to any reference type (class, array, sab)
+        if(from.kind==TypeKind.NULL && (to.kind==TypeKind.CLASS || to.kind==TypeKind.ARRAY || to.kind==TypeKind.SAB)) return true;
         if(from.kind==TypeKind.NUM && to.kind==TypeKind.DUO) return true;
         if(from.isArray() && from.element!=null && from.element.kind==TypeKind.UNKNOWN && to.isArray()) return true;
         if(from.isArray() && to.isArray()) return assignable(from.element, to.element);

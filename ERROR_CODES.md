@@ -1,6 +1,6 @@
 # DhrLang Error Codes Reference
 
-> **Version:** 1.2.0  
+> **Version:** 2.0.0  
 > **Last Updated:** January 2026
 
 DhrLang uses a unique error code system for easy reference and searchability. Each error includes:

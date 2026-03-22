@@ -291,7 +291,7 @@ Create a VS Code extension for syntax highlighting and language support.
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting and language support for DhrLang",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "engines": {
     "vscode": "^1.74.0"
   },

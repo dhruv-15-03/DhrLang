@@ -75,7 +75,12 @@ public final class EvmContractCompiler {
      * @return the compiled artifact
      */
     public ContractArtifact compileSingle(ClassDecl classDecl, ContractLayout layout) {
-        EvmCodeGen codeGen = new EvmCodeGen(classDecl, layout);
+        // Build class registry for inheritance resolution
+        Map<String, ClassDecl> classRegistry = new java.util.HashMap<>();
+        for (ClassDecl cd : program.getClasses()) {
+            classRegistry.put(cd.getName(), cd);
+        }
+        EvmCodeGen codeGen = new EvmCodeGen(classDecl, layout, classRegistry);
         EvmCodeGen.CompilationResult result = codeGen.compile();
 
         return new ContractArtifact(
@@ -112,6 +117,20 @@ public final class EvmContractCompiler {
             gas += (b == 0) ? 4 : 16;
         }
 
+        return gas;
+    }
+
+    /**
+     * Estimate runtime gas cost for a function call based on bytecode size.
+     * This is a rough estimate based on average opcode costs.
+     *
+     * @param runtimeBytecode the runtime bytecode
+     * @return estimated gas for a typical function call
+     */
+    static long estimateRuntimeGas(byte[] runtimeBytecode) {
+        long gas = 21_000L;  // base tx cost
+        // Average 5 gas per byte of runtime code executed (rough heuristic)
+        gas += (long) runtimeBytecode.length * 5;
         return gas;
     }
 

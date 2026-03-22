@@ -489,6 +489,19 @@ DhrLang is designed for:
 - **Educational use**: Clean syntax suitable for teaching programming concepts
 - **Extensibility**: Modular architecture for easy feature addition
 
+## Known Limitations
+
+DhrLang is an educational/exploratory language under active development. Current gaps include:
+
+- **Missing constructs**: No `switch`/`match`, `for-each`, `do-while`, bitwise operators, or string interpolation
+- **EVM compiler**: Events emit LOG1 only (single topic); return values limited to `uint256`; no `DELEGATECALL`/`STATICCALL`; inter-contract calls limited to `this.transfer()`
+- **No module/import system**: All code must live in a single file
+- **No LSP server**: The VS Code extension provides TextMate grammar highlighting, snippets, and basic diagnostics but no go-to-definition or find-references
+- **Single-threaded**: No concurrency primitives
+- **No REPL**: Interactive mode is not yet available
+
+See [NEXT_STEPS.md](NEXT_STEPS.md) for the detailed roadmap.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

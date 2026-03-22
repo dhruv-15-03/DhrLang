@@ -3,13 +3,13 @@
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting, snippets, run/compile helpers for the DhrLang language (num/duo/sab/kya/kaam)",
   "version": "2.0.0",
-  "publisher": "dhruv-15-03",
+  "publisher": "EnggWithDhruv",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.74.0"
   },
   "categories": [
     "Programming Languages",
-    "Language Packs",
     "Other"
   ],
   "keywords": [
