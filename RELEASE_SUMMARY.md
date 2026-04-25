@@ -1,16 +1,16 @@
-﻿# DhrLang v2.0.0 Release Summary
+# DhrLang v3.0.0 Release Summary
 
 ## Overview
 
-DhrLang v2.0.0 is a **major release** encompassing 7 iterations of development:
+DhrLang v3.0.0 is a **major release** encompassing 7 iterations of development:
 - **1,034 tests**, 0 failures
 - Smart contract safety, EVM compilation, interactive debugging
 - Testing/verification framework, production deployment tooling
 - AI agent orchestration and data pipeline framework
 
 ## Core Infrastructure
-- **VS Code Extension v2.0.0**: Syntax highlighting, IntelliSense, code completion, run commands
-- **Compiler Distribution**: Fat JAR `DhrLang-2.0.0.jar` (~1.3 MB) via Gradle Shadow plugin
+- **VS Code Extension v3.0.0**: Syntax highlighting, IntelliSense, code completion, run commands
+- **Compiler Distribution**: Fat JAR `DhrLang-3.0.0.jar` (~1.3 MB) via Gradle Shadow plugin
 - **Artifacts**: Fat JAR + Javadoc JAR (~5.1 MB) + Sources JAR (~292 KB)
 - **Automated Workflows**: GitHub Actions for releases, extension publishing, multi-platform distribution
 
@@ -46,7 +46,7 @@ DhrLang v2.0.0 is a **major release** encompassing 7 iterations of development:
 - Streaming/batch pipelines with backpressure and windowing
 
 ## Documentation Suite
-- **SPEC.md**: Complete language specification (v2.0.0)
+- **SPEC.md**: Complete language specification (v3.0.0)
 - **TUTORIALS.md**: 12 comprehensive tutorials
 - **EXAMPLES.md**: Real-world examples (banking, calculator)
 - **GETTING_STARTED.md**: Installation and first program guide
@@ -62,14 +62,14 @@ DhrLang v2.0.0 is a **major release** encompassing 7 iterations of development:
 ## Release Artifacts
 | Artifact | Size | Description |
 |----------|------|-------------|
-| `DhrLang-2.0.0.jar` | ~1.3 MB | Fat JAR (all dependencies bundled) |
-| `DhrLang-2.0.0-javadoc.jar` | ~5.1 MB | API documentation |
-| `DhrLang-2.0.0-sources.jar` | ~292 KB | Source code |
+| `DhrLang-3.0.0.jar` | ~1.3 MB | Fat JAR (all dependencies bundled) |
+| `DhrLang-3.0.0-javadoc.jar` | ~5.1 MB | API documentation |
+| `DhrLang-3.0.0-sources.jar` | ~292 KB | Source code |
 
 ## Distribution Channels
 1. **GitHub Releases**: Release assets published per tag
 2. **VS Code Extension**: Packaged VSIX aligned with core releases
-3. **Maven**: GitHub Packages (`com.dhrlang:DhrLang:2.0.0`)
+3. **Maven**: GitHub Packages (`com.dhrlang:DhrLang:3.0.0`)
 4. **Package Managers**: Workflows configured for Homebrew, Chocolatey, Snap, Docker
 
 ## Requirements
@@ -79,13 +79,13 @@ DhrLang v2.0.0 is a **major release** encompassing 7 iterations of development:
 ## Quick Start
 ```
 # Run a DhrLang program
-java -jar DhrLang-2.0.0.jar input/sample.dhr
+java -jar DhrLang-3.0.0.jar input/sample.dhr
 
 # Check version
-java -jar DhrLang-2.0.0.jar --version
+java -jar DhrLang-3.0.0.jar --version
 
 # Install VS Code Extension
-code --install-extension dhrlang-vscode-2.0.0.vsix
+code --install-extension dhrlang-vscode-3.0.0.vsix
 ```
 
-**DhrLang v2.0.0 is ready for production release.**
+**DhrLang v3.0.0 is ready for production release.**

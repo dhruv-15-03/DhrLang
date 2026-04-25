@@ -1,10 +1,10 @@
 # DhrLang Package Manager Guide
 
-## 🚀 Distribution Strategy
+## ðŸš€ Distribution Strategy
 
 To make DhrLang truly accessible to users worldwide, we need to distribute it through popular package managers and provide easy installation methods.
 
-## 📦 Package Manager Targets
+## ðŸ“¦ Package Manager Targets
 
 ### 1. Homebrew (macOS/Linux)
 Create a Homebrew formula for easy installation on macOS and Linux.
@@ -241,7 +241,7 @@ child.on('exit', code => process.exit(code));
 npm install -g dhrlang
 ```
 
-## 🐳 Docker Distribution
+## ðŸ³ Docker Distribution
 
 ### Official Docker Image
 Create official Docker images for containerized usage.
@@ -280,7 +280,7 @@ docker run -v $(pwd):/workspace dhrlang/dhrlang:latest myprogram.dhr
 docker run -it -v $(pwd):/workspace dhrlang/dhrlang:latest bash
 ```
 
-## 📱 IDE Extensions
+## ðŸ“± IDE Extensions
 
 ### VS Code Extension
 Create a VS Code extension for syntax highlighting and language support.
@@ -291,7 +291,7 @@ Create a VS Code extension for syntax highlighting and language support.
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting and language support for DhrLang",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -322,7 +322,7 @@ Create a VS Code extension for syntax highlighting and language support.
 }
 ```
 
-## 🌐 Web Distribution
+## ðŸŒ Web Distribution
 
 ### Official Website
 Create a comprehensive website with:
@@ -370,7 +370,7 @@ jobs:
           prerelease: false
 ```
 
-## 📊 Analytics & Metrics
+## ðŸ“Š Analytics & Metrics
 
 ### Download Tracking
 Implement download tracking to understand adoption:
@@ -389,7 +389,7 @@ Optional telemetry (with user consent):
 3. **Performance** - Compilation and runtime performance
 4. **Platforms** - Operating system distribution
 
-## 🚀 Launch Strategy
+## ðŸš€ Launch Strategy
 
 ### Phase 1: Technical Foundation
 - [ ] Create all package manager configurations
@@ -409,7 +409,7 @@ Optional telemetry (with user consent):
 - [ ] Educational partnerships
 - [ ] Corporate adoption
 
-## 📈 Success Metrics
+## ðŸ“ˆ Success Metrics
 
 ### Short-term (3 months)
 - 1,000+ downloads across all platforms
@@ -429,7 +429,7 @@ Optional telemetry (with user consent):
 - Active community of 100+ regular users
 - Commercial projects using DhrLang
 
-## 🎯 Call to Action
+## ðŸŽ¯ Call to Action
 
 **Ready to make DhrLang official?** Let's start with the most impactful distribution channels:
 

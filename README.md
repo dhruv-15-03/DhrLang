@@ -493,12 +493,24 @@ DhrLang is designed for:
 
 DhrLang is an educational/exploratory language under active development. Current gaps include:
 
-- **Missing constructs**: No `switch`/`match`, `for-each`, `do-while`, bitwise operators, or string interpolation
-- **EVM compiler**: Events emit LOG1 only (single topic); return values limited to `uint256`; no `DELEGATECALL`/`STATICCALL`; inter-contract calls limited to `this.transfer()`
 - **No module/import system**: All code must live in a single file
-- **No LSP server**: The VS Code extension provides TextMate grammar highlighting, snippets, and basic diagnostics but no go-to-definition or find-references
-- **Single-threaded**: No concurrency primitives
-- **No REPL**: Interactive mode is not yet available
+- **No lambda/closures**: Functional programming patterns not yet supported
+- **No enum types**: Language-level enums not yet available
+- **Single-threaded**: No concurrency primitives (async/await, coroutines)
+- **No REPL**: Interactive mode not yet available (debug REPL exists for EVM contracts)
+- **Generics**: Syntactic support exists but runtime enforcement is limited
+- **EVM compiler**: Production-ready for basic contracts; complex ABI types (nested arrays, tuples) are partial
+
+### Implemented in v3.0.0
+- `switch`/`case`, `for-each`, `do-while`, labeled `break`/`continue`
+- Bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`)
+- String interpolation (`"Hello ${name}!"`)
+- Hex literals (`0xFF`)
+- `as` type cast (`expr as num`, `expr as sab`)
+- SafeMath overflow/underflow protection (EVM)
+- Auto-generated access control (onlyOwner)
+- LSP server with diagnostics, completion, hover (`--lsp`)
+- EVM: LOG1-LOG4 events, STATICCALL, DELEGATECALL, CREATE2, peephole optimizer
 
 See [NEXT_STEPS.md](NEXT_STEPS.md) for the detailed roadmap.
 

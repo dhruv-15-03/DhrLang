@@ -1,6 +1,6 @@
 # DhrLang Error Codes Reference
 
-> **Version:** 2.0.0  
+> **Version:** 3.0.0  
 > **Last Updated:** January 2026
 
 DhrLang uses a unique error code system for easy reference and searchability. Each error includes:
@@ -14,10 +14,10 @@ DhrLang uses a unique error code system for easy reference and searchability. Ea
 
 ```
 DHR-[E/W][NNN]
- │    │   │
- │    │   └── 3-digit number
- │    └────── E=Error, W=Warning
- └─────────── DhrLang prefix
+ â”‚    â”‚   â”‚
+ â”‚    â”‚   â””â”€â”€ 3-digit number
+ â”‚    â””â”€â”€â”€â”€â”€â”€ E=Error, W=Warning
+ â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ DhrLang prefix
 ```
 
 **Ranges:**
@@ -130,20 +130,20 @@ DHR-[E/W][NNN]
 ## Example Error Output
 
 ```
-╔══════════════════════════════════════════════════════════════════╗
-║  ❌ ERROR [DHR-E401] at program.dhr:15:12                        ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Array index 10 out of bounds for array of length 5              ║
-║                                                                   ║
-║   13 |     num[] arr = new num[5];                               ║
-║   14 |     for(num i = 0; i <= 10; i++) {                        ║
-║ > 15 |         arr[i] = i * 2;                                   ║
-║      |             ^                                              ║
-║   16 |     }                                                      ║
-║                                                                   ║
-║  💡 Hint: Index 10 exceeds valid range [0-4].                    ║
-║           Change loop to 'i < 5' or 'i < arrayLength(arr)'       ║
-╚══════════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘  âŒ ERROR [DHR-E401] at program.dhr:15:12                        â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  Array index 10 out of bounds for array of length 5              â•‘
+â•‘                                                                   â•‘
+â•‘   13 |     num[] arr = new num[5];                               â•‘
+â•‘   14 |     for(num i = 0; i <= 10; i++) {                        â•‘
+â•‘ > 15 |         arr[i] = i * 2;                                   â•‘
+â•‘      |             ^                                              â•‘
+â•‘   16 |     }                                                      â•‘
+â•‘                                                                   â•‘
+â•‘  ðŸ’¡ Hint: Index 10 exceeds valid range [0-4].                    â•‘
+â•‘           Change loop to 'i < 5' or 'i < arrayLength(arr)'       â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -176,5 +176,5 @@ class MyClass {
 
 ---
 
-**🇮🇳 DhrLang - Clear errors, happy developers | स्पष्ट त्रुटियाँ, खुश डेवलपर्स**
+**ðŸ‡®ðŸ‡³ DhrLang - Clear errors, happy developers | à¤¸à¥à¤ªà¤·à¥à¤Ÿ à¤¤à¥à¤°à¥à¤Ÿà¤¿à¤¯à¤¾à¤, à¤–à¥à¤¶ à¤¡à¥‡à¤µà¤²à¤ªà¤°à¥à¤¸**
 

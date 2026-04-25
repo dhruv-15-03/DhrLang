@@ -2,31 +2,31 @@
 
 Modern language tooling for the DhrLang language: syntax highlighting, snippets, run / compile commands, diagnostics, and quality-of-life helpers.
 
-> This README now reflects the current English‑core token set (num, duo, sab, kya, any, kaam, class, static, etc.). Legacy Hindi keyword forms were removed from the language docs and are no longer advertised here.
+> This README now reflects the current Englishâ€‘core token set (num, duo, sab, kya, any, kaam, class, static, etc.). Legacy Hindi keyword forms were removed from the language docs and are no longer advertised here.
 
-## ✨ Features
+## âœ¨ Features
 
-### 🚀 Zero Config Run
+### ðŸš€ Zero Config Run
 * **Bundled Compiler**: The extension includes the DhrLang compiler. Just install and run!
 * **No Setup**: You don't need to download the JAR separately.
 * **Requirement**: Ensure **Java 17+** is installed on your system.
 
-### 🎨 Syntax Highlighting
+### ðŸŽ¨ Syntax Highlighting
 * Accurate grammar for `.dhr` files
 * Highlights keywords, literals, strings, comments, classes, functions, numbers
-* Updated for the simplified English‑core tokens
+* Updated for the simplified Englishâ€‘core tokens
 
-### 🧠 Completions & Snippets
+### ðŸ§  Completions & Snippets
 * Contextual keyword & snippet suggestions (main class, methods, loops, conditionals)
 * Snippets for: main entry, class, method, if / if-else, while, for, foreach, arrays, printLine, try/catch skeleton
 
-### 🚀 Run & Compile
+### ðŸš€ Run & Compile
 * `Ctrl+F5` Run current DhrLang file
 * `Ctrl+Shift+B` Compile / diagnostics
 * Status bar indicator (auto jar detection state)
 * Error squiggles (when enabled) sourced from compiler output
 
-### ⚙️ Configuration (Settings)
+### âš™ï¸ Configuration (Settings)
 | Setting | Description |
 |---------|-------------|
 | `dhrlang.jarPath` | Explicit path to `DhrLang.jar` (leave blank for auto detection) |
@@ -36,7 +36,7 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 | `dhrlang.enableErrorSquiggles` | Toggle inline diagnostics |
 | `dhrlang.outputEncoding` | Output encoding (`utf8` / `utf16`) |
 
-## 🛠 Installation
+## ðŸ›  Installation
 
 ### From Marketplace (Coming Soon)
 *Once published to the VS Code Marketplace:*
@@ -52,9 +52,9 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 4. Type "Install from VSIX" and select **Extensions: Install from VSIX...**.
 5. Select the downloaded `.vsix` file.
 
-## 🚧 Packaging / Updating the VSIX
+## ðŸš§ Packaging / Updating the VSIX
 
-The repository currently contains an older `dhrlang-vscode-1.0.0.vsix`. Rebuild to match new version:
+The repository currently contains an older `dhrlang-vscode-3.0.0.vsix`. Rebuild to match new version:
 
 1. In `vscode-extension/` run (PowerShell):
    - Install dependencies: `npm ci`
@@ -63,7 +63,7 @@ The repository currently contains an older `dhrlang-vscode-1.0.0.vsix`. Rebuild 
 3. Package: `vsce package` (produces `dhrlang-vscode-1.1.4.vsix`)
 4. (Optional) Publish: `vsce publish patch` (requires a Personal Access Token and verified publisher)
 
-## 🚀 Quick Start
+## ðŸš€ Quick Start
 
 Create `Main.dhr`:
 ```dhrlang
@@ -75,7 +75,7 @@ class Main {
 ```
 Press `Ctrl+F5` to run (jar must be resolvable or `dhrlang.jarPath` set).
 
-## 🔑 Core Tokens (Current)
+## ðŸ”‘ Core Tokens (Current)
 
 | Category | Tokens |
 |----------|--------|
@@ -83,24 +83,24 @@ Press `Ctrl+F5` to run (jar must be resolvable or `dhrlang.jarPath` set).
 | Flow | `if`, `else`, `for`, `while`, `return` |
 | OOP | `class`, `extends`, `static` |
 | Functions | `kaam` (method/function indicator) |
-| Built‑ins (examples) | `printLine`, `arrayLength` |
+| Builtâ€‘ins (examples) | `printLine`, `arrayLength` |
 
 Language feature status is tracked in the main docs (README/SPEC).
 
-## 📦 Snippet Prefix Samples
+## ðŸ“¦ Snippet Prefix Samples
 
 | Prefix | Expands To |
 |--------|------------|
 | `mainc` | Main class + entry method skeleton |
 | `main` | Only `main` method skeleton |
 | `pl` | `printLine("...");` |
-| `if` / `ife` | If / If‑Else block |
+| `if` / `ife` | If / Ifâ€‘Else block |
 | `for` / `foreach` | Loop templates |
 | `while` | While loop |
 | `class` | Class skeleton |
 | `kaam` | Method skeleton |
 
-## 🧪 Troubleshooting
+## ðŸ§ª Troubleshooting
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
@@ -109,17 +109,17 @@ Language feature status is tracked in the main docs (README/SPEC).
 | No completions | Auto completion disabled | Enable `dhrlang.enableAutoCompletion` |
 | No diagnostics | Error squiggles off or compile failed | Enable setting / check terminal output |
 
-## 📚 Links
-* Core README – language overview
-* Tutorials – stepwise examples
-* Examples – curated sample programs
-* Issues / Discussions – feedback & support
+## ðŸ“š Links
+* Core README â€“ language overview
+* Tutorials â€“ stepwise examples
+* Examples â€“ curated sample programs
+* Issues / Discussions â€“ feedback & support
 
-## 🤝 Contributing
+## ðŸ¤ Contributing
 See the project CONTRIBUTING guidelines. PRs to improve grammar, diagnostics, or snippets are welcome.
 
-## 📄 License
-MIT License – see repository root `LICENSE`.
+## ðŸ“„ License
+MIT License â€“ see repository root `LICENSE`.
 
 ---
 

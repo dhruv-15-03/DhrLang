@@ -267,9 +267,8 @@
 
 | Version | Codename | Key Feature | Tests |
 |---------|----------|-------------|-------|
-| 2.0.0 | *Current* | EVM backend + AI agents | 1,168 |
-| 2.1.0 | **Testnet** | First real deployment proof | ~1,300 |
-| 2.2.0 | **Parity** | Solidity feature parity (top 20) | ~1,500 |
-| 2.3.0 | **Verified** | Z3 formal verification | ~1,700 |
-| 3.0.0 | **Audited** | External security audit passed | ~2,000 |
-| 3.1.0 | **Production** | First real-money deployment | ~2,200 |
+| 2.0.0 | Released | EVM backend + AI agents | 1,168 |
+| 3.0.0 | *Current* | SafeMath, access control, LSP, optimizer, labeled loops, as cast | 1,287 |
+| 3.1.0 | **Testnet** | First real deployment proof | ~1,400 |
+| 3.2.0 | **Parity** | Solidity feature parity (top 20) | ~1,600 |
+| 4.0.0 | **Ecosystem** | Module system, lambdas, enums, REPL, package manager | ~2,000 |

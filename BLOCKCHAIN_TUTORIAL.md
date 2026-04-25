@@ -1,4 +1,4 @@
-# DhrLang Blockchain Tutorial: Write → Compile → Deploy → Verify
+# DhrLang Blockchain Tutorial: Write â†’ Compile â†’ Deploy â†’ Verify
 
 > **End-to-end guide** for building, deploying, and verifying smart contracts using DhrLang.
 
@@ -7,12 +7,12 @@
 ## Prerequisites
 
 - Java 17+ installed
-- DhrLang 2.0.0 JAR (`DhrLang-2.0.0.jar`)
+- DhrLang 3.0.0 JAR (`DhrLang-3.0.0.jar`)
 - (Optional) Foundry toolkit for local testing: https://book.getfoundry.sh/
 
 ```bash
-java -jar DhrLang-2.0.0.jar --version
-# → DhrLang version 2.0.0
+java -jar DhrLang-3.0.0.jar --version
+# â†’ DhrLang version 3.0.0
 ```
 
 ---
@@ -68,63 +68,63 @@ class MyToken {
 ```
 
 Key annotations:
-- `@contract` — marks the class as a smart contract
-- `@storage` — fields persisted on-chain (EVM storage slots)
-- `@constructor` — runs once at deployment
-- `@view` — read-only (no gas for external calls)
-- `@nonreentrant` — compiler enforces reentrancy protection
-- `@event` — emits EVM log events
+- `@contract` â€” marks the class as a smart contract
+- `@storage` â€” fields persisted on-chain (EVM storage slots)
+- `@constructor` â€” runs once at deployment
+- `@view` â€” read-only (no gas for external calls)
+- `@nonreentrant` â€” compiler enforces reentrancy protection
+- `@event` â€” emits EVM log events
 
 ---
 
 ## Step 2: Compile to EVM Bytecode
 
 ```bash
-java -jar DhrLang-2.0.0.jar contract compile MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract compile MyToken.dhr
 ```
 
 Output:
 ```
-1 contract(s) compiled → /path/to/build/evm
+1 contract(s) compiled â†’ /path/to/build/evm
 ```
 
 Generated artifacts in `build/evm/`:
-- `MyToken.bin` — creation bytecode (deployed to chain)
-- `MyToken.runtime.bin` — runtime bytecode (stored on-chain)
-- `MyToken.abi.json` — ABI for tools (ethers.js, Foundry, etc.)
+- `MyToken.bin` â€” creation bytecode (deployed to chain)
+- `MyToken.runtime.bin` â€” runtime bytecode (stored on-chain)
+- `MyToken.abi.json` â€” ABI for tools (ethers.js, Foundry, etc.)
 
 ---
 
 ## Step 3: Estimate Gas Costs
 
 ```bash
-java -jar DhrLang-2.0.0.jar contract gas MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract gas MyToken.dhr
 ```
 
 Output:
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                    GAS ESTIMATION REPORT                    ║
-╠══════════════════════════════════════════════════════════════╣
-║  Bytecode size:              342 bytes                      ║
-║  Storage slots:                4                            ║
-╠══════════════════════════════════════════════════════════════╣
-║  Gas Breakdown:                                             ║
-║    Intrinsic (tx base):        21,000 gas                   ║
-║    Calldata:                    4,872 gas                   ║
-║    Contract creation:          32,000 gas                   ║
-║    Code deposit:               68,400 gas                   ║
-║    Constructor execution:      90,000 gas                   ║
-╠══════════════════════════════════════════════════════════════╣
-║  TOTAL ESTIMATED GAS:         216,272                       ║
-╠══════════════════════════════════════════════════════════════╣
-║  Cost at 30 gwei:            0.006488 ETH (~$16.22 @ $2500) ║
-╚══════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                    GAS ESTIMATION REPORT                    â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  Bytecode size:              342 bytes                      â•‘
+â•‘  Storage slots:                4                            â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  Gas Breakdown:                                             â•‘
+â•‘    Intrinsic (tx base):        21,000 gas                   â•‘
+â•‘    Calldata:                    4,872 gas                   â•‘
+â•‘    Contract creation:          32,000 gas                   â•‘
+â•‘    Code deposit:               68,400 gas                   â•‘
+â•‘    Constructor execution:      90,000 gas                   â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  TOTAL ESTIMATED GAS:         216,272                       â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  Cost at 30 gwei:            0.006488 ETH (~$16.22 @ $2500) â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 For JSON output (CI/tools):
 ```bash
-java -jar DhrLang-2.0.0.jar contract gas --json MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract gas --json MyToken.dhr
 ```
 
 ---
@@ -135,21 +135,21 @@ Start a local Ethereum node:
 ```bash
 # Using Foundry's Anvil
 anvil
-# → Listening on 127.0.0.1:8545
-# → Private Key: 0xac0974bec...
+# â†’ Listening on 127.0.0.1:8545
+# â†’ Private Key: 0xac0974bec...
 ```
 
 Deploy locally:
 ```bash
-java -jar DhrLang-2.0.0.jar contract deploy --network=local MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract deploy --network=local MyToken.dhr
 ```
 
 Or generate a deploy script:
 ```bash
-java -jar DhrLang-2.0.0.jar contract deploy --network=local --dry-run --deploy-format=ethers MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract deploy --network=local --dry-run --deploy-format=ethers MyToken.dhr
 ```
 
-This generates `build/evm/Deploy.deploy.js` — run it with:
+This generates `build/evm/Deploy.deploy.js` â€” run it with:
 ```bash
 RPC_URL=http://127.0.0.1:8545 \
 PRIVATE_KEY=0xac0974bec... \
@@ -167,18 +167,18 @@ export DHRLANG_PRIVATE_KEY=0xYourPrivateKeyHere
 
 **Option B: Encrypted keystore** (recommended for production)
 ```bash
-java -jar DhrLang-2.0.0.jar contract wallet create
+java -jar DhrLang-3.0.0.jar contract wallet create
 # Enter private key (hex): ****
 # Enter keystore password: ****
 # Confirm password: ****
-# → Keystore created at ~/.dhrlang/keystore.enc
+# â†’ Keystore created at ~/.dhrlang/keystore.enc
 ```
 
 Show your wallet address:
 ```bash
-java -jar DhrLang-2.0.0.jar contract wallet show
-# → Address: 0x1234...abcd
-# → Key source: KEYSTORE_FILE
+java -jar DhrLang-3.0.0.jar contract wallet show
+# â†’ Address: 0x1234...abcd
+# â†’ Key source: KEYSTORE_FILE
 ```
 
 ---
@@ -188,28 +188,28 @@ java -jar DhrLang-2.0.0.jar contract wallet show
 ```bash
 # Get Sepolia ETH from a faucet: https://sepoliafaucet.com
 
-java -jar DhrLang-2.0.0.jar contract deploy --network=sepolia MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract deploy --network=sepolia MyToken.dhr
 ```
 
 Output:
 ```
-╔══════════════════════════════════════════════════════════════╗
-║              DhrLang Contract Deployment                     ║
-╠══════════════════════════════════════════════════════════════╣
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              DhrLang Contract Deployment                     â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
   Network:    Sepolia Testnet (chainId: 11155111)
   Contracts:  1
   MyToken: ~216,272 gas
   Deployer:   0x1234...abcd
   Key source: ENVIRONMENT_VARIABLE
-╠══════════════════════════════════════════════════════════════╣
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
   Building tx for MyToken...
   Signed: 0x02f9...
   Raw signed tx written to build/evm/MyToken.signed.tx
-╠══════════════════════════════════════════════════════════════╣
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
   Next steps:
     1. Broadcast: cast send --raw <signed.tx> --rpc-url https://sepolia.infura.io/v3/{API_KEY}
     2. Verify:    dhrlang contract verify --address=<deployed> --network=sepolia MyToken.dhr
-╚══════════════════════════════════════════════════════════════╝
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 Broadcast using Foundry:
@@ -225,7 +225,7 @@ cast publish --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
 ```bash
 export DHRLANG_ETHERSCAN_API_KEY=your_api_key
 
-java -jar DhrLang-2.0.0.jar contract verify \
+java -jar DhrLang-3.0.0.jar contract verify \
     --address=0xDeployedContractAddress \
     --network=sepolia \
     MyToken.dhr
@@ -234,7 +234,7 @@ java -jar DhrLang-2.0.0.jar contract verify \
 Output:
 ```
 Verifying MyToken at 0xDeployed... on Sepolia Testnet...
-  ✓ Contract verified successfully!
+  âœ“ Contract verified successfully!
   View: https://sepolia.etherscan.io/address/0xDeployed#code
 ```
 
@@ -245,7 +245,7 @@ Verifying MyToken at 0xDeployed... on Sepolia Testnet...
 Run the built-in security auditor before deploying to mainnet:
 
 ```bash
-java -jar DhrLang-2.0.0.jar --audit MyToken.dhr
+java -jar DhrLang-3.0.0.jar --audit MyToken.dhr
 ```
 
 This checks for:
@@ -263,10 +263,10 @@ When ready for production:
 
 ```bash
 # Dry run first!
-java -jar DhrLang-2.0.0.jar contract deploy --network=mainnet --dry-run MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract deploy --network=mainnet --dry-run MyToken.dhr
 
 # Real deployment
-java -jar DhrLang-2.0.0.jar contract deploy --network=mainnet MyToken.dhr
+java -jar DhrLang-3.0.0.jar contract deploy --network=mainnet MyToken.dhr
 ```
 
 ---
@@ -274,7 +274,7 @@ java -jar DhrLang-2.0.0.jar contract deploy --network=mainnet MyToken.dhr
 ## Supported Networks
 
 ```bash
-java -jar DhrLang-2.0.0.jar contract networks
+java -jar DhrLang-3.0.0.jar contract networks
 ```
 
 | Network | Chain ID | Type | CLI Name |
@@ -323,13 +323,13 @@ Ready-to-use contracts in `input/contracts/`:
 ## Troubleshooting
 
 **"No @contract classes found"**
-→ Add `@contract` annotation above your class: `@contract class MyToken { ... }`
+â†’ Add `@contract` annotation above your class: `@contract class MyToken { ... }`
 
 **"Wallet error: Environment variable DHRLANG_PRIVATE_KEY is not set"**
-→ Set your key: `export DHRLANG_PRIVATE_KEY=0x...` or use `contract wallet create`
+â†’ Set your key: `export DHRLANG_PRIVATE_KEY=0x...` or use `contract wallet create`
 
 **"Unknown network"**
-→ Run `contract networks` to see valid names. Use `--network=sepolia` format.
+â†’ Run `contract networks` to see valid names. Use `--network=sepolia` format.
 
 **"Verification failed"**
-→ Ensure `DHRLANG_ETHERSCAN_API_KEY` is set. Get a free key at https://etherscan.io/apis
+â†’ Ensure `DHRLANG_ETHERSCAN_API_KEY` is set. Get a free key at https://etherscan.io/apis
