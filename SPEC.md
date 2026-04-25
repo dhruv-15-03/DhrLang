@@ -39,7 +39,7 @@ Case sensitive. Leading uppercase is *not* required but influences heuristics (e
 ```
 num duo ek sab kya kaam
 class interface extends implements
-if else while for break continue return
+if else while for do switch case default break continue return as
 new this super
 try catch finally throw
 private protected public static abstract final
@@ -100,6 +100,9 @@ statement      ::= block
 								 | ifStmt
 								 | whileStmt
 								 | forStmt
+								 | doWhileStmt
+								 | switchStmt
+								 | labeledStmt
 								 | breakStmt
 								 | continueStmt
 								 | returnStmt
@@ -111,8 +114,14 @@ varDecl        ::= type IDENT ('=' expression)? ';' ;
 ifStmt         ::= 'if' '(' expression ')' statement ('else' statement)? ;
 whileStmt      ::= 'while' '(' expression ')' statement ;
 forStmt        ::= 'for' '(' (varDecl | expressionStmt | ';') expression? ';' expression? ')' statement ;
-breakStmt      ::= 'break' ';' ;
-continueStmt   ::= 'continue' ';' ;
+forEachStmt    ::= 'for' '(' type IDENT ':' expression ')' statement ;
+doWhileStmt    ::= 'do' statement 'while' '(' expression ')' ';' ;
+switchStmt     ::= 'switch' '(' expression ')' '{' caseClause* defaultClause? '}' ;
+caseClause     ::= 'case' expression ':' statement* ;
+defaultClause  ::= 'default' ':' statement* ;
+labeledStmt    ::= IDENT ':' (whileStmt | forStmt | doWhileStmt) ;
+breakStmt      ::= 'break' IDENT? ';' ;
+continueStmt   ::= 'continue' IDENT? ';' ;
 returnStmt     ::= 'return' expression? ';' ;
 tryStmt        ::= 'try' block catchClause* finallyClause? ;
 catchClause    ::= 'catch' '(' catchParam ')' block ;
@@ -122,11 +131,16 @@ throwStmt      ::= 'throw' expression ';' ;
 expressionStmt ::= expression ';' ;
 
 expression     ::= assignment ;
-assignment     ::= logicalOr ( '=' assignment )? ;
+assignment     ::= ternary ( '=' assignment )? ;
+ternary        ::= logicalOr ( '?' expression ':' ternary )? ;
 logicalOr      ::= logicalAnd ( '||' logicalAnd )* ;
-logicalAnd     ::= equality ( '&&' equality )* ;
+logicalAnd     ::= bitwiseOr ( '&&' bitwiseOr )* ;
+bitwiseOr      ::= bitwiseXor ( '|' bitwiseXor )* ;
+bitwiseXor     ::= bitwiseAnd ( '^' bitwiseAnd )* ;
+bitwiseAnd     ::= equality ( '&' equality )* ;
 equality       ::= comparison ( ('==' | '!=') comparison )* ;
-comparison     ::= term ( ('<' | '<=' | '>' | '>=') term )* ;
+comparison     ::= shift ( ('<' | '<=' | '>' | '>=') shift )* ('as' type)? ;
+shift          ::= term ( ('<<' | '>>') term )* ;
 term           ::= factor ( ('+' | '-') factor )* ;
 factor         ::= unary ( ('*' | '/' | '%') unary )* ;
 unary          ::= ( '!' | '-' | '++' | '--' ) unary | postfix ;

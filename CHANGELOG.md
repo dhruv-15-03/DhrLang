@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
+
+## [3.0.0] - 2026-04-25
+
+### Added — Language Features
+- **Labeled break/continue**: `outer: for(...) { for(...) { break outer; } }` — jump to named outer loops
+- **`as` type cast syntax**: `expr as num`, `expr as sab`, `expr as duo` — desugars to toNum/toDuo/toString
+- **Labeled loops**: `label: while(...)`, `label: for(...)`, `label: do {...}` with labeled break/continue
+- **Hex literals**: `0xFF`, `0xABCD` in all backends
+- **String interpolation**: `"Hello ${name}!"` desugars to concatenation
+- **Bitwise operators**: `&`, `|`, `^`, `~`, `<<`, `>>` across all backends + TypeChecker
+
+### Added — EVM Blockchain Production
+- **SafeMath overflow protection**: ADD reverts on overflow, SUB reverts on underflow, MUL verifies result/a == b
+- **Access control codegen**: Auto-stores msg.sender as owner at deploy; private functions emit onlyOwner check
+- **Reentrancy lock collision-safe**: Lock slot computed as keccak256("dhrlang.reentrancy.lock") instead of hardcoded 0xFFFF
+- **EvmPeepholeOptimizer wired in**: PUSH0 substitution, constant folding, dead PUSH+POP elimination, DUP1+POP removal, SLOAD cache tracking
+- **Stack depth tracking**: Every opcode adjusts tracked depth; `isStackSafe()` validates <1024 limit
+- **Gas tracking**: Accumulates per-opcode gas costs; `getGasUsed()` for accurate estimates
+- **Memory expansion tracking**: `getMemoryHighWater()` + `estimateMemoryGas()` for quadratic cost modeling
+- **Dynamic array ABI return encoding**: Proper offset+length+data layout for array returns
+- **Unsupported expressions now throw**: Instead of silently pushing 0, emitExpression throws IllegalStateException
+
+### Added — Tooling
+- **LSP server**: Full stdio-based LSP with diagnostics, completion, hover via `--lsp` CLI flag
+- **VS Code extension v3.0.0**: Updated grammar (do/switch/case/default/as/emit), new keyword highlighting
+
+### Fixed
+- **For-loop continue increment bug**: `continue` in for-loops now correctly executes the increment before re-checking condition (was infinite loop)
+- **TypeChecker bitwise ops**: Added BIT_AND/OR/XOR/LSHIFT/RSHIFT/BIT_NOT to type checker
+- **CI/CD build job**: Fixed to skip tests in build step (already run in test step)
+
+### Tests
+- **1,287 tests, 0 failures**
+- Added StorageEncoder tests (13 tests), PeepholeOptimizer tests (10 tests), CodeBuffer tracking tests (7 tests), access control tests (3 tests)
+
 ## [2.0.0] - 2026-03-05
 
 ### Added — Iteration 2: Smart Contract Safety Features

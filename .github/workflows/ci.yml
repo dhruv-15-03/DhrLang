@@ -100,12 +100,12 @@ jobs:
     - name: Build with Gradle
       uses: gradle/gradle-build-action@v3
       with:
-        arguments: build
+        arguments: assemble shadowJar -x test -x integrationTest -x jacocoTestCoverageVerification
     
     - name: Build distribution
       uses: gradle/gradle-build-action@v3
       with:
-        arguments: distZip distTar
+        arguments: distZip distTar -x test -x integrationTest
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4

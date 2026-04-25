@@ -14,9 +14,20 @@ Stability Levels:
 | print | Prints a value without newline | any | void | Stable |
 | printLine | Prints a value with newline | any | void | Stable |
 | arrayLength | Returns length of 1D array | array | num | Stable |
+| toNum | Convert string to integer | sab | num | Stable |
+| toDuo | Convert string to float | sab | duo | Stable |
+| toString | Convert any value to string | any | sab | Stable |
+| isNum | Check if value is integer | any | kya | Stable |
+| isDuo | Check if value is float | any | kya | Stable |
+| isSab | Check if value is string | any | kya | Stable |
+| isKya | Check if value is boolean | any | kya | Stable |
+| typeOf | Returns type name as string | any | sab | Stable |
 | charAt | Returns character at index (string) | sab, num | ek | Provisional |
 | substring | Substring range | sab, num, num | sab | Provisional |
 | replace | Replace substring | sab, sab, sab | sab | Provisional |
+
+> **Note:** `toNum`, `toDuo`, and `toString` are also accessible via the `as` cast syntax:
+> `expr as num`, `expr as duo`, `expr as sab`
 
 ## Types / Keywords (Core)
 `num`, `duo`, `sab`, `kya`, `ek`, `kaam`, `class`, `extends`, `static`, access modifiers, control flow (`if`, `for`, `while`, `try/catch/finally`).

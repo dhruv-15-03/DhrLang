@@ -40,7 +40,7 @@ jobs:
     - name: Build (Gradle)
       uses: gradle/gradle-build-action@v3
       with:
-        arguments: build -x test
+        arguments: compileJava -x test -x jacocoTestCoverageVerification
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

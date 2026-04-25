@@ -1,20 +1,20 @@
-# 🚀 DhrLang Release Notes
-## v2.0.0 - Major Release *(March 2026)*
+# ðŸš€ DhrLang Release Notes
+## v3.0.0 - Major Release *(March 2026)*
 
 ### Overview
-DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, bringing the test suite from 146 to **1,034 tests** with 0 failures. This release adds smart contract safety analysis, EVM bytecode compilation, interactive debugging, a comprehensive testing and verification framework, production deployment tooling, and an AI agent orchestration and data pipeline framework.
+DhrLang 3.0.0 is a major release encompassing **7 iterations** of new features, bringing the test suite from 146 to **1,034 tests** with 0 failures. This release adds smart contract safety analysis, EVM bytecode compilation, interactive debugging, a comprehensive testing and verification framework, production deployment tooling, and an AI agent orchestration and data pipeline framework.
 
 ### Iteration 1: Enhanced Error Reporting
 - Unique error codes (DHR-EXXX/DHR-WXXX) with contextual hints
 - Type-aware suggestions for DhrLang-specific types
-- Multi-dimensional array support (2D–4D) with full test coverage
+- Multi-dimensional array support (2Dâ€“4D) with full test coverage
 
 ### Iteration 2: Smart Contract Safety
-- `ViewPureChecker` — enforces view/pure function semantics
-- `NonReentrantChecker` — static reentrancy guard analysis
-- `StatementClassifier` — read/write/call/transfer classification
-- `EffectOrderingAnalyzer` — checks-effects-interactions pattern enforcement
-- `StorageLayouter` — EVM-compatible storage slot assignment with packing
+- `ViewPureChecker` â€” enforces view/pure function semantics
+- `NonReentrantChecker` â€” static reentrancy guard analysis
+- `StatementClassifier` â€” read/write/call/transfer classification
+- `EffectOrderingAnalyzer` â€” checks-effects-interactions pattern enforcement
+- `StorageLayouter` â€” EVM-compatible storage slot assignment with packing
 
 ### Iteration 3: EVM Backend
 - Complete EVM opcode support with gas costs and stack effects
@@ -28,7 +28,7 @@ DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, 
 - Full debug session with step-over, step-into, step-out
 - Interactive REPL with expression evaluation
 - Watch expressions with change detection
-- Bidirectional source maps (source ↔ bytecode)
+- Bidirectional source maps (source â†” bytecode)
 
 ### Iteration 5: Testing & Verification
 - Smart contract test runner with lifecycle management
@@ -56,7 +56,7 @@ DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, 
 
 ### Build & Quality
 - **1,034 tests, 0 failures**
-- Fat JAR: `DhrLang-2.0.0.jar` (~1.3 MB)
+- Fat JAR: `DhrLang-3.0.0.jar` (~1.3 MB)
 - Javadoc JAR and sources JAR included
 - Java 17+ required, tested on OpenJDK 23
 - SpotBugs, Checkstyle, PMD, Jacoco quality gates active
@@ -64,48 +64,48 @@ DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, 
 ---
 ## v1.1.8 - Hotfix Release *(Jan 2026)*
 
-### 🔧 Fixes
+### ðŸ”§ Fixes
 - **VS Code Extension**: Fixed PowerShell command execution issue where quoted paths caused "Unexpected token" errors.
 
 ## v1.1.6 - Hotfix Release *(Jan 2026)*
 
-### 🔧 Fixes
+### ðŸ”§ Fixes
 - **Extension Bundle**: Fixed build pipeline to correctly bundle the compiler JAR in the VS Code extension.
 
 ## v1.1.5 - Hotfix Release *(Jan 2026)*
 
-### 🔧 Fixes
+### ðŸ”§ Fixes
 - **Release Pipeline**: Resolved GitHub Packages conflict and credential issues.
 - **Extension Bundle**: Ensured correct bundling of the compiler JAR in the VS Code extension.
 
 ## v1.1.3 - Current Release Line *(Nov 2025)*
 
-### 🚀 Zero Config Experience
+### ðŸš€ Zero Config Experience
 - **Bundled Compiler**: The VS Code extension now includes the compiler JAR. Users can just install the extension and run code immediately without manual setup.
 - **Simplified Examples**: Cleaned up the repository to focus on high-quality, working examples in `input/`.
 
-### ✅ Runtime & Backend Updates
+### âœ… Runtime & Backend Updates
 - IR and bytecode backends are supported via `--backend=ir` / `--backend=bytecode`.
 - Backend selection is authoritative (no AST fallback).
 - Bytecode format is DHBC v2 (see design/bytecode-format.md).
 
-### 🔒 Safety / Hardening
+### ðŸ”’ Safety / Hardening
 - Bytecode VM validates bytecode before execution (bounds/indices/control-flow constraints).
 - Untrusted mode available via `-Ddhrlang.bytecode.untrusted=true` with conservative caps.
 - Shared instruction step cap available via `-Ddhrlang.backend.maxSteps=<n>`.
 
 ## v1.0.1 - Documentation Fix Release *(September 28, 2025)*
 
-### 🔧 **Critical Documentation Fixes**
+### ðŸ”§ **Critical Documentation Fixes**
 
-#### ❌ **Issues Resolved:**
+#### âŒ **Issues Resolved:**
 - **Syntax Mismatch**: Fixed critical mismatch between documentation examples and actual compiler syntax
-- **Legacy Hindi Keywords**: Corrected non-existent Hindi keywords (`मुख्य`, `प्रिंट`) to actual DhrLang tokens (`class`, `static kaam main`, `printLine`)
+- **Legacy Hindi Keywords**: Corrected non-existent Hindi keywords (`à¤®à¥à¤–à¥à¤¯`, `à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ`) to actual DhrLang tokens (`class`, `static kaam main`, `printLine`)
 - **Class Structure**: Added missing required class structure (`static kaam main()`)
 - **Function Calls**: Fixed `printLine()` function calls to include required arguments
 - **Type System**: Updated type examples to use correct keywords (`num`, `sab`, `duo`, `kya`)
 
-#### ✅ **Improvements Added:**
+#### âœ… **Improvements Added:**
 - All code examples now **compile and run successfully**
 - Professional user experience validation with working test programs
 - Comprehensive demonstration programs included:
@@ -115,16 +115,16 @@ DhrLang 2.0.0 is a major release encompassing **7 iterations** of new features, 
 - Updated VS Code extension status to reflect availability
 - Added professional documentation fix report
 
-#### 🎯 **Impact:**
+#### ðŸŽ¯ **Impact:**
 New users can now follow the documentation from start to finish without encountering compilation errors. All examples have been tested and validated to work correctly with the DhrLang compiler.
 
 ---
 
 ## v1.0.0 - Official Release *(September 28, 2025)*
 
-### 🎉 **Major Release - Production Ready**
+### ðŸŽ‰ **Major Release - Production Ready**
 
-#### ✅ **Core Language Features:**
+#### âœ… **Core Language Features:**
 - **Object-Oriented Programming**: Classes, inheritance, encapsulation
 - **Type System**: `num` (integer), `sab` (string), `duo` (decimal), `kya` (boolean)
 - **Access Control**: `private`, `protected`, `public` modifiers
@@ -132,27 +132,27 @@ New users can now follow the documentation from start to finish without encounte
 - **Control Flow**: `if`/`else`, `for`/`while` loops, conditionals
 - **Functions**: Static and instance methods with `kaam` keyword
 
-#### 🛠️ **Development Tools:**
+#### ðŸ› ï¸ **Development Tools:**
 - **VS Code Extension**: Syntax highlighting, IntelliSense, auto-completion
 - **Command-Line Compiler**: `DhrLang-<version>.jar` with professional error messages
 - **Run Commands**: Integrated VS Code shortcuts (Ctrl+F5, Ctrl+Shift+B)
 - **Code Snippets**: Common programming patterns and templates
 
-#### 📚 **Professional Documentation:**
+#### ðŸ“š **Professional Documentation:**
 - **GETTING_STARTED.md**: Complete beginner's guide
 - **TUTORIALS.md**: 12 comprehensive tutorials from basic to advanced
 - **EXAMPLES.md**: Real-world applications (banking system, calculator)
 - **SPEC.md**: Complete language specification
 - **API Documentation**: Comprehensive reference materials
 
-#### 🚀 **Distribution & CI/CD:**
+#### ðŸš€ **Distribution & CI/CD:**
 - **GitHub Actions**: Automated build, test, and release workflows
 - **Multi-Platform Support**: Windows, macOS, Linux compatibility
 - **Package Managers**: Ready for Homebrew, Chocolatey, Snap distribution
 - **Docker Support**: Containerization ready for cloud deployment
 - **VS Code Marketplace**: Extension ready for publication
 
-#### 🔍 **Quality Assurance:**
+#### ðŸ” **Quality Assurance:**
 - **Comprehensive Testing**: All features tested with automated CI/CD
 - **Error Handling**: Professional error messages with helpful hints
 - **Code Quality**: PMD, Checkstyle, SpotBugs integration
@@ -160,7 +160,7 @@ New users can now follow the documentation from start to finish without encounte
 
 ---
 
-## 🎯 **Getting Started**
+## ðŸŽ¯ **Getting Started**
 
 ### **Quick Installation:**
 ```bash
@@ -183,13 +183,13 @@ class HelloWorld {
 
 ---
 
-## 🤝 **Community & Support**
+## ðŸ¤ **Community & Support**
 
-- **📖 Documentation**: [GitHub Repository](https://github.com/dhruv-15-03/DhrLang)
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/dhruv-15-03/DhrLang/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
-- **🔄 Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **ðŸ“– Documentation**: [GitHub Repository](https://github.com/dhruv-15-03/DhrLang)
+- **ðŸ› Bug Reports**: [GitHub Issues](https://github.com/dhruv-15-03/DhrLang/issues)
+- **ðŸ’¬ Discussions**: [GitHub Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
+- **ðŸ”„ Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
-**DhrLang is now officially ready for production use! 🎉**
+**DhrLang is now officially ready for production use! ðŸŽ‰**

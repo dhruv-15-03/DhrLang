@@ -4,7 +4,7 @@
 [![Coverage](docs/badges/coverage.svg)](#test-coverage) [![Mutation](docs/badges/mutation.svg)](#mutation-testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DhrLang is a modern, statically typed, object-oriented programming language with a concise English‑core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
+DhrLang is a modern, statically typed, object-oriented programming language with a concise Englishâ€‘core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
 
 ## Quick Links
 - Getting Started: docs/GETTING_STARTED.md
@@ -72,10 +72,10 @@ Some constructs (advanced exception types, modules, concurrency) are either expe
 
 ### Option 2: Download Release (Manual CLI)
 1. Go to the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
-2. Download the latest `DhrLang-2.0.0.jar` (fat JAR).
+2. Download the latest `DhrLang-3.0.0.jar` (fat JAR).
 3. Run it directly:
    ```bash
-   java -jar DhrLang-2.0.0.jar input/sample.dhr
+   java -jar DhrLang-3.0.0.jar input/sample.dhr
    ```
 
 ### Option 3: Build from Source
@@ -85,13 +85,13 @@ git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
 ./gradlew shadowJar
 # The JAR will be in build/libs/
-java -jar build/libs/DhrLang-2.0.0.jar input/sample.dhr
+java -jar build/libs/DhrLang-3.0.0.jar input/sample.dhr
 ```
 
 ### CLI Options
 ```bash
 --help           Show usage and options
---version        Print version (e.g., "DhrLang version 2.0.0")
+--version        Print version (e.g., "DhrLang version 3.0.0")
 --json           Output diagnostics as JSON (see JSON Diagnostics below)
 --time           Show phase timings (lex/parse/type/exec)
 --no-color       Disable ANSI colors in diagnostics
@@ -99,9 +99,9 @@ java -jar build/libs/DhrLang-2.0.0.jar input/sample.dhr
 ```
 
 Runtime safety flags (JVM system properties):
-- `dhrlang.backend.maxSteps` — instruction step limit (IR + bytecode)
-- `dhrlang.bytecode.untrusted=true` — enables conservative validation + limits for bytecode execution
-- `dhrlang.bytecode.strictEntry` — require an entrypoint (`Main.main` or any `*.main`)
+- `dhrlang.backend.maxSteps` â€” instruction step limit (IR + bytecode)
+- `dhrlang.bytecode.untrusted=true` â€” enables conservative validation + limits for bytecode execution
+- `dhrlang.bytecode.strictEntry` â€” require an entrypoint (`Main.main` or any `*.main`)
 
 ### JSON Diagnostics
 DhrLang can emit machine-readable diagnostics in JSON format for tooling integration:
@@ -250,7 +250,7 @@ class NDArrayDemo {
 Notes:
 - Indexing is bounds-checked: negative or >= length raises an index error.
 - Allocation requires non-negative sizes; very large sizes are rejected.
-- Element defaults follow type defaults (numbers→0, duo→0.0, kya→false, references→null).
+- Element defaults follow type defaults (numbersâ†’0, duoâ†’0.0, kyaâ†’false, referencesâ†’null).
 
 ### Exception Handling (Basic)
 ```dhrlang
@@ -278,7 +278,7 @@ DhrLang features a strong static type system that catches errors at compile time
 - Simple method model (no overloading; duplicate names are rejected)
 
 ### Core Built-ins
-- String utilities (selected: `charAt`, `replace`, `substring` – scope documented in SPEC)
+- String utilities (selected: `charAt`, `replace`, `substring` â€“ scope documented in SPEC)
 - Array operations (`arrayLength`, indexing, iteration patterns)
 - Output (`print`, `printLine`)
 - Basic math / operator semantics via core evaluator
@@ -293,16 +293,16 @@ DhrLang features a strong static type system that catches errors at compile time
 ### Project Structure
 ```
 src/
-├── main/java/dhrlang/
-│   ├── Main.java              # Main entry point
-│   ├── lexer/                 # Lexical analysis
-│   ├── parser/                # Syntax analysis
-│   ├── ast/                   # Abstract Syntax Tree
-│   ├── typechecker/           # Type checking
-│   ├── interpreter/           # Code execution
-│   ├── error/                 # Error reporting
-│   └── stdlib/                # Standard library
-└── test/java/dhrlang/         # Test suite
+â”œâ”€â”€ main/java/dhrlang/
+â”‚   â”œâ”€â”€ Main.java              # Main entry point
+â”‚   â”œâ”€â”€ lexer/                 # Lexical analysis
+â”‚   â”œâ”€â”€ parser/                # Syntax analysis
+â”‚   â”œâ”€â”€ ast/                   # Abstract Syntax Tree
+â”‚   â”œâ”€â”€ typechecker/           # Type checking
+â”‚   â”œâ”€â”€ interpreter/           # Code execution
+â”‚   â”œâ”€â”€ error/                 # Error reporting
+â”‚   â””â”€â”€ stdlib/                # Standard library
+â””â”€â”€ test/java/dhrlang/         # Test suite
 ```
 
 ### Running Tests
@@ -408,16 +408,16 @@ Security note for running untrusted code:
 - CI/Quality: Jacoco, PIT, CodeQL, Dependabot integrated
 
 ## Diagnostics Quick Guide
-- Cannot access private/protected member → ACCESS_MODIFIER
-- Wrong number of generic type arguments → GENERIC_ARITY
-- Type doesn’t match expected (incl. after generic substitution) → TYPE_MISMATCH
-- Name not found (and static method context doesn’t resolve instance fields) → UNDECLARED_IDENTIFIER
-- Array index/size invalid or allocation too large → BOUNDS_VIOLATION
-- Static field reads a later-declared static field (same class) → STATIC_FORWARD_REFERENCE
-- Static field initializers form a dependency cycle → STATIC_INIT_CYCLE
+- Cannot access private/protected member â†’ ACCESS_MODIFIER
+- Wrong number of generic type arguments â†’ GENERIC_ARITY
+- Type doesnâ€™t match expected (incl. after generic substitution) â†’ TYPE_MISMATCH
+- Name not found (and static method context doesnâ€™t resolve instance fields) â†’ UNDECLARED_IDENTIFIER
+- Array index/size invalid or allocation too large â†’ BOUNDS_VIOLATION
+- Static field reads a later-declared static field (same class) â†’ STATIC_FORWARD_REFERENCE
+- Static field initializers form a dependency cycle â†’ STATIC_INIT_CYCLE
 
 ## CI Notes
-- CodeQL: If GitHub Code Scanning is not enabled for your repository, the CodeQL job will run but its upload step is marked non-blocking and won’t fail CI. To enable full CodeQL results (including alerts in the Security tab), turn on Code Scanning in your repository settings.
+- CodeQL: If GitHub Code Scanning is not enabled for your repository, the CodeQL job will run but its upload step is marked non-blocking and wonâ€™t fail CI. To enable full CodeQL results (including alerts in the Security tab), turn on Code Scanning in your repository settings.
 
 ## Planned Features
 - Package management system
@@ -442,7 +442,7 @@ The official VS Code extension (version aligned with core releases) provides:
 
 Manual install (until marketplace listing active):
 1. Download the latest `dhrlang-vscode-<version>.vsix` from the release assets
-2. In VS Code: Command Palette → "Extensions: Install from VSIX..."
+2. In VS Code: Command Palette â†’ "Extensions: Install from VSIX..."
 3. Select the file; open a `.dhr` file to activate
 
 Settings preview (add to `settings.json` as needed):
@@ -520,4 +520,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DhrLang - A compact, statically typed educational & exploratory language* 🚀
+*DhrLang - A compact, statically typed educational & exploratory language* ðŸš€
