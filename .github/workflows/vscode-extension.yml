@@ -127,12 +127,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-      # Uncomment when ready to publish to marketplace
-      # - name: Publish to VS Code Marketplace
-      #   working-directory: vscode-extension
-      #   run: vsce publish --no-yarn
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to VS Code Marketplace
+        working-directory: vscode-extension
+        run: vsce publish --no-yarn
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
       
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4 # v4.4.3
