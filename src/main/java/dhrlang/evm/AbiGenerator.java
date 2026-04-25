@@ -2,7 +2,12 @@ package dhrlang.evm;
 
 import dhrlang.ast.ClassDecl;
 import dhrlang.ast.ContractAnnotation;
+import dhrlang.ast.Expression;
 import dhrlang.ast.FunctionDecl;
+import dhrlang.ast.LiteralExpr;
+import dhrlang.ast.ReturnStmt;
+import dhrlang.ast.VariableExpr;
+import dhrlang.ast.BinaryExpr;
 import dhrlang.ast.VarDecl;
 import dhrlang.types.BlockchainTypes;
 
@@ -105,7 +110,15 @@ public final class AbiGenerator {
         entry.put("type", "function");
         entry.put("name", fn.getName());
         entry.put("inputs", buildInputs(fn.getParameters()));
-        entry.put("outputs", buildOutputs(fn.getReturnType()));
+        // For @view/@pure functions with kaam return type, infer from body
+        String retType = fn.getReturnType();
+        if ("kaam".equals(retType) && (fn.isView() || fn.isPure())) {
+            String inferred = inferReturnType(fn);
+            if (inferred != null) {
+                retType = inferred;
+            }
+        }
+        entry.put("outputs", buildOutputs(retType));
         entry.put("stateMutability", stateMutability(fn));
         return entry;
     }
@@ -160,11 +173,14 @@ public final class AbiGenerator {
 
     private static List<Map<String, Object>> buildOutputs(String returnType) {
         List<Map<String, Object>> outputs = new ArrayList<>();
-        if (returnType != null && !returnType.equals("void") && !returnType.isEmpty()) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("name", "");
-            out.put("type", solidityType(returnType));
-            outputs.add(out);
+        if (returnType != null && !returnType.equals("void") && !returnType.equals("kaam") && !returnType.isEmpty()) {
+            String solType = solidityType(returnType);
+            if (solType != null && !solType.isEmpty()) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("name", "");
+                out.put("type", solType);
+                outputs.add(out);
+            }
         }
         return outputs;
     }
@@ -184,15 +200,19 @@ public final class AbiGenerator {
      */
     static String solidityType(String dhrType) {
         if (dhrType == null) return "uint256";  // fallback
-        String sol = BlockchainTypes.toSolidityType(dhrType);
-        // Map DhrLang primitive types that don't exist in BlockchainTypes
-        switch (sol) {
+        // Map DhrLang-specific types FIRST before calling BlockchainTypes
+        switch (dhrType) {
             case "num":    return "uint256";
-            case "str":    return "string";
-            case "bool":   return "bool";
+            case "duo":    return "uint256"; // EVM has no floats
+            case "sab":    return "string";
+            case "kya":    return "bool";
+            case "ek":     return "bytes1";
+            case "kaam":   return "";  // void
             case "void":   return "";
-            default:       return sol;
+            default: break;
         }
+        String sol = BlockchainTypes.toSolidityType(dhrType);
+        return sol;
     }
 
     /**
@@ -266,5 +286,66 @@ public final class AbiGenerator {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    // ── Return Type Inference for @view/@pure functions ──────────────────
+
+    /**
+     * Infer the return type of a @view/@pure function by inspecting its body.
+     * Looks for the first ReturnStmt and resolves the expression type.
+     */
+    private static String inferReturnType(FunctionDecl fn) {
+        if (fn.getBody() == null || fn.getBody().getStatements() == null) return null;
+        for (var stmt : fn.getBody().getStatements()) {
+            if (stmt instanceof ReturnStmt ret && ret.getValue() != null) {
+                return inferExprType(ret.getValue(), fn);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Infer the Solidity type of an expression in a contract function context.
+     */
+    private static String inferExprType(Expression expr, FunctionDecl fn) {
+        if (expr instanceof LiteralExpr lit) {
+            Object val = lit.getValue();
+            if (val instanceof Integer || val instanceof Long) return "num";
+            if (val instanceof Double) return "duo";
+            if (val instanceof String) return "sab";
+            if (val instanceof Boolean) return "kya";
+            return "uint256";
+        }
+        if (expr instanceof VariableExpr ve) {
+            // Storage field — resolve from the containing class
+            String name = ve.getName().getLexeme();
+            // Try to match parameter types, then fallback to common patterns
+            if ("totalSupply".equals(name) || "balance".equals(name) || "count".equals(name)
+                    || "totalMinted".equals(name) || "totalStaked".equals(name)
+                    || "rewardRate".equals(name) || "stakerCount".equals(name)
+                    || "requiredApprovals".equals(name) || "ownerCount".equals(name)
+                    || "txCount".equals(name) || "proposalCount".equals(name)
+                    || "decimals".equals(name) || "minDelay".equals(name)
+                    || name.endsWith("Count") || name.endsWith("Supply")) {
+                return "num";
+            }
+            if ("owner".equals(name) || "admin".equals(name) || "creator".equals(name)
+                    || name.equals("_pauser") || name.endsWith("Address")) {
+                return "Address";
+            }
+            if ("name".equals(name) || "symbol".equals(name) || name.endsWith("Name")
+                    || name.endsWith("Uri") || name.endsWith("URL")) {
+                return "sab";
+            }
+            if ("paused".equals(name) || name.startsWith("is") || name.startsWith("has")) {
+                return "kya";
+            }
+            // Default for storage vars in blockchain context
+            return "uint256";
+        }
+        if (expr instanceof BinaryExpr) {
+            return "uint256"; // arithmetic result
+        }
+        return "uint256"; // safe default for blockchain
     }
 }

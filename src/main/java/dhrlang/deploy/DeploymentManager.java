@@ -50,7 +50,7 @@ public final class DeploymentManager {
         private final String fromAddress;
         private final long nonce;
 
-        DeploymentTx(String contractName, String chainId, String chainName,
+        public DeploymentTx(String contractName, String chainId, String chainName,
                      String creationBytecodeHex, long estimatedGas, long gasLimit,
                      long maxFeePerGas, long maxPriorityFeePerGas,
                      String fromAddress, long nonce) {

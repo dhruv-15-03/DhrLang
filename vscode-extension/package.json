@@ -36,7 +36,10 @@
     "onLanguage:dhrlang",
     "onCommand:dhrlang.runFile",
     "onCommand:dhrlang.compileFile",
-    "onCommand:dhrlang.showHelp"
+    "onCommand:dhrlang.showHelp",
+    "onCommand:dhrlang.auditContract",
+    "onCommand:dhrlang.compileEvm",
+    "onCommand:dhrlang.estimateGas"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -82,6 +85,24 @@
         "command": "dhrlang.showHelp",
         "title": "Show DhrLang Help",
         "icon": "$(question)",
+        "category": "DhrLang"
+      },
+      {
+        "command": "dhrlang.auditContract",
+        "title": "Security Audit Contract",
+        "icon": "$(shield)",
+        "category": "DhrLang"
+      },
+      {
+        "command": "dhrlang.compileEvm",
+        "title": "Compile to EVM Bytecode",
+        "icon": "$(circuit-board)",
+        "category": "DhrLang"
+      },
+      {
+        "command": "dhrlang.estimateGas",
+        "title": "Estimate Gas Cost",
+        "icon": "$(dashboard)",
         "category": "DhrLang"
       }
     ],

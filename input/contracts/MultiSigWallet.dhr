@@ -1,0 +1,93 @@
+// ═══════════════════════════════════════════════════════════════
+//  DhrLang Multi-Signature Wallet Contract
+//  Requires M-of-N owner approvals to execute transactions.
+//
+//  Compile:  java -jar DhrLang.jar contract compile input/contracts/MultiSigWallet.dhr
+//  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/MultiSigWallet.dhr
+// ═══════════════════════════════════════════════════════════════
+
+@contract
+class MultiSigWallet {
+    // ── Storage ──────────────────────────────────────────────────
+    @storage num requiredApprovals;
+    @storage num ownerCount;
+    @storage num txCount;
+    @storage Address creator;
+
+    // ── Constructor ──────────────────────────────────────────────
+    @constructor
+    kaam init(num _requiredApprovals, num _ownerCount) {
+        if (_requiredApprovals <= 0) {
+            throw "Required approvals must be positive";
+        }
+        if (_ownerCount < _requiredApprovals) {
+            throw "Owner count must be >= required approvals";
+        }
+        requiredApprovals = _requiredApprovals;
+        ownerCount = _ownerCount;
+        txCount = 0;
+        creator = msg.sender;
+    }
+
+    // ── Views ────────────────────────────────────────────────────
+    @view
+    kaam getRequiredApprovals() {
+        return requiredApprovals;
+    }
+
+    @view
+    kaam getOwnerCount() {
+        return ownerCount;
+    }
+
+    @view
+    kaam getTxCount() {
+        return txCount;
+    }
+
+    // ── Submit a new transaction ─────────────────────────────────
+    kaam submitTransaction(Address to, num value) {
+        if (value < 0) {
+            throw "Value must be non-negative";
+        }
+        txCount = txCount + 1;
+    }
+
+    // ── Approve a pending transaction ────────────────────────────
+    kaam approveTransaction(num txId) {
+        if (txId < 0) {
+            throw "Invalid transaction ID";
+        }
+        if (txId >= txCount) {
+            throw "Transaction does not exist";
+        }
+    }
+
+    // ── Execute if enough approvals ──────────────────────────────
+    @nonreentrant
+    kaam executeTransaction(num txId) {
+        if (txId < 0) {
+            throw "Invalid transaction ID";
+        }
+        if (txId >= txCount) {
+            throw "Transaction does not exist";
+        }
+        // Checks-effects-interactions pattern
+        txCount = txCount;  // state write
+    }
+
+    // ── Receive ETH ──────────────────────────────────────────────
+    @payable
+    kaam receive() {
+    }
+
+    // ── Events ───────────────────────────────────────────────────
+    @event
+    kaam Submission(num txId) {}
+
+    @event
+    kaam Approval(Address owner, num txId) {}
+
+    @event
+    kaam Execution(num txId) {}
+}

@@ -119,6 +119,7 @@ public enum TokenType {
     RSHIFT,         // >>     (right shift)
     QUESTION,       // ?      (ternary / wildcard in generics)
     COLON,          // :      (ternary)
+    AS,             // as     (type cast operator)
 
 
     // ===============================

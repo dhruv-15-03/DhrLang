@@ -58,11 +58,16 @@ public class Evaluator implements ASTVisitor<Object> {
     @Override public Object visitWhileStmt(WhileStmt whileStmt) {
         boolean prev = interpreter.isInLoop();
         interpreter.setInLoop(true);
+        String label = whileStmt.getLabel();
         try {
             while(isTruthy(whileStmt.getCondition().accept(this))){
                 try { whileStmt.getBody().accept(this); }
-                catch (BreakException b){ break; }
+                catch (BreakException b){
+                    if (b.getLabel() == null || b.getLabel().equals(label)) break;
+                    throw b; // propagate to outer labeled loop
+                }
                 catch (ContinueException c){
+                    if (c.getLabel() != null && !c.getLabel().equals(label)) throw c;
                     Statement body = whileStmt.getBody();
                     if(body instanceof Block block && block.isDesugaredForLoopBody()){
                         var stmts = block.getStatements();
@@ -76,8 +81,8 @@ public class Evaluator implements ASTVisitor<Object> {
         } finally { interpreter.setInLoop(prev); }
         return null;
     }
-    @Override public Object visitBreakStmt(BreakStmt breakStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'break' statement not within a loop", ErrorFactory.getLocation(breakStmt)); throw new BreakException(); }
-    @Override public Object visitContinueStmt(ContinueStmt continueStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'continue' statement not within a loop", ErrorFactory.getLocation(continueStmt)); throw new ContinueException(); }
+    @Override public Object visitBreakStmt(BreakStmt breakStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'break' statement not within a loop", ErrorFactory.getLocation(breakStmt)); throw new BreakException(breakStmt.getLabel()); }
+    @Override public Object visitContinueStmt(ContinueStmt continueStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'continue' statement not within a loop", ErrorFactory.getLocation(continueStmt)); throw new ContinueException(continueStmt.getLabel()); }
     @Override public Object visitTryStmt(TryStmt tryStmt) {
     // Execute try/catch/finally. Debug printing removed after stabilization.
         boolean finallyExecuted = false;

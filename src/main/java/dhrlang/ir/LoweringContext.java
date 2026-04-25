@@ -13,6 +13,8 @@ class LoweringContext {
     private final Map<String,Integer> localSlots = new HashMap<>();
     private final Deque<String> continueLabels = new ArrayDeque<>();
     private final Deque<String> breakLabels = new ArrayDeque<>();
+    private final Map<String,String> namedContinueLabels = new HashMap<>();
+    private final Map<String,String> namedBreakLabels = new HashMap<>();
 
     static final class FinallyScope {
         final Statement finallyBlock;
@@ -59,10 +61,26 @@ class LoweringContext {
         continueLabels.push(continueLabel);
         breakLabels.push(breakLabel);
     }
+    void pushLoop(String continueLabel, String breakLabel, String name){
+        pushLoop(continueLabel, breakLabel);
+        if (name != null) {
+            namedContinueLabels.put(name, continueLabel);
+            namedBreakLabels.put(name, breakLabel);
+        }
+    }
     void popLoop(){
         if(!continueLabels.isEmpty()) continueLabels.pop();
         if(!breakLabels.isEmpty()) breakLabels.pop();
     }
+    void popLoop(String name){
+        popLoop();
+        if (name != null) {
+            namedContinueLabels.remove(name);
+            namedBreakLabels.remove(name);
+        }
+    }
     String currentContinue(){ return continueLabels.peek(); }
     String currentBreak(){ return breakLabels.peek(); }
+    String continueForLabel(String name){ return namedContinueLabels.get(name); }
+    String breakForLabel(String name){ return namedBreakLabels.get(name); }
 }

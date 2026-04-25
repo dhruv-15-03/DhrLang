@@ -76,6 +76,7 @@ public class Lexer {
         keywords.put("emit", TokenType.EMIT);
         keywords.put("@immutable", TokenType.IMMUTABLE);
         keywords.put("@invariant", TokenType.INVARIANT);
+        keywords.put("as", TokenType.AS);
         
         // Blockchain Types
         keywords.put("Address", TokenType.ADDRESS);

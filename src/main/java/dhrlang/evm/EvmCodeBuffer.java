@@ -23,11 +23,64 @@ public class EvmCodeBuffer {
 
     private int labelCounter = 0;
 
+    // ── Stack depth tracking ─────────────────────────────────────────────
+
+    /** Current tracked stack depth. */
+    private int stackDepth = 0;
+
+    /** Maximum stack depth reached during code generation. */
+    private int maxStackDepth = 0;
+
+    /** EVM maximum stack size. */
+    private static final int MAX_EVM_STACK = 1024;
+
+    /** Adjust tracked stack depth by delta (positive = push, negative = pop). */
+    public void adjustStack(int delta) {
+        stackDepth += delta;
+        if (stackDepth > maxStackDepth) maxStackDepth = stackDepth;
+    }
+
+    /** Get current tracked stack depth. */
+    public int getStackDepth() { return stackDepth; }
+
+    /** Get maximum stack depth reached. */
+    public int getMaxStackDepth() { return maxStackDepth; }
+
+    /** Check if stack depth is within EVM limits. */
+    public boolean isStackSafe() { return maxStackDepth <= MAX_EVM_STACK; }
+
+    // ── Gas tracking ─────────────────────────────────────────────────────
+
+    /** Accumulated gas cost of all emitted opcodes. */
+    private long gasUsed = 0;
+
+    /** Get total accumulated gas cost. */
+    public long getGasUsed() { return gasUsed; }
+
+    // ── Memory tracking ──────────────────────────────────────────────────
+
+    /** Highest memory offset written to (tracks memory expansion). */
+    private int memoryHighWater = 0;
+
+    /** Get the highest memory offset accessed. */
+    public int getMemoryHighWater() { return memoryHighWater; }
+
+    /**
+     * Estimate the memory expansion gas cost.
+     * EVM charges: 3 * words + words^2 / 512
+     */
+    public long estimateMemoryGas() {
+        int words = (memoryHighWater + 31) / 32;
+        return 3L * words + (long) words * words / 512;
+    }
+
     // ── Emit helpers ─────────────────────────────────────────────────────
 
     /** Emit a single opcode (no operands). */
     public void emit(EvmOpcode op) {
         buf.write(op.code);
+        adjustStack(op.stackOut - op.stackIn);
+        gasUsed += op.gasCost;
     }
 
     /** Current byte offset (program counter). */
@@ -156,12 +209,14 @@ public class EvmCodeBuffer {
     public void mstoreAt(int offset) {
         pushInt(offset);
         emit(EvmOpcode.MSTORE);
+        if (offset + 32 > memoryHighWater) memoryHighWater = offset + 32;
     }
 
     /** Load a 32-byte word from memory at offset. Stack: [] → [value] */
     public void mloadAt(int offset) {
         pushInt(offset);
         emit(EvmOpcode.MLOAD);
+        if (offset + 32 > memoryHighWater) memoryHighWater = offset + 32;
     }
 
     // ── Storage helpers ──────────────────────────────────────────────────
@@ -172,9 +227,21 @@ public class EvmCodeBuffer {
         emit(EvmOpcode.SLOAD);
     }
 
+    /** Emit SLOAD for a 256-bit slot. Stack: [] → [value] */
+    public void sloadSlot(java.math.BigInteger slot) {
+        push32(slot);
+        emit(EvmOpcode.SLOAD);
+    }
+
     /** Emit SSTORE for a given slot index. Stack: [value] → [] */
     public void sstoreSlot(int slot) {
         pushInt(slot);
+        emit(EvmOpcode.SSTORE);
+    }
+
+    /** Emit SSTORE for a 256-bit slot. Stack: [value] → [] */
+    public void sstoreSlot(java.math.BigInteger slot) {
+        push32(slot);
         emit(EvmOpcode.SSTORE);
     }
 

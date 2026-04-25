@@ -111,6 +111,7 @@ public enum EvmOpcode {
     CALLCODE(0xF2, 7, 1, 100),
     RETURN(0xF3, 2, 0, 0),
     DELEGATECALL(0xF4, 6, 1, 100),
+    CREATE2(0xF5, 4, 1, 32000),
     STATICCALL(0xFA, 6, 1, 100),
     REVERT(0xFD, 2, 0, 0),
     INVALID(0xFE, 0, 0, 0),

@@ -225,7 +225,10 @@ public final class AuditReportGenerator {
         // 3. Cross-contract analysis
         analyzeCrossContract(program);
 
-        // 4. Compute risk score
+        // 4. Run Phase 4 deep analyzers on each contract
+        runDeepAnalysis(program);
+
+        // 5. Compute risk score
         int riskScore = computeRiskScore();
         String riskRating = riskRatingFromScore(riskScore);
 
@@ -238,6 +241,69 @@ public final class AuditReportGenerator {
                 new ArrayList<>(findings),
                 riskScore, riskRating
         );
+    }
+
+    /**
+     * Run Phase 4 deep analysis: invariant checking, arithmetic overflow detection,
+     * security analysis (taint, privilege, loop bounds).
+     */
+    private void runDeepAnalysis(Program program) {
+        for (ClassDecl cls : program.getClasses()) {
+            if (!cls.isContract()) continue;
+            String contractName = cls.getName();
+
+            // ArithmeticOverflowDetector
+            try {
+                var overflow = new dhrlang.validation.ArithmeticOverflowDetector();
+                var risks = overflow.analyze(cls);
+                for (var risk : risks) {
+                    Severity sev = risk.hasGuard() ? Severity.LOW : Severity.HIGH;
+                    addFinding("ARITH-" + risk.getKind().name(),
+                            sev,
+                            "Arithmetic risk: " + risk.getKind().name().toLowerCase().replace('_', ' '),
+                            risk.getExpression() + " in " + risk.getFunctionName() + "()",
+                            risk.getHint(),
+                            contractName + "." + risk.getFunctionName());
+                }
+            } catch (Exception ignored) {}
+
+            // SecurityAnalyzer (taint, privilege, loop bounds)
+            try {
+                var security = new dhrlang.validation.SecurityAnalyzer();
+                var secFindings = security.analyze(cls);
+                for (var sf : secFindings) {
+                    Severity sev = switch (sf.getSeverity()) {
+                        case CRITICAL -> Severity.CRITICAL;
+                        case HIGH -> Severity.HIGH;
+                        case MEDIUM -> Severity.MEDIUM;
+                        case LOW -> Severity.LOW;
+                        default -> Severity.INFORMATIONAL;
+                    };
+                    addFinding("SEC-" + sf.getCategory().name(),
+                            sev,
+                            sf.getTitle(),
+                            sf.getDescription(),
+                            sf.getHint(),
+                            contractName + (sf.getFunctionName() != null ? "." + sf.getFunctionName() : ""));
+                }
+            } catch (Exception ignored) {}
+
+            // InvariantChecker
+            try {
+                var invariants = new dhrlang.validation.InvariantChecker();
+                var violations = invariants.check(cls);
+                for (var v : violations) {
+                    String kindName = v.getInvariant() != null && v.getInvariant().getKind() != null
+                            ? v.getInvariant().getKind().name() : "UNKNOWN";
+                    addFinding("INV-" + kindName,
+                            Severity.HIGH,
+                            "Invariant violation: " + kindName.toLowerCase().replace('_', ' '),
+                            v.getReason(),
+                            "Add validation before the state modification to ensure the invariant holds.",
+                            contractName + "." + v.getFunctionName());
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     /**

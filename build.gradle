@@ -12,7 +12,7 @@ plugins {
 }
 
 group = 'com.dhrlang'
-version = '2.0.0'
+version = '3.0.0'
 description = 'DhrLang Programming Language - Modern static language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
 
 application {
@@ -40,6 +40,9 @@ dependencies {
     
     // Documentation
     implementation 'org.apache.commons:commons-lang3:3.13.0'
+
+    // Blockchain cryptography — secp256k1 ECDSA + Keccak-256 (production crypto)
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
 }
 
 java {

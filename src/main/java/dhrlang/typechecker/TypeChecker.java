@@ -133,6 +133,9 @@ public class TypeChecker {
         }
         
         if (mainMethod == null) {
+            // @contract programs don't need a main() — they have constructors and public functions
+            boolean hasContracts = program.getClasses().stream().anyMatch(ClassDecl::isContract);
+            if (!hasContracts) {
             if (program.getClasses().isEmpty()) {
                 // No classes at all - show first non-interface declaration or start of file
                 SourceLocation loc = !program.getInterfaces().isEmpty() ? 
@@ -145,6 +148,7 @@ public class TypeChecker {
                 SourceLocation loc = program.getClasses().get(0).getSourceLocation();
                 errorWithHint("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", loc,
                              "Add a main method: 'static kaam main() { ... }' in any class to serve as the program entry point");
+            }
             }
     } else if (!mainMethod.getParameters().isEmpty()) {
             errorWithHint("Entry point 'main' should not have parameters.", mainMethod.getSourceLocation(),
@@ -584,7 +588,9 @@ public class TypeChecker {
 
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
-            if(errorReporter!=null){
+            // Skip unused-param warnings for @event functions (they're declarations, not implementations)
+            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+            if(errorReporter!=null && !isEvent){
                 for (VarDecl param : function.getParameters()) {
                     Boolean used = local.getLocalUsageMap().get(param.getName());
                     if(used!=null && !used){
@@ -602,8 +608,10 @@ public class TypeChecker {
     private void checkBlock(Block block, TypeEnvironment env) {
         TypeEnvironment blockEnv = new TypeEnvironment(env);
         boolean unreachable = false;
-        // Empty block (no statements) warning (skip if it's function body already handled upstream?)
-        if(block.getStatements().isEmpty() && errorReporter!=null){
+        // Empty block (no statements) warning — skip for @event functions (they're declarations)
+        boolean isEventBody = currentFunction != null
+                && currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+        if(block.getStatements().isEmpty() && errorReporter!=null && !isEventBody){
             errorReporter.warning(block.getSourceLocation(), "Empty block.", "Remove or add statements", ErrorCode.EMPTY_BLOCK);
         }
         for (Statement stmt : block.getStatements()) {
@@ -807,7 +815,14 @@ public class TypeChecker {
         } else {
             TypeDesc ret = checkExprDesc(stmt.getValue(), env);
             TypeDesc expected = TypeDesc.parse(currentFunctionReturnType);
-            if (!isAssignable(ret, expected)) {
+            // In @contract @view/@pure functions, kaam return type allows any return value
+            // (view functions return data to callers, not void)
+            boolean isContractViewOrPure = currentClass != null && currentClass.isContract()
+                    && currentFunction != null
+                    && (currentFunction.isView() || currentFunction.isPure());
+            if (isContractViewOrPure && currentFunctionReturnType.equals("kaam")) {
+                // Allow — @view/@pure functions in contracts can return values
+            } else if (!isAssignable(ret, expected)) {
                 errorWithHint("Cannot return '" + ret + "' from a function expecting '" + currentFunctionReturnType + "'.", 
                              stmt.getSourceLocation(),
                              buildTypeMismatchHint(ret, expected, "return statement"), ErrorCode.TYPE_MISMATCH);
@@ -1445,13 +1460,18 @@ public class TypeChecker {
             // If objectType were 'null' we'd have returned already; tracking reserved for future enhancements
             if(!nonNullVars.contains(v.getName().getLexeme()) && errorReporter!=null){
                 // Heuristic: if original static type is a class (not primitive) and not proven non-null, warn
+                // Exception: msg and block are always non-null in @contract classes
                 String name = v.getName().getLexeme();
+                if ("msg".equals(name) || "block".equals(name)) {
+                    // No warning — blockchain globals are always available in contracts
+                } else {
                 try {
                     String staticType = env.get(name);
                     if(!isPrimitive(staticType) && !staticType.endsWith("[]")){
                         errorReporter.warning(expr.getSourceLocation(), "Possible null dereference of '"+name+"'.", "Ensure '"+name+"' is checked for null before property access", ErrorCode.POSSIBLE_NULL_DEREFERENCE);
                     }
                 } catch (TypeException ignored) {}
+                }
             }
         }
         String propName = expr.getName().getLexeme();

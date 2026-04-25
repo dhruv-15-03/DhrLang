@@ -149,25 +149,48 @@ public class AstToIrLowerer {
         } else if(s instanceof WhileStmt ws){
             String loopL = freshLabel("loop");
             String endL = freshLabel("endloop");
+            String label = ws.getLabel();
             out.instructions.add(new IrLabel(loopL));
-            // Push loop labels for break/continue within body
-            ctx.pushLoop(loopL, endL);
+
+            // For desugared for-loops, place a continue label before the increment
+            // so that 'continue' executes the increment before re-checking the condition.
+            Statement body = ws.getBody();
+            boolean isForLoop = (body instanceof Block blk && blk.isDesugaredForLoopBody()
+                    && blk.getStatements().size() >= 2);
+            String continueL = loopL; // default: continue goes to condition
+            if (isForLoop) {
+                continueL = freshLabel("forcont");
+            }
+            ctx.pushLoop(continueL, endL, label);
             int cond = lowerExpr(ws.getCondition(), out, ctx, currentClass);
             out.instructions.add(new IrJumpIfFalse(cond, endL));
-            lowerStmt(ws.getBody(), out, ctx, currentClass);
+            if (isForLoop) {
+                Block blk = (Block) body;
+                java.util.List<Statement> stmts = blk.getStatements();
+                // Lower all statements except the last (increment)
+                for (int si = 0; si < stmts.size() - 1; si++) {
+                    lowerStmt(stmts.get(si), out, ctx, currentClass);
+                }
+                // Place continue label here so continue jumps to increment
+                out.instructions.add(new IrLabel(continueL));
+                // Lower the increment
+                lowerStmt(stmts.get(stmts.size() - 1), out, ctx, currentClass);
+            } else {
+                lowerStmt(body, out, ctx, currentClass);
+            }
             // Pop after body lowering
-            ctx.popLoop();
+            ctx.popLoop(label);
             out.instructions.add(new IrJump(loopL));
             out.instructions.add(new IrLabel(endL));
         } else if(s instanceof Block blk){
             for(Statement st: blk.getStatements()){
                 lowerStmt(st, out, ctx, currentClass);
             }
-        } else if(s instanceof BreakStmt){
-            String br = ctx.currentBreak();
+        } else if(s instanceof BreakStmt bs){
+            String br = bs.getLabel() != null ? ctx.breakForLabel(bs.getLabel()) : ctx.currentBreak();
             if(br != null){ out.instructions.add(new IrJump(br)); }
-        } else if(s instanceof ContinueStmt){
-            String cont = ctx.currentContinue();
+        } else if(s instanceof ContinueStmt cs){
+            String cont = cs.getLabel() != null ? ctx.continueForLabel(cs.getLabel()) : ctx.currentContinue();
             if(cont != null){ out.instructions.add(new IrJump(cont)); }
         } else if(s instanceof TryStmt ts){
             boolean enteredNestedTryWithinCatch = false;

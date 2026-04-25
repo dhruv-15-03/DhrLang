@@ -1,0 +1,29 @@
+class Main {
+    static void main() {
+        // Test labeled break
+        outer: for (num i = 0; i < 3; i++) {
+            for (num j = 0; j < 3; j++) {
+                if (j == 1) break outer;
+                printLine("i=" + i + " j=" + j);
+            }
+        }
+        printLine("after outer break");
+
+        // Test labeled continue
+        loop: for (num x = 0; x < 3; x++) {
+            for (num y = 0; y < 3; y++) {
+                if (y == 1) continue loop;
+                printLine("x=" + x + " y=" + y);
+            }
+        }
+        printLine("after labeled continue");
+
+        // Test as cast
+        num n = 42;
+        sab s = n as sab;
+        printLine(s);
+        sab numStr = "99";
+        num parsed = numStr as num;
+        printLine(parsed + 1);
+    }
+}

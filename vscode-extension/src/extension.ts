@@ -34,7 +34,19 @@ export function activate(context: vscode.ExtensionContext) {
         showDhrLangHelp();
     });
 
-    context.subscriptions.push(runCommand, compileCommand, helpCommand);
+    const auditCommand = vscode.commands.registerCommand('dhrlang.auditContract', () => {
+        auditContractFile();
+    });
+
+    const compileEvmCommand = vscode.commands.registerCommand('dhrlang.compileEvm', () => {
+        compileEvmFile();
+    });
+
+    const gasCommand = vscode.commands.registerCommand('dhrlang.estimateGas', () => {
+        estimateGas();
+    });
+
+    context.subscriptions.push(runCommand, compileCommand, helpCommand, auditCommand, compileEvmCommand, gasCommand);
 
     // Initialize status bar early
     ensureStatusBar();
@@ -354,6 +366,122 @@ function parsePlainTextErrors(text: string, document: vscode.TextDocument): vsco
 function showDhrLangHelp() {
     const panel = vscode.window.createWebviewPanel('dhrLangHelp', 'DhrLang Help', vscode.ViewColumn.Two, { enableScripts: true });
     panel.webview.html = getDhrLangHelpContent();
+}
+
+// ── Smart Contract Commands ──────────────────────────────────────────
+
+async function auditContractFile() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !editor.document.fileName.endsWith('.dhr')) {
+        vscode.window.showErrorMessage('Open a .dhr file to audit.');
+        return;
+    }
+    await editor.document.save();
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        vscode.window.showErrorMessage('Cannot locate DhrLang.jar.');
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
+    const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
+
+    outputChannel.show(true);
+    outputChannel.appendLine('═══ DhrLang Security Audit ═══');
+    outputChannel.appendLine(`File: ${editor.document.fileName}`);
+    outputChannel.appendLine('');
+
+    try {
+        const cmd = `${javaCmd} -jar "${jarResolved}" --audit "${editor.document.fileName}"`;
+        const { stdout, stderr } = await execAsync(cmd, {
+            cwd: path.dirname(editor.document.fileName),
+            timeout: 30000
+        });
+        outputChannel.appendLine(stdout || stderr || 'No output');
+
+        // Also run JSON mode to get structured findings
+        const jsonCmd = `${javaCmd} -jar "${jarResolved}" --audit --json "${editor.document.fileName}"`;
+        try {
+            const jsonResult = await execAsync(jsonCmd, {
+                cwd: path.dirname(editor.document.fileName),
+                timeout: 30000
+            });
+            const jsonStr = (jsonResult.stdout || '').trim();
+            if (jsonStr) {
+                const parsed = tryParseJson(jsonStr);
+                if (parsed && parsed.findings) {
+                    const critical = parsed.findings.filter((f: any) => f.severity === 'CRITICAL').length;
+                    const high = parsed.findings.filter((f: any) => f.severity === 'HIGH').length;
+                    const medium = parsed.findings.filter((f: any) => f.severity === 'MEDIUM').length;
+                    if (critical > 0 || high > 0) {
+                        vscode.window.showWarningMessage(
+                            `DhrLang Audit: ${critical} critical, ${high} high, ${medium} medium findings. Check Output panel.`
+                        );
+                    } else {
+                        vscode.window.showInformationMessage(
+                            `DhrLang Audit: ${parsed.findings.length} findings (no critical/high). Check Output panel.`
+                        );
+                    }
+                }
+            }
+        } catch { /* JSON parse fallback — text output is already shown */ }
+    } catch (e: any) {
+        outputChannel.appendLine(e.stdout || e.stderr || e.message || 'Audit failed');
+        vscode.window.showErrorMessage('DhrLang audit completed with warnings. See Output panel.');
+    }
+}
+
+async function compileEvmFile() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !editor.document.fileName.endsWith('.dhr')) {
+        vscode.window.showErrorMessage('Open a .dhr file to compile to EVM.');
+        return;
+    }
+    await editor.document.save();
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        vscode.window.showErrorMessage('Cannot locate DhrLang.jar.');
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
+    const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
+
+    const cmd = `${javaCmd} -jar "${jarResolved}" --compile-evm "${editor.document.fileName}"`;
+    const terminal = vscode.window.createTerminal({ name: 'DhrLang EVM', cwd: path.dirname(editor.document.fileName) });
+    terminal.show();
+    terminal.sendText(cmd);
+}
+
+async function estimateGas() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !editor.document.fileName.endsWith('.dhr')) {
+        vscode.window.showErrorMessage('Open a .dhr contract file to estimate gas.');
+        return;
+    }
+    await editor.document.save();
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        vscode.window.showErrorMessage('Cannot locate DhrLang.jar.');
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
+    const javaCmd = javaPath.includes(' ') ? `"${javaPath}"` : javaPath;
+
+    outputChannel.show(true);
+    outputChannel.appendLine('═══ DhrLang Gas Estimation ═══');
+
+    try {
+        const cmd = `${javaCmd} -jar "${jarResolved}" contract gas "${editor.document.fileName}"`;
+        const { stdout, stderr } = await execAsync(cmd, {
+            cwd: path.dirname(editor.document.fileName),
+            timeout: 15000
+        });
+        outputChannel.appendLine(stdout || stderr || 'No output');
+    } catch (e: any) {
+        outputChannel.appendLine(e.stdout || e.stderr || e.message || 'Gas estimation failed');
+    }
 }
 
 function getDhrLangHelpContent(): string {

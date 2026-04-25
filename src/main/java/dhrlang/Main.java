@@ -29,6 +29,15 @@ public class Main {
             return;
         }
 
+        // Handle "contract" subcommand: wallet/networks don't need a .dhr file
+        if (options.contractMode) {
+            var bcOpts = dhrlang.deploy.BlockchainCLI.parseArgs(options.contractArgs, 1);
+            if ("wallet".equals(bcOpts.subcommand) || "networks".equals(bcOpts.subcommand)) {
+                dhrlang.deploy.BlockchainCLI.execute(null, null, bcOpts, errorReporter);
+                return;
+            }
+        }
+
         String filePath = options.filePath != null ? options.filePath : "input/sample.dhr";
         String sourceCode;
         try {
@@ -140,12 +149,26 @@ public class Main {
         System.out.println("  --debug-evm          Interactive EVM bytecode debugger");
         System.out.println("  --output=<dir>       Output directory for artifacts (default: build/evm/)");
         System.out.println();
+        System.out.println("Blockchain CLI (unified interface):");
+        System.out.println("  contract compile     Compile @contract classes to EVM bytecode + ABI");
+        System.out.println("  contract deploy      Build, sign, and deploy contracts to a network");
+        System.out.println("  contract verify      Verify contract source on block explorer");
+        System.out.println("  contract gas         Estimate deployment gas costs + ETH cost");
+        System.out.println("  contract wallet      Manage wallet keys (create keystore, show address)");
+        System.out.println("  contract networks    List all supported blockchain networks");
+        System.out.println("  contract status      Check contract deployment status on-chain");
+        System.out.println("  (use 'contract --help' for full subcommand documentation)");
+        System.out.println();
         System.out.println("Examples:");
         System.out.println("  java -jar DhrLang.jar input/sample.dhr");
         System.out.println("  java -jar DhrLang.jar --check myfile.dhr");
         System.out.println("  java -jar DhrLang.jar --compile-evm contract.dhr");
-        System.out.println("  java -jar DhrLang.jar --audit contract.dhr");
-        System.out.println("  java -jar DhrLang.jar --docs --output=docs/ contract.dhr");
+        System.out.println("  java -jar DhrLang.jar contract compile token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract deploy --network=sepolia token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract gas token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract verify --address=0x... token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract wallet create");
+        System.out.println("  java -jar DhrLang.jar contract networks");
         System.out.println();
         System.out.println("If no file is provided, defaults to input/sample.dhr");
     }
@@ -168,12 +191,28 @@ public class Main {
         boolean deployScript;    // --deploy-script: generate deploy scripts
         String deployFormat = "foundry"; // foundry | ethers
         boolean debugEvm;        // --debug-evm: step through EVM bytecode
+        boolean sarifMode;       // --sarif: output SARIF format (for --audit)
         boolean lspMode;         // --lsp: start Language Server Protocol server
         String outputDir;        // --output=<dir>: output directory for artifacts
+        // --- Contract subcommand ---
+        boolean contractMode;    // contract <subcommand>: blockchain operations
+        String[] contractArgs;   // raw args for BlockchainCLI parsing
     }
 
     private static CliOptions parseArgs(String[] args) {
         CliOptions opts = new CliOptions();
+        // Check for "contract" subcommand first
+        if (args.length > 0 && "contract".equals(args[0])) {
+            opts.contractMode = true;
+            opts.contractArgs = args;
+            // Extract file path from remaining args
+            for (int i = 1; i < args.length; i++) {
+                if (!args[i].startsWith("-") && args[i].endsWith(".dhr")) {
+                    opts.filePath = args[i];
+                }
+            }
+            return opts;
+        }
         for (String a : args) {
             switch (a) {
                 case "--help":
@@ -204,6 +243,8 @@ public class Main {
                     opts.deployScript = true; break;
                 case "--debug-evm":
                     opts.debugEvm = true; break;
+                case "--sarif":
+                    opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
                 default:
@@ -264,6 +305,16 @@ public class Main {
             if(!opts.jsonMode) {
                 System.out.println("Type-check passed. No errors found.");
             }
+            pt.totalMs = msSince(tStart);
+            return pt;
+        }
+
+        // contract subcommand: route to BlockchainCLI
+        if(opts.contractMode && opts.contractArgs != null) {
+            s = System.nanoTime();
+            var bcOpts = dhrlang.deploy.BlockchainCLI.parseArgs(opts.contractArgs, 1);
+            dhrlang.deploy.BlockchainCLI.execute(program, sourceCode, bcOpts, errorReporter);
+            pt.execMs = msSince(s);
             pt.totalMs = msSince(tStart);
             return pt;
         }
@@ -431,6 +482,19 @@ public class Main {
             auditor.setCompilerVersion(version != null ? version : "dev");
 
             var report = auditor.analyze(program);
+
+            // SARIF output for CI/CD integration (GitHub Code Scanning, Azure DevOps)
+            if (opts.sarifMode) {
+                String sarif = dhrlang.production.SarifFormatter.format(report, opts.filePath);
+                System.out.println(sarif);
+                if (opts.outputDir != null) {
+                    java.nio.file.Path outPath = java.nio.file.Paths.get(opts.outputDir);
+                    Files.createDirectories(outPath);
+                    Files.writeString(outPath.resolve("audit-report.sarif"), sarif);
+                    System.err.println("SARIF report written to: " + outPath.resolve("audit-report.sarif"));
+                }
+                return;
+            }
 
             if (opts.jsonMode) {
                 System.out.println(dhrlang.production.AuditReportGenerator.formatJson(report));

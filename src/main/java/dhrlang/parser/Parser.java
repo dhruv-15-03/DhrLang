@@ -360,15 +360,23 @@ public class Parser {
     private Statement parseStatement() {
         if (match(TokenType.BREAK)) {
             Token breakToken = previous();
+            String label = null;
+            if (check(TokenType.IDENTIFIER)) {
+                label = advance().getLexeme();
+            }
             consume(TokenType.SEMICOLON, "Expected ';' after 'break'.");
-            BreakStmt breakStmt = new BreakStmt();
+            BreakStmt breakStmt = new BreakStmt(label);
             breakStmt.setSourceLocation(breakToken.getLocation());
             return breakStmt;
         }
         if (match(TokenType.CONTINUE)) {
             Token continueToken = previous();
+            String label = null;
+            if (check(TokenType.IDENTIFIER)) {
+                label = advance().getLexeme();
+            }
             consume(TokenType.SEMICOLON, "Expected ';' after 'continue'.");
-            ContinueStmt continueStmt = new ContinueStmt();
+            ContinueStmt continueStmt = new ContinueStmt(label);
             continueStmt.setSourceLocation(continueToken.getLocation());
             return continueStmt;
         }
@@ -403,6 +411,23 @@ public class Parser {
         if (match(TokenType.EMIT)) {
             // emit EventName(args...) → syntactic sugar for EventName(args...)
             return parseExpressionStmt();
+        }
+
+        // Labeled loops: label: while/for/do
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            Token labelToken = advance(); // consume identifier
+            advance(); // consume colon
+            String label = labelToken.getLexeme();
+            if (match(TokenType.WHILE)) {
+                return parseLabeledWhile(label);
+            } else if (match(TokenType.FOR)) {
+                Token forToken = previous();
+                return parseLabeledFor(label, forToken);
+            } else if (match(TokenType.DO)) {
+                return parseLabeledDoWhile(label);
+            } else {
+                throw error(peek(), "Label '" + label + "' must precede a loop statement (while, for, or do).");
+            }
         }
 
         if (isVariableDeclaration()) {
@@ -598,6 +623,39 @@ public class Parser {
             BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
             binaryExpr.setSourceLocation(operator.getLocation());
             expr = binaryExpr;
+        }
+        // Handle 'as' cast: expr as Type → desugar to toNum(expr), toDuo(expr), toString(expr)
+        if (match(TokenType.AS)) {
+            Token asToken = previous();
+            String typeName;
+            if (match(TokenType.NUM)) {
+                typeName = "num";
+            } else if (match(TokenType.DUO)) {
+                typeName = "duo";
+            } else if (match(TokenType.SAB)) {
+                typeName = "sab";
+            } else if (match(TokenType.KYA)) {
+                typeName = "kya";
+            } else if (match(TokenType.IDENTIFIER)) {
+                typeName = previous().getLexeme();
+            } else {
+                throw error(peek(), "Expected type name after 'as'. Supported: num, duo, sab.");
+            }
+            String converterFn = switch (typeName) {
+                case "num" -> "toNum";
+                case "duo" -> "toDuo";
+                case "sab" -> "toString";
+                default -> null;
+            };
+            if (converterFn == null) {
+                throw error(asToken, "Cannot cast to '" + typeName + "'. Supported cast types: num, duo, sab.");
+            }
+            Token fnToken = syntheticToken(converterFn, asToken);
+            VariableExpr fnRef = new VariableExpr(fnToken);
+            fnRef.setSourceLocation(asToken.getLocation());
+            CallExpr castCall = new CallExpr(fnRef, List.of(expr));
+            castCall.setSourceLocation(asToken.getLocation());
+            return castCall;
         }
         return expr;
     }
@@ -1118,6 +1176,31 @@ public class Parser {
         return whileStmt;
     }
 
+    private Statement parseLabeledWhile(String label) {
+        Statement stmt = parseWhile();
+        if (stmt instanceof WhileStmt ws) { ws.setLabel(label); }
+        return stmt;
+    }
+
+    private Statement parseLabeledFor(String label, Token forToken) {
+        Statement stmt = parseFor(forToken);
+        // parseFor may return a WhileStmt directly, or a Block wrapping init + WhileStmt
+        if (stmt instanceof WhileStmt ws) {
+            ws.setLabel(label);
+        } else if (stmt instanceof Block blk) {
+            for (Statement s : blk.getStatements()) {
+                if (s instanceof WhileStmt ws) { ws.setLabel(label); break; }
+            }
+        }
+        return stmt;
+    }
+
+    private Statement parseLabeledDoWhile(String label) {
+        Statement stmt = parseDoWhile();
+        if (stmt instanceof WhileStmt ws) { ws.setLabel(label); }
+        return stmt;
+    }
+
     
     private TryStmt parseTryStmt() {
         Token tryToken = previous();
@@ -1316,6 +1399,11 @@ public class Parser {
     private boolean check(TokenType type) {
         if (isAtEnd()) return false;
         return peek().getType() == type;
+    }
+
+    private boolean checkNext(TokenType type) {
+        if (current + 1 >= tokens.size()) return false;
+        return tokens.get(current + 1).getType() == type;
     }
 
     private Token consume(TokenType type, String message) {

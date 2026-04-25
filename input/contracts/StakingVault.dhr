@@ -1,0 +1,118 @@
+// ═══════════════════════════════════════════════════════════════
+//  DhrLang Simple Staking Vault
+//  Users stake tokens and earn rewards over time.
+//
+//  Compile:  java -jar DhrLang.jar contract compile input/contracts/StakingVault.dhr
+//  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/StakingVault.dhr
+// ═══════════════════════════════════════════════════════════════
+
+@contract
+class StakingVault {
+    // ── Storage ──────────────────────────────────────────────────
+    @storage Address owner;
+    @storage num totalStaked;
+    @storage num rewardRate;
+    @storage num stakerCount;
+    @storage kya paused;
+
+    // ── Constructor ──────────────────────────────────────────────
+    @constructor
+    kaam init(num _rewardRate) {
+        if (_rewardRate <= 0) {
+            throw "Reward rate must be positive";
+        }
+        owner = msg.sender;
+        totalStaked = 0;
+        rewardRate = _rewardRate;
+        stakerCount = 0;
+        paused = false;
+    }
+
+    // ── Views ────────────────────────────────────────────────────
+    @view
+    kaam getTotalStaked() {
+        return totalStaked;
+    }
+
+    @view
+    kaam getRewardRate() {
+        return rewardRate;
+    }
+
+    @view
+    kaam getStakerCount() {
+        return stakerCount;
+    }
+
+    @view
+    kaam isPaused() {
+        return paused;
+    }
+
+    // ── Pure functions ───────────────────────────────────────────
+    @pure
+    kaam calculateReward(num amount, num duration) {
+        return amount * duration * rewardRate / 10000;
+    }
+
+    // ── Staking ──────────────────────────────────────────────────
+    @payable
+    @nonreentrant
+    kaam stake() {
+        if (paused) {
+            throw "Staking is paused";
+        }
+        if (msg.value <= 0) {
+            throw "Must stake a positive amount";
+        }
+        totalStaked = totalStaked + msg.value;
+        stakerCount = stakerCount + 1;
+    }
+
+    @nonreentrant
+    kaam withdraw(num amount) {
+        if (amount <= 0) {
+            throw "Amount must be positive";
+        }
+        if (amount > totalStaked) {
+            throw "Insufficient staked balance";
+        }
+        // Checks-effects-interactions: update state before transfer
+        totalStaked = totalStaked - amount;
+    }
+
+    // ── Admin ────────────────────────────────────────────────────
+    kaam pause() {
+        if (msg.sender != owner) {
+            throw "Only owner";
+        }
+        paused = true;
+    }
+
+    kaam unpause() {
+        if (msg.sender != owner) {
+            throw "Only owner";
+        }
+        paused = false;
+    }
+
+    kaam setRewardRate(num newRate) {
+        if (msg.sender != owner) {
+            throw "Only owner";
+        }
+        if (newRate <= 0) {
+            throw "Rate must be positive";
+        }
+        rewardRate = newRate;
+    }
+
+    // ── Events ───────────────────────────────────────────────────
+    @event
+    kaam Staked(Address user, num amount) {}
+
+    @event
+    kaam Withdrawn(Address user, num amount) {}
+
+    @event
+    kaam RewardPaid(Address user, num reward) {}
+}

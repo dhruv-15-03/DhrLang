@@ -20,6 +20,13 @@ public final class TypeDesc {
     public static TypeDesc generic(String n){return new TypeDesc(TypeKind.GENERIC,n,null);}    
     public static TypeDesc array(TypeDesc el){return new TypeDesc(TypeKind.ARRAY,el.name+"[]",el);}    
     public static TypeDesc unknown(){return new TypeDesc(TypeKind.UNKNOWN,"unknown",null);}    
+    // Blockchain types
+    public static TypeDesc address(){return new TypeDesc(TypeKind.ADDRESS,"Address",null);}
+    public static TypeDesc uint256(){return new TypeDesc(TypeKind.UINT256,"uint256",null);}
+    public static TypeDesc int256(){return new TypeDesc(TypeKind.INT256,"int256",null);}
+    public static TypeDesc bytes32(){return new TypeDesc(TypeKind.BYTES32,"bytes32",null);}
+    public static TypeDesc wei(){return new TypeDesc(TypeKind.WEI,"wei",null);}
+    public static TypeDesc mapping(TypeDesc key, TypeDesc val){return new TypeDesc(TypeKind.MAPPING,"mapping",null,List.of(key,val));}    
     public static TypeDesc parse(String raw){
         if(raw==null) return unknown();
         raw = raw.trim();
@@ -44,10 +51,18 @@ public final class TypeDesc {
         }
         return switch(raw){
             case "num"->num(); case "duo"->duo(); case "sab"->sab(); case "kya"->kya(); case "kaam"->kaam(); case "any"->any(); case "null"->nul();
-            default -> { if(raw.matches("[A-Z][A-Za-z0-9_]*")) yield cls(raw); if(raw.matches("[A-Z]")) yield generic(raw); yield unknown(); }
+            case "Address"->address();
+            case "uint256"->uint256(); case "int256"->int256(); case "bytes32"->bytes32(); case "wei"->wei();
+            case "void"->kaam();
+            // Synthetic types for blockchain context globals (msg, block)
+            case "$MsgContext"->cls("$MsgContext");
+            case "$BlockContext"->cls("$BlockContext");
+            default -> { if(raw.startsWith("mapping")) yield mapping(unknown(),unknown()); if(raw.matches("[A-Z][A-Za-z0-9_]*")) yield cls(raw); if(raw.matches("[A-Z]")) yield generic(raw); yield unknown(); }
         };
     }
-    public boolean isNumeric(){ return kind==TypeKind.NUM || kind==TypeKind.DUO; }
+    public boolean isNumeric(){ return kind==TypeKind.NUM || kind==TypeKind.DUO || kind==TypeKind.UINT256 || kind==TypeKind.INT256 || kind==TypeKind.WEI; }
+    public boolean isBlockchainNumeric(){ return kind==TypeKind.UINT256 || kind==TypeKind.INT256 || kind==TypeKind.WEI; }
+    public boolean isAddress(){ return kind==TypeKind.ADDRESS; }
     public boolean isArray(){ return kind==TypeKind.ARRAY; }
     public static boolean assignable(TypeDesc from, TypeDesc to){
         if(from==null||to==null) return false;
@@ -56,6 +71,15 @@ public final class TypeDesc {
         // null is assignable to any reference type (class, array, sab)
         if(from.kind==TypeKind.NULL && (to.kind==TypeKind.CLASS || to.kind==TypeKind.ARRAY || to.kind==TypeKind.SAB)) return true;
         if(from.kind==TypeKind.NUM && to.kind==TypeKind.DUO) return true;
+        // Blockchain numeric cross-assignability
+        if(from.kind==TypeKind.NUM && (to.kind==TypeKind.UINT256 || to.kind==TypeKind.INT256 || to.kind==TypeKind.WEI)) return true;
+        if((from.kind==TypeKind.UINT256 || from.kind==TypeKind.INT256 || from.kind==TypeKind.WEI) && to.kind==TypeKind.NUM) return true;
+        if(from.kind==TypeKind.UINT256 && to.kind==TypeKind.WEI) return true;
+        if(from.kind==TypeKind.WEI && to.kind==TypeKind.UINT256) return true;
+        if(from.kind==TypeKind.UINT256 && to.kind==TypeKind.INT256) return true;
+        if(from.kind==TypeKind.INT256 && to.kind==TypeKind.UINT256) return true;
+        // null assignable to Address
+        if(from.kind==TypeKind.NULL && to.kind==TypeKind.ADDRESS) return true;
         if(from.isArray() && from.element!=null && from.element.kind==TypeKind.UNKNOWN && to.isArray()) return true;
         if(from.isArray() && to.isArray()) return assignable(from.element, to.element);
         if(from.kind==TypeKind.CLASS && to.kind==TypeKind.CLASS){

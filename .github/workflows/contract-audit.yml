@@ -1,0 +1,141 @@
+name: Smart Contract Security Audit
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'input/contracts/**'
+      - 'src/main/java/dhrlang/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'input/contracts/**'
+      - 'src/main/java/dhrlang/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload to GitHub Security tab
+
+jobs:
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Build compiler
+        run: |
+          chmod +x gradlew
+          ./gradlew shadowJar -x test
+
+      - name: Find contract files
+        id: contracts
+        run: |
+          FILES=$(find input/contracts -name "*.dhr" 2>/dev/null | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "Found contracts: $FILES"
+
+      - name: Run security audit (text report)
+        if: steps.contracts.outputs.files != ''
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          echo "═══════════════════════════════════════════════════"
+          echo "  DhrLang Smart Contract Security Audit"
+          echo "═══════════════════════════════════════════════════"
+          for f in ${{ steps.contracts.outputs.files }}; do
+            echo ""
+            echo "── Auditing: $f ──"
+            java -jar "$JAR" --audit "$f" || true
+          done
+
+      - name: Generate SARIF reports
+        if: steps.contracts.outputs.files != ''
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          mkdir -p build/sarif
+          for f in ${{ steps.contracts.outputs.files }}; do
+            NAME=$(basename "$f" .dhr)
+            java -jar "$JAR" --audit --sarif --output=build/sarif "$f" 2>/dev/null || true
+            # Rename to per-contract SARIF if it exists
+            if [ -f build/sarif/audit-report.sarif ]; then
+              mv build/sarif/audit-report.sarif "build/sarif/${NAME}.sarif"
+            fi
+          done
+
+      - name: Upload SARIF to GitHub Security
+        if: steps.contracts.outputs.files != '' && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: build/sarif/
+          category: dhrlang-security-audit
+        continue-on-error: true  # Don't fail the build if upload fails
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-reports
+          path: build/sarif/
+          retention-days: 30
+
+  compile-evm:
+    name: EVM Compilation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Build compiler
+        run: |
+          chmod +x gradlew
+          ./gradlew shadowJar -x test
+
+      - name: Compile contracts to EVM bytecode
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          mkdir -p build/evm
+          for f in input/contracts/*.dhr; do
+            echo "Compiling: $f"
+            java -jar "$JAR" --compile-evm --output=build/evm "$f" || true
+          done
+          echo ""
+          echo "═══ Compiled Artifacts ═══"
+          ls -la build/evm/ 2>/dev/null || echo "No artifacts generated"
+
+      - name: Upload EVM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evm-bytecode
+          path: build/evm/
+          retention-days: 30

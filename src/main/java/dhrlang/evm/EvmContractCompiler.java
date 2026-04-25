@@ -83,14 +83,18 @@ public final class EvmContractCompiler {
         EvmCodeGen codeGen = new EvmCodeGen(classDecl, layout, classRegistry);
         EvmCodeGen.CompilationResult result = codeGen.compile();
 
+        // Run peephole optimizer on the runtime bytecode
+        byte[] optimizedRuntime = EvmPeepholeOptimizer.optimize(result.getRuntimeBytecode());
+        byte[] optimizedCreation = EvmPeepholeOptimizer.optimize(result.getCreationBytecode());
+
         return new ContractArtifact(
                 classDecl.getName(),
-                result.getCreationBytecode(),
-                result.getRuntimeBytecode(),
+                optimizedCreation,
+                optimizedRuntime,
                 result.getAbiJson(),
                 result.getAbi(),
                 layout,
-                estimateGas(result.getCreationBytecode())
+                estimateGas(optimizedCreation)
         );
     }
 
@@ -149,7 +153,7 @@ public final class EvmContractCompiler {
         private final ContractLayout storageLayout;
         private final long estimatedDeployGas;
 
-        ContractArtifact(String contractName, byte[] creationBytecode,
+        public ContractArtifact(String contractName, byte[] creationBytecode,
                          byte[] runtimeBytecode, String abiJson,
                          List<Map<String, Object>> abi,
                          ContractLayout storageLayout,

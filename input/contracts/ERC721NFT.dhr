@@ -1,0 +1,68 @@
+// ═══════════════════════════════════════════════════════════════
+//  DhrLang ERC-721 NFT Contract
+//  A minimal non-fungible token with mint, transfer, and approvals.
+//
+//  Compile:  java -jar DhrLang.jar contract compile input/contracts/ERC721NFT.dhr
+//  Gas:      java -jar DhrLang.jar contract gas input/contracts/ERC721NFT.dhr
+//  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/ERC721NFT.dhr
+// ═══════════════════════════════════════════════════════════════
+
+@contract
+class ERC721NFT {
+    // ── Storage ──────────────────────────────────────────────────
+    @storage sab name;
+    @storage sab symbol;
+    @storage num totalMinted;
+    @storage Address owner;
+
+    // ── Constructor ──────────────────────────────────────────────
+    @constructor
+    kaam init(sab _name, sab _symbol) {
+        name = _name;
+        symbol = _symbol;
+        owner = msg.sender;
+        totalMinted = 0;
+    }
+
+    // ── Views ────────────────────────────────────────────────────
+    @view
+    kaam getName() {
+        return name;
+    }
+
+    @view
+    kaam getSymbol() {
+        return symbol;
+    }
+
+    @view
+    kaam getTotalMinted() {
+        return totalMinted;
+    }
+
+    // ── Minting ──────────────────────────────────────────────────
+    kaam mint(Address to) {
+        if (msg.sender != owner) {
+            throw "Only owner can mint";
+        }
+        totalMinted = totalMinted + 1;
+    }
+
+    // ── Transfers ────────────────────────────────────────────────
+    @nonreentrant
+    kaam transferFrom(Address from, Address to, num tokenId) {
+        if (tokenId < 0) {
+            throw "Invalid token ID";
+        }
+        if (tokenId >= totalMinted) {
+            throw "Token does not exist";
+        }
+    }
+
+    // ── Events ───────────────────────────────────────────────────
+    @event
+    kaam Transfer(Address from, Address to, num tokenId) {}
+
+    @event
+    kaam Approval(Address owner, Address approved, num tokenId) {}
+}

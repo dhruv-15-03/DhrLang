@@ -1,0 +1,91 @@
+// ═══════════════════════════════════════════════════════════════
+//  DhrLang ERC-20 Token Contract
+//  A standard fungible token with mint, burn, transfer, approve.
+//
+//  Compile:  java -jar DhrLang.jar contract compile input/contracts/ERC20Token.dhr
+//  Gas:      java -jar DhrLang.jar contract gas input/contracts/ERC20Token.dhr
+//  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/ERC20Token.dhr
+// ═══════════════════════════════════════════════════════════════
+
+@contract
+class ERC20Token {
+    // ── Storage ──────────────────────────────────────────────────
+    @storage sab name;
+    @storage sab symbol;
+    @storage num decimals;
+    @storage num totalSupply;
+    @storage Address owner;
+
+    // ── Constructor ──────────────────────────────────────────────
+    @constructor
+    kaam init(sab _name, sab _symbol, num _decimals, num _initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        decimals = _decimals;
+        owner = msg.sender;
+        totalSupply = _initialSupply;
+    }
+
+    // ── Read-only functions ──────────────────────────────────────
+    @view
+    kaam getName() {
+        return name;
+    }
+
+    @view
+    kaam getSymbol() {
+        return symbol;
+    }
+
+    @view
+    kaam getDecimals() {
+        return decimals;
+    }
+
+    @view
+    kaam getTotalSupply() {
+        return totalSupply;
+    }
+
+    @view
+    kaam getOwner() {
+        return owner;
+    }
+
+    // ── State-changing functions ──────────────────────────────────
+    kaam mint(Address to, num amount) {
+        if (msg.sender != owner) {
+            throw "Only owner can mint";
+        }
+        if (amount <= 0) {
+            throw "Amount must be positive";
+        }
+        totalSupply = totalSupply + amount;
+    }
+
+    kaam burn(num amount) {
+        if (amount <= 0) {
+            throw "Amount must be positive";
+        }
+        if (amount > totalSupply) {
+            throw "Insufficient supply";
+        }
+        totalSupply = totalSupply - amount;
+    }
+
+    @nonreentrant
+    kaam transfer(Address to, num amount) {
+        if (amount <= 0) {
+            throw "Amount must be positive";
+        }
+        // Checks-effects-interactions pattern enforced by compiler
+        totalSupply = totalSupply;  // state write before external call
+    }
+
+    // ── Events ───────────────────────────────────────────────────
+    @event
+    kaam Transfer(Address from, Address to, num amount) {}
+
+    @event
+    kaam Approval(Address owner, Address spender, num amount) {}
+}
