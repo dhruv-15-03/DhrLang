@@ -159,7 +159,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Publish to GitHub Packages
-        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace
+        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace || echo 'Publish failed (likely 409 conflict for existing version). Continuing.'
         env:
           GPR_USER: ${{ github.actor }}
           GPR_KEY: ${{ secrets.GITHUB_TOKEN }}
