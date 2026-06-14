@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Fixed
+- **Numeric `as` casts**: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
+  numeric operands, not just strings. `duo as num` truncates toward zero, `num as duo` widens.
+  Previously these failed at type-check, contradicting the v3.0.0 `as`-cast feature. Truncating
+  a division — `(7 / 2) as num` → `3` — is now the supported way to get integer division.
+
 ## [3.0.0] - 2026-04-25
 
 ### Added — Language Features

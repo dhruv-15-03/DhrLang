@@ -2098,9 +2098,11 @@ public class TypeChecker {
                                  "Use " + name + "(string) to convert a string to a number");
                 }
                 String parseType = checkExpr(args.get(0), env);
-                if (!parseType.equals("sab")) {
-                    errorWithHint("'" + name + "' requires a string argument, got '" + parseType + "'.", call.getSourceLocation(),
-                                 "Number conversion only works with strings: " + name + "('42')");
+                if (!parseType.equals("sab") && !parseType.equals("num") && !parseType.equals("duo")) {
+                    errorWithHint("'" + name + "' requires a num, duo, or sab argument, got '" + parseType + "'.", call.getSourceLocation(),
+                                 name.equals("toNum")
+                                     ? "Parse a string or truncate a duo to an integer: " + name + "('42') or (3.9 as num)"
+                                     : "Parse a string or widen a num to a duo: " + name + "('4.2') or (3 as duo)");
                 }
                 return name.equals("toNum") ? "num" : "duo";
                 
