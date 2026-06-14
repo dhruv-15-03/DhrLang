@@ -1,181 +1,201 @@
 # DhrLang Programming Language
 
 [![Build Status](https://github.com/dhruv-15-03/DhrLang/actions/workflows/ci.yml/badge.svg)](https://github.com/dhruv-15-03/DhrLang/actions)
-[![Coverage](docs/badges/coverage.svg)](#test-coverage) [![Mutation](docs/badges/mutation.svg)](#mutation-testing)
+[![Coverage](docs/badges/coverage.svg)](#test-coverage--mutation-testing)
+[![Mutation](docs/badges/mutation.svg)](#test-coverage--mutation-testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/dhruv-15-03/DhrLang)](https://github.com/dhruv-15-03/DhrLang/releases/latest)
 
-DhrLang is a modern, statically typed, object-oriented programming language with a concise Englishâ€‘core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static analysis while retaining culturally inspired naming roots.
+DhrLang is a modern, statically typed, object-oriented programming language with a
+concise English-core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by
+earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static
+analysis while retaining culturally inspired naming roots.
+
+It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
+and an experimental EVM (smart-contract) compiler target.
+
+> **Current release: v3.0.0** - see [What's New in v3.0.0](#whats-new-in-v300) and
+> [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
-- Getting Started: docs/GETTING_STARTED.md
-- Installation: see below
-- Run a program: Running DhrLang Programs
-- Language Spec: SPEC.md
-- Standard Library: STDLIB.md
-- Examples: input/
-- Changelog: CHANGELOG.md
-- Release Checklist: RELEASE_CHECKLIST.md
-- Bytecode / IR Plan: design/bytecode-roadmap.md
-    - Bytecode Format: design/bytecode-format.md
-- Editor Integration: VS Code Extension section
+
+- Getting Started: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+- Installation: [see below](#installation)
+- Language Spec: [SPEC.md](SPEC.md)
+- Standard Library: [STDLIB.md](STDLIB.md)
+- Error Codes: [ERROR_CODES.md](ERROR_CODES.md)
+- Examples: [`input/`](input/)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Release Checklist: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
+- Bytecode / IR Plan: [design/bytecode-roadmap.md](design/bytecode-roadmap.md)
+  ([format](design/bytecode-format.md))
+- Editor Integration: [VS Code Extension](#vs-code-extension-editor-integration)
 
 ## Features
 
-- **Concise Core Tokens**: Minimal memorable keywords: `num` (int), `duo` (float), `sab` (string), `kya` (boolean), `ek` (char), `kaam` (function/method)
-- **Object-Oriented Programming**: Classes, inheritance (`extends`), access control, static members
-- **Static Typing**: Strong compile-time type checking with generic substitution
-- **Arrays**: Multi-dimensional arrays with bounds & type safety
-- **Generics**: Type parameters on classes/methods with full substitution + diagnostics
-- **Implicit Field Access**: Instance method identifier resolution falls back to fields safely
-- **String & Array Utilities**: Core built-ins (`printLine`, `arrayLength`, substring helpers, etc.)
-- **Structured Error Handling**: `try/catch/finally` (including typed catches)
-- **Evaluator Architecture**: Central semantic executor for maintainability & clear runtime rules
-- **Static Initialization Safety**: Detects forward references & dependency cycles early
+- **Concise core tokens**: minimal memorable keywords - `num` (int), `duo` (float),
+  `sab` (string), `kya` (boolean), `ek` (char), `kaam` (function/method)
+- **Object-oriented programming**: classes, inheritance (`extends`), access control,
+  static members
+- **Static typing**: strong compile-time type checking with generic substitution
+- **Arrays**: multi-dimensional and jagged arrays with bounds and type safety
+- **Generics**: type parameters on classes/methods with full substitution + diagnostics
+- **Implicit field access**: instance-method identifier resolution falls back to fields
+  safely
+- **String and array utilities**: core built-ins (`printLine`, `arrayLength`,
+  substring helpers, etc.)
+- **Structured error handling**: `try`/`catch`/`finally` (including typed catches)
+- **Three backends**: AST (default, debug-friendly), IR, and bytecode - semantically
+  equivalent for the implemented feature set
+- **Static initialization safety**: detects forward references and dependency cycles
+  early
+- **Tooling**: LSP server (`--lsp`), JSON diagnostics, VS Code extension, EVM target
 
-### Currently Unsupported / Experimental
-Some constructs (advanced exception types, modules, concurrency) are either experimental or not implemented yet. See SPEC.md for authoritative status markers; see design/bytecode-roadmap.md for backend evolution.
+### Currently unsupported / experimental
 
-## Language Syntax
+Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
+implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
+[design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
 
-### Data Types
-- `num` - Integer numbers
-- `duo` - Floating-point numbers  
-- `sab` - Strings
-- `kya` - Boolean values
-- `ek` - Characters
+## What's New in v3.0.0
 
-### Keywords
-- `class` - Class declaration
-- `kaam` - Function/method declaration
-- `if`/`else` - Conditional statements
-- `while`/`for` - Loop statements
-- `try`/`catch`/`finally` - Exception handling
-- `return` - Return statement
-- `new` - Object instantiation
-- `this`/`super` - Object references
-- `extends`/`implements` - Inheritance
-- `static` - Static members
-- `private`/`protected`/`public` - Access modifiers
+Language:
+- **Labeled `break`/`continue`** with labeled loops: `outer: for(...) { ... break outer; }`
+- **`as` type cast**: `expr as num`, `expr as duo`, `expr as sab`
+- **Hex literals**: `0xFF`, `0xABCD` (all backends)
+- **String interpolation**: `"Hello ${name}!"`
+- **Bitwise operators**: `&`, `|`, `^`, `~`, `<<`, `>>` (all backends + type checker)
+
+Tooling:
+- **LSP server**: stdio-based diagnostics, completion, and hover via `--lsp`
+- **VS Code extension v3.0.0**: updated grammar and keyword highlighting
+
+EVM (smart-contract) backend:
+- SafeMath overflow/underflow protection, auto-generated access control (`onlyOwner`),
+  collision-safe reentrancy lock, peephole optimizer, gas/stack/memory tracking
+
+Quality: **1,287 tests, 0 failures**. Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
 ### Prerequisites
+
 - **Java**: JDK 17 or higher
 - **OS**: Windows, macOS, or Linux
 
-### Option 1: VS Code Extension (Easiest)
-1. Download the **DhrLang Support** extension (`.vsix`) from the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
-2. Install it in VS Code (Command Palette -> "Install from VSIX").
-3. Ensure you have **Java 17+** installed.
-4. Open any `.dhr` file and run it directly (Ctrl+F5).
-   - **Zero Config**: The extension bundles the compiler, so you don't need to download the JAR manually.
+### Option 1: VS Code Extension (easiest)
 
-### Option 2: Download Release (Manual CLI)
-1. Go to the [Releases Page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
-2. Download the latest `DhrLang-3.0.0.jar` (fat JAR).
-3. Run it directly:
+1. Download `dhrlang-vscode-3.0.0.vsix` from the
+   [latest release](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. In VS Code: Command Palette -> "Extensions: Install from VSIX..." and select the file.
+3. Ensure **Java 17+** is installed.
+4. Open any `.dhr` file and run it directly (Ctrl+F5).
+   - **Zero config**: the extension bundles the compiler, so no manual JAR download is
+     needed.
+
+### Option 2: Download a Release (manual CLI)
+
+1. Go to the [Releases page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. Download the runnable fat JAR **`DhrLang.jar`** (or a platform bundle:
+   `DhrLang-3.0.0-windows.zip` / `DhrLang-3.0.0-linux.tar.gz`). Optionally verify against
+   `checksums.txt`.
+3. Run it:
    ```bash
-   java -jar DhrLang-3.0.0.jar input/sample.dhr
+   java -jar DhrLang.jar input/sample.dhr
    ```
 
 ### Option 3: Build from Source
-If you want to contribute or use the latest development version:
+
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
-./gradlew shadowJar
-# The JAR will be in build/libs/
+./gradlew shadowJar          # use ./gradlew.bat on Windows
 java -jar build/libs/DhrLang-3.0.0.jar input/sample.dhr
 ```
 
-### CLI Options
+A plain `./gradlew build` (or `./gradlew.bat build` on Windows) compiles and runs the
+full test suite.
+
+## Command-Line Interface
+
 ```bash
---help           Show usage and options
---version        Print version (e.g., "DhrLang version 3.0.0")
---json           Output diagnostics as JSON (see JSON Diagnostics below)
---time           Show phase timings (lex/parse/type/exec)
---no-color       Disable ANSI colors in diagnostics
---backend=ast|ir|bytecode  (select execution backend)
+java -jar DhrLang.jar [options] path/to/file.dhr
 ```
 
-Runtime safety flags (JVM system properties):
-- `dhrlang.backend.maxSteps` â€” instruction step limit (IR + bytecode)
-- `dhrlang.bytecode.untrusted=true` â€” enables conservative validation + limits for bytecode execution
-- `dhrlang.bytecode.strictEntry` â€” require an entrypoint (`Main.main` or any `*.main`)
+If no file is given, DhrLang defaults to `input/sample.dhr`.
+
+| Flag | Description |
+|------|-------------|
+| `--help`, `-h` | Print usage and exit |
+| `--version`, `-v` | Print version (e.g. "DhrLang version 3.0.0") |
+| `--json` | Emit diagnostics as JSON (see [JSON Diagnostics](#json-diagnostics)) |
+| `--time` | Show phase timings (lex/parse/type/exec) and embed them in JSON |
+| `--no-color` | Disable ANSI colors in diagnostics |
+| `--backend=ast\|ir\|bytecode` | Select execution backend (default: `ast`) |
+| `--emit-ir` | Dump lowered IR (JSON) for debugging |
+| `--emit-bc` | Write compiled bytecode to `build/bytecode/Main.dbc` |
+| `--lsp` | Start the Language Server Protocol server (stdio) |
+
+### Exit codes
+
+- `0`: success (or warnings only)
+- `1`: compile-time error(s)
+- `2`: runtime/system error
+- `65`: JSON diagnostics emission that includes errors
+
+### Runtime safety flags (JVM system properties)
+
+- `dhrlang.backend.maxSteps` - instruction step limit (IR + bytecode)
+- `dhrlang.bytecode.untrusted=true` - conservative validation + limits for bytecode
+- `dhrlang.bytecode.strictEntry` - require an entrypoint (`Main.main` or any `*.main`)
+
+When running untrusted code, prefer `--backend=bytecode` with
+`-Ddhrlang.bytecode.untrusted=true` to enable strict verification and resource limits.
 
 ### JSON Diagnostics
-DhrLang can emit machine-readable diagnostics in JSON format for tooling integration:
 
-```powershell
-java -jar DhrLang-1.1.6.jar --json --time program.dhr
-```
+DhrLang can emit machine-readable diagnostics for tooling integration:
 
-Output conforms to `diagnostics.schema.json` (JSON Schema v7) with:
-- `schemaVersion`: Currently `1` (stable contract)
-- `timings`: Phase timings in milliseconds (lex, parse, type, exec, total)
-- `errors`: Array of error objects with file, line, column, type, message, hint, sourceLine
-- `warnings`: Array of warning objects with the same structure
-
-Exit codes with `--json`:
-- 0: success (or warnings only)
-- 1 (or 65): compile-time errors
-- 2: runtime/system errors
-
-### Building from Source
-Linux/macOS:
 ```bash
-git clone https://github.com/dhruv-15-03/DhrLang.git
-cd DhrLang
-./gradlew build
+java -jar DhrLang.jar --json --time program.dhr
 ```
 
-Windows (PowerShell):
-```powershell
-git clone https://github.com/dhruv-15-03/DhrLang.git
-Set-Location DhrLang
-./gradlew.bat build
-```
+Output conforms to [`diagnostics.schema.json`](diagnostics.schema.json) (JSON Schema v7):
 
-To build the production fat JAR:
-```powershell
-./gradlew.bat shadowJar
-# Output: build/libs/DhrLang-1.1.6.jar
-```
+- `schemaVersion`: currently `1` (stable contract)
+- `timings`: phase timings in ms (lex, parse, type, exec, total)
+- `errors` / `warnings`: arrays of objects with file, line, column, type, message, hint,
+  sourceLine
 
-### Running DhrLang Programs
-Linux/macOS:
-```bash
-# Using Gradle
-./gradlew run --args="path/to/your/file.dhr"
+## Language Syntax
 
-# Using Java directly (after build)
-java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+### Data types
 
-# Using the fat JAR
-java -jar build/libs/DhrLang-1.1.6.jar path/to/your/file.dhr
-```
+- `num` - integer numbers
+- `duo` - floating-point numbers
+- `sab` - strings
+- `kya` - boolean values
+- `ek` - characters
 
-Windows (PowerShell):
-```powershell
-# Using Gradle
-./gradlew.bat run --args="path/to/your/file.dhr"
+### Keywords
 
-# Using Java directly (after build)
-java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
-
-# Using the fat JAR
-java -jar build\libs\DhrLang-1.1.3.jar path\to\your\file.dhr
-```
-
-### CLI exit codes
-Exit codes:
-- 0: success
-- 1: compile-time error(s)
-- 2: runtime/system error
+- `class` - class declaration
+- `kaam` - function/method declaration
+- `if` / `else` - conditional statements
+- `while` / `for` / `do` - loop statements (with labeled `break`/`continue`)
+- `try` / `catch` / `finally` - exception handling
+- `return` - return statement
+- `new` - object instantiation
+- `this` / `super` - object references
+- `extends` / `implements` - inheritance
+- `static` - static members
+- `private` / `protected` / `public` - access modifiers
+- `as` - type cast
 
 ## Quick Start
 
 ### Hello World
+
 ```dhrlang
 class Main {
     static kaam main() {
@@ -184,14 +204,15 @@ class Main {
 }
 ```
 
-### Variables and Basic Operations
+### Variables and basic operations
+
 ```dhrlang
 class Example {
     static kaam main() {
         num x = 42;
         sab message = "Hello World";
         kya flag = true;
-        
+
         printLine("Number: " + x);
         printLine("Message: " + message);
         printLine("Flag: " + flag);
@@ -199,15 +220,46 @@ class Example {
 }
 ```
 
-### Object-Oriented Programming
+### String interpolation, hex literals, and `as` casts (v3.0.0)
+
+```dhrlang
+class Modern {
+    static kaam main() {
+        sab name = "DhrLang";
+        num mask = 0xFF;                 // hex literal
+        num packed = 0xF0 & 0x0F;        // bitwise AND
+        printLine("Hello ${name}! mask=${mask}");
+        sab text = packed as sab;        // type cast
+        printLine("packed as text: " + text);
+    }
+}
+```
+
+### Labeled break (v3.0.0)
+
+```dhrlang
+class LabeledBreak {
+    static kaam main() {
+        outer: for (num i = 0; i < 3; i++) {
+            for (num j = 0; j < 3; j++) {
+                if (i + j == 3) { break outer; }
+                printLine(i + "," + j);
+            }
+        }
+    }
+}
+```
+
+### Object-oriented programming
+
 ```dhrlang
 class Animal {
     protected sab name;
-    
+
     kaam init(sab name) {
         this.name = name;
     }
-    
+
     kaam makeSound() {
         printLine(this.name + " makes a sound");
     }
@@ -217,25 +269,24 @@ class Dog extends Animal {
     kaam init(sab name) {
         super.init(name);
     }
-    
+
     kaam makeSound() {
         printLine(this.name + " barks!");
     }
 }
 ```
 
-### Multi-dimensional Arrays
+### Multi-dimensional arrays
+
 ```dhrlang
 class NDArrayDemo {
-    static kaam main(){
+    static kaam main() {
         // Allocate a 2D array 3x4 of num
         num[][] m = new num[3][4];
-        // Set a few elements
         m[0][0] = 1; m[2][3] = 7;
-        // Nested iteration
-        for(num i=0; i<3; i++){
-            for(num j=0; j<4; j++){
-                print(" "+m[i][j]);
+        for (num i = 0; i < 3; i++) {
+            for (num j = 0; j < 4; j++) {
+                print(" " + m[i][j]);
             }
             printLine("");
         }
@@ -247,19 +298,21 @@ class NDArrayDemo {
     }
 }
 ```
-Notes:
-- Indexing is bounds-checked: negative or >= length raises an index error.
-- Allocation requires non-negative sizes; very large sizes are rejected.
-- Element defaults follow type defaults (numbersâ†’0, duoâ†’0.0, kyaâ†’false, referencesâ†’null).
 
-### Exception Handling (Basic)
+Notes:
+- Indexing is bounds-checked: negative or `>= length` raises an index error.
+- Allocation requires non-negative sizes; very large sizes are rejected.
+- Element defaults follow type defaults (num -> 0, duo -> 0.0, kya -> false,
+  references -> null).
+
+### Exception handling
+
 ```dhrlang
 class ErrorExample {
     static kaam main() {
         try {
-            // Risky operation
             throw "boom";
-        } catch(err) {
+        } catch (err) {
             printLine("Caught: " + err);
         } finally {
             printLine("Cleanup");
@@ -270,182 +323,196 @@ class ErrorExample {
 
 ## Language Features
 
-### Comprehensive Type System
-DhrLang features a strong static type system that catches errors at compile time:
+### Type system
+
 - Explicit static types for variable declarations (no local type inference yet)
-- Generics with type parameter substitution and clear diagnostics
+- Generics with type-parameter substitution and clear diagnostics
 - Array type safety, including multi-dimensional arrays
 - Simple method model (no overloading; duplicate names are rejected)
 
-### Core Built-ins
-- String utilities (selected: `charAt`, `replace`, `substring` â€“ scope documented in SPEC)
+### Core built-ins
+
+- String utilities (e.g. `charAt`, `replace`, `substring` - scope documented in SPEC)
 - Array operations (`arrayLength`, indexing, iteration patterns)
 - Output (`print`, `printLine`)
-- Basic math / operator semantics via core evaluator
+- Basic math / operator semantics via the core evaluator
 
 ### Diagnostics
-- Source-mapped error messages with codes & hints
+
+- Source-mapped error messages with codes and hints
 - Colorized terminal output (ANSI) for clarity
-- Categories: parser, typechecker, runtime (documented in `ERROR_CODES.md`)
+- Categories: parser, type checker, runtime (documented in
+  [ERROR_CODES.md](ERROR_CODES.md))
+
+## Backends and Roadmap
+
+The high-level roadmap lives in
+[design/bytecode-roadmap.md](design/bytecode-roadmap.md) (IR + bytecode path).
+
+- `--backend=ast` is the default and is useful for debugging.
+- `--backend=ir` and `--backend=bytecode` are intended to be semantically equivalent to
+  AST for the implemented language feature set.
+- Backend selection is authoritative: IR/bytecode runs do not fall back to AST.
+
+Implemented in IR/bytecode:
+- Literals, locals (load/store), arithmetic (`+ - * /`), comparisons
+  (`== != < <= > >=`)
+- Control flow: `if`/`else`, `while`, short-circuit `&&`/`||`, `break`/`continue`
+- `print`/`printLine`, `return` (with/without value), unary `-`/`!`, postfix `++`/`--`
+- Arrays (literal/new/load/store/`arrayLength`), static function calls
+- Static fields + instance fields
+- Exceptions: `throw`, `try`/`catch`/`finally` (including typed catches)
+- Bitwise operators, hex literals, string interpolation, `as` casts
 
 ## Development
 
-### Project Structure
+### Project structure
+
 ```
 src/
-â”œâ”€â”€ main/java/dhrlang/
-â”‚   â”œâ”€â”€ Main.java              # Main entry point
-â”‚   â”œâ”€â”€ lexer/                 # Lexical analysis
-â”‚   â”œâ”€â”€ parser/                # Syntax analysis
-â”‚   â”œâ”€â”€ ast/                   # Abstract Syntax Tree
-â”‚   â”œâ”€â”€ typechecker/           # Type checking
-â”‚   â”œâ”€â”€ interpreter/           # Code execution
-â”‚   â”œâ”€â”€ error/                 # Error reporting
-â”‚   â””â”€â”€ stdlib/                # Standard library
-â””â”€â”€ test/java/dhrlang/         # Test suite
+  main/java/dhrlang/
+    Main.java        # CLI entry point
+    lexer/           # Lexical analysis
+    parser/          # Syntax analysis
+    ast/             # Abstract syntax tree
+    typechecker/     # Type checking
+    types/           # Type model
+    eval/            # Core semantic evaluator
+    interpreter/     # AST interpretation
+    ir/              # Intermediate representation
+    bytecode/        # Bytecode compiler/VM
+    evm/             # EVM (smart-contract) compiler target
+    lsp/             # Language Server Protocol server
+    agent/           # Agent orchestration
+    pipeline/        # Compilation pipeline
+    debug/           # Debugger support
+    deploy/          # Deployment tooling
+    production/      # Production utilities
+    runtime/         # Runtime support
+    stdlib/          # Standard library
+    error/           # Error reporting
+    testing/         # Testing helpers
+    tools/           # Developer tools
+    util/            # Utilities
+    validation/      # Static validation/checks
+  test/java/dhrlang/ # Test suite
 ```
 
-### Running Tests
+### Running tests
+
 ```bash
-# Run all tests
-./gradlew test
-
-# Run with detailed output
-./gradlew test --info
-
-# Run specific test class
-./gradlew test --tests "dhrlang.DhrLangCompilerTest"
+./gradlew test                                      # all tests
+./gradlew test --info                               # detailed output
+./gradlew test --tests "dhrlang.DhrLangCompilerTest" # a specific class
 ```
 
-### Test Coverage & Mutation Testing
-Jacoco + PIT run in CI. Badges reflect instruction coverage & mutation kill ratio. Thresholds will ratchet upwards over time.
+### Test coverage & mutation testing
 
-### Performance Baselines
-Micro-benchmarks in `bench/` execute with `--time` capturing phase timings. `bench/baseline.json` stores calibrated totals; `benchCompare` fails the build if any benchmark regresses by >50% (tolerance may tighten). Bench runs are advisory (micro scale, not full perf suite).
+Jacoco + PIT run in CI. The badges reflect instruction coverage and mutation kill ratio.
+Thresholds ratchet upwards over time. Coverage spans lexical analysis, parsing, type
+checking, runtime execution, and error handling.
 
-The project includes coverage for:
-- Lexical analysis (tokenization)
-- Parsing (syntax analysis)
-- Type checking (semantic analysis)
-- Runtime execution (interpretation)
-- Error handling and reporting
+### Benchmarks
 
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Development Setup
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes and add tests
-4. Ensure all tests pass (`./gradlew test`)
-5. Commit your changes (`git commit -am 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-## Benchmarks
 Run micro benchmarks:
+
 ```bash
 ./gradlew bench
 ```
+
 Outputs `build/bench/bench-results.json` (JSON array). Each entry:
+
 ```jsonc
 {
     "file": "fib.dhr",
-    "timings": { "lexMs": <n>, "parseMs": <n>, "typeMs": <n>, "execMs": <n>, "totalMs": <n> },
+    "timings": { "lexMs": 0, "parseMs": 0, "typeMs": 0, "execMs": 0, "totalMs": 0 },
     "errorCount": 0,
     "warningCount": 0
 }
 ```
-Compare with baseline:
+
+Compare with the baseline (fails the build on >50% regression):
+
 ```bash
 ./gradlew benchCompare
 ```
-Add / update baseline after validating stability:
+
+Update the baseline after validating stability:
+
 ```bash
 cp build/bench/bench-results.json bench/baseline.json
 ```
-Bench harness is deterministic and multi-line JSON robust; future: add variance & dual-backend (AST vs IR) measurements.
+
+Bench runs are advisory (micro scale, not a full perf suite).
 
 ## Examples
 
-Check out the `input/` directory for comprehensive examples:
-- `test_basic_syntax.dhr` - Basic language features
-- `test_oop_features.dhr` - Object-oriented programming
-- `test_arrays.dhr` - Array operations
-- `test_exceptions.dhr` - Exception handling
-- `test_strings.dhr` - String manipulation
-- `test_static_methods.dhr` - Static methods and utilities
- - `advanced_features_test.dhr` - Demonstrates generics syntax and substitution (fully supported)
- - `complete_feature_demo.dhr` - Comprehensive showcase including generics, multi-dimensional arrays, and implicit field access
- - `advanced_edge_cases.dhr` - Stress tests for multi-dimensional arrays and generics
- - `duplicate_error_test.dhr`, `parser_error_test.dhr` - Intentional negative tests to verify diagnostics
+See the [`input/`](input/) directory for runnable examples:
 
-## Roadmap & Backend
-High-level roadmap lives in design/bytecode-roadmap.md (IR + bytecode path).
-
-Backends:
-- `--backend=ast` is the default and is useful for debugging.
-- `--backend=ir` and `--backend=bytecode` are intended to be semantically equivalent to AST for the implemented language feature set.
-- Backend selection is authoritative: IR/bytecode runs do not fall back to AST.
-
-Implemented in IR/Bytecode:
-- Literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=)
-- Control-flow: if/else, while, short-circuit `&&`/`||`, `break`/`continue`
-- print/printLine, return (with/without value), unary minus/! and postfix ++/-- on locals
-- Arrays (literal/new/load/store/`arrayLength`), static function calls
-- Static fields + instance fields
-- Exceptions: `throw`, `try/catch/finally` (including typed catches)
-
-Security note for running untrusted code:
-- Prefer `--backend=bytecode` and run with `-Ddhrlang.bytecode.untrusted=true` to enable strict verification and conservative resource limits.
+- `test_basic_syntax.dhr` - basic language features
+- `test_oop_features.dhr` - object-oriented programming
+- `test_arrays.dhr` - array operations
+- `test_exceptions.dhr` - exception handling
+- `test_strings.dhr` - string manipulation
+- `test_static_methods.dhr` - static methods and utilities
+- `advanced_features_test.dhr` - generics syntax and substitution
+- `complete_feature_demo.dhr` - generics, multi-dimensional arrays, implicit field access
+- `advanced_edge_cases.dhr` - stress tests for arrays and generics
+- `duplicate_error_test.dhr`, `parser_error_test.dhr` - intentional negative tests
 
 ## Feature Status
-- Generics: Fully implemented, including type parameter substitution and diagnostics
-- Multi-dimensional arrays: Fully supported in parser, typechecker, and evaluator
-- Implicit field access: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
-- Comprehensive diagnostics: Structured error codes, JSON output, and actionable hints
-- CI/Quality: Jacoco, PIT, CodeQL, Dependabot integrated
 
-## Diagnostics Quick Guide
-- Cannot access private/protected member â†’ ACCESS_MODIFIER
-- Wrong number of generic type arguments â†’ GENERIC_ARITY
-- Type doesnâ€™t match expected (incl. after generic substitution) â†’ TYPE_MISMATCH
-- Name not found (and static method context doesnâ€™t resolve instance fields) â†’ UNDECLARED_IDENTIFIER
-- Array index/size invalid or allocation too large â†’ BOUNDS_VIOLATION
-- Static field reads a later-declared static field (same class) â†’ STATIC_FORWARD_REFERENCE
-- Static field initializers form a dependency cycle â†’ STATIC_INIT_CYCLE
+- **Generics**: implemented, including type-parameter substitution and diagnostics
+- **Multi-dimensional arrays**: supported in parser, type checker, and evaluator
+- **Implicit field access**: unqualified variable/assignment inside instance methods
+  resolves to fields, with generic substitution and access checks
+- **Diagnostics**: structured error codes, JSON output, actionable hints
+- **CI/Quality**: Jacoco, PIT, CodeQL, Dependabot integrated
 
-## CI Notes
-- CodeQL: If GitHub Code Scanning is not enabled for your repository, the CodeQL job will run but its upload step is marked non-blocking and wonâ€™t fail CI. To enable full CodeQL results (including alerts in the Security tab), turn on Code Scanning in your repository settings.
+### Diagnostics quick guide
 
-## Planned Features
-- Package management system
-- Standard library expansion
-- IDE support and language server
-- Debugging capabilities
-- Module system
-- Concurrency support
-- Foreign function interface
-- JIT compilation
-- WebAssembly target
-- Advanced optimization
-- Cross-platform GUI framework
+| Situation | Code |
+|-----------|------|
+| Cannot access private/protected member | `ACCESS_MODIFIER` |
+| Wrong number of generic type arguments | `GENERIC_ARITY` |
+| Type does not match expected (incl. after substitution) | `TYPE_MISMATCH` |
+| Name not found (static context cannot resolve instance fields) | `UNDECLARED_IDENTIFIER` |
+| Array index/size invalid or allocation too large | `BOUNDS_VIOLATION` |
+| Static field reads a later-declared static field (same class) | `STATIC_FORWARD_REFERENCE` |
+| Static field initializers form a dependency cycle | `STATIC_INIT_CYCLE` |
+
+## Known Limitations
+
+DhrLang is an educational/exploratory language under active development. Current gaps:
+
+- **No module/import system**: all code lives in a single file
+- **No lambdas/closures**: functional patterns not yet supported
+- **No enum types**: language-level enums not yet available
+- **Single-threaded**: no concurrency primitives (async/await, coroutines)
+- **No REPL**: interactive mode not yet available (a debug REPL exists for EVM contracts)
+- **Generics**: syntactic and substitution support exist; runtime enforcement is limited
+- **EVM compiler**: production-ready for basic contracts; complex ABI types (nested
+  arrays, tuples) are partial
+
+See [NEXT_STEPS.md](NEXT_STEPS.md) for the detailed roadmap.
 
 ## VS Code Extension (Editor Integration)
 
-The official VS Code extension (version aligned with core releases) provides:
-* Syntax highlighting for current English-core tokens
-* Snippets (main class, loops, methods, printLine, try/catch skeleton)
-* Run / Compile commands with status bar JAR detection
-* Optional inline diagnostics (enable via settings)
+The official VS Code extension (version-aligned with core releases) provides:
 
-Manual install (until marketplace listing active):
-1. Download the latest `dhrlang-vscode-<version>.vsix` from the release assets
-2. In VS Code: Command Palette â†’ "Extensions: Install from VSIX..."
-3. Select the file; open a `.dhr` file to activate
+- Syntax highlighting for the current English-core tokens
+- Snippets (main class, loops, methods, `printLine`, `try`/`catch` skeleton)
+- Run / Compile commands with status-bar JAR detection
+- Optional inline diagnostics (enable via settings)
+
+Manual install (until a marketplace listing is active):
+
+1. Download `dhrlang-vscode-3.0.0.vsix` from the release assets.
+2. In VS Code: Command Palette -> "Extensions: Install from VSIX...".
+3. Select the file and open a `.dhr` file to activate.
 
 Settings preview (add to `settings.json` as needed):
+
 ```jsonc
 {
     "dhrlang.autoDetectJar": true,
@@ -455,81 +522,49 @@ Settings preview (add to `settings.json` as needed):
 }
 ```
 
-If auto detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
+If auto-detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
 
-## Command Line Interface
+## CI Notes
 
-After building, run programs via:
-```bash
-java -jar DhrLang-<version>.jar path/to/file.dhr
-```
+- **CodeQL**: if GitHub Code Scanning is not enabled for your repository, the CodeQL job
+  still runs but its upload step is non-blocking. Enable Code Scanning in repository
+  settings for full results (alerts in the Security tab).
 
-Flags:
-| Flag | Description |
-|------|-------------|
-| `--help`, `-h` | Print usage and exit |
-| `--version`, `-v` | Print version (manifest Implementation-Version) |
-| `--json` | Emit diagnostics JSON (always includes `schemaVersion` and `timings` when `--time`) |
-| `--time` | Show phase timings and embed timings in JSON |
-| `--no-color` | Disable ANSI color output |
-| `--backend=ast|ir|bytecode` | Select execution backend |
-| `--emit-ir` | Dump lowered IR (JSON) for debugging |
-| `--emit-bc` | Write compiled bytecode to build/bytecode/Main.dbc |
+## Planned Features
 
-Behavior:
-* If no file is specified, defaults to `input/sample.dhr`.
-* Exit codes: `0` success or warnings only, `1` compile error, `2` runtime/system error, `65` JSON diagnostics emission with errors.
-* Future flags under design: additional optimization/debug flags.
-* Diagnostics schema: see `diagnostics.schema.json` (always includes `schemaVersion` and timings object; timings may be zero if error short-circuits).
+Package management, standard-library expansion, a module system, concurrency support,
+a foreign function interface, JIT compilation, a WebAssembly target, advanced
+optimization, and broader IDE/language-server support.
 
+## Contributing
 
-DhrLang is designed for:
-- **Fast compilation**: Efficient lexing, parsing, and type checking
-- **Clear error reporting**: Detailed diagnostics with helpful hints
-- **Educational use**: Clean syntax suitable for teaching programming concepts
-- **Extensibility**: Modular architecture for easy feature addition
+Contributions are welcome. See the [Contributing Guidelines](CONTRIBUTING.md) for details.
 
-## Known Limitations
-
-DhrLang is an educational/exploratory language under active development. Current gaps include:
-
-- **No module/import system**: All code must live in a single file
-- **No lambda/closures**: Functional programming patterns not yet supported
-- **No enum types**: Language-level enums not yet available
-- **Single-threaded**: No concurrency primitives (async/await, coroutines)
-- **No REPL**: Interactive mode not yet available (debug REPL exists for EVM contracts)
-- **Generics**: Syntactic support exists but runtime enforcement is limited
-- **EVM compiler**: Production-ready for basic contracts; complex ABI types (nested arrays, tuples) are partial
-
-### Implemented in v3.0.0
-- `switch`/`case`, `for-each`, `do-while`, labeled `break`/`continue`
-- Bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`)
-- String interpolation (`"Hello ${name}!"`)
-- Hex literals (`0xFF`)
-- `as` type cast (`expr as num`, `expr as sab`)
-- SafeMath overflow/underflow protection (EVM)
-- Auto-generated access control (onlyOwner)
-- LSP server with diagnostics, completion, hover (`--lsp`)
-- EVM: LOG1-LOG4 events, STATICCALL, DELEGATECALL, CREATE2, peephole optimizer
-
-See [NEXT_STEPS.md](NEXT_STEPS.md) for the detailed roadmap.
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/amazing-feature`).
+3. Make your changes and add tests.
+4. Ensure all tests pass (`./gradlew test`).
+5. Commit your changes.
+6. Push to the branch and open a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for
+details.
 
 ## Acknowledgments
 
-- Inspired by modern language design principles
+- Inspired by modern language-design principles
 - Built with Java for cross-platform compatibility
-- Inspired by earlier efforts to make programming approachable with culturally resonant naming
+- Inspired by earlier efforts to make programming approachable with culturally resonant
+  naming
 - Community-driven development approach
 
 ## Contact
 
 - GitHub: [@dhruv-15-03](https://github.com/dhruv-15-03)
-- Project Link: [https://github.com/dhruv-15-03/DhrLang](https://github.com/dhruv-15-03/DhrLang)
+- Project: [https://github.com/dhruv-15-03/DhrLang](https://github.com/dhruv-15-03/DhrLang)
 
 ---
 
-*DhrLang - A compact, statically typed educational & exploratory language* ðŸš€
+*DhrLang - a compact, statically typed educational and exploratory language.*
