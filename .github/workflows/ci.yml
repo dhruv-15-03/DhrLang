@@ -3,7 +3,8 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
-    tags: [ 'v*' ]
+    # Match JVM version tags (v1.2.3) only — not vscode-v* / other prefixed tags
+    tags: [ 'v[0-9]*' ]
   pull_request:
     branches: [ main ]
 

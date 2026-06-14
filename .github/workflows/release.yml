@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Match JVM version tags (v1.2.3) only — not vscode-v* / other prefixed tags
+    tags: ['v[0-9]*']
   workflow_dispatch:
     inputs:
       version:

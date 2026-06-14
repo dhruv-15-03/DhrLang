@@ -51,35 +51,6 @@ jobs:
         working-directory: vscode-extension
         run: npm run compile
         
-      - name: Create extension icon
-        working-directory: vscode-extension
-        run: |
-          mkdir -p images
-          # Create a simple SVG icon for now
-          cat > images/icon.png << 'EOF'
-          <!-- This would be a proper PNG icon -->
-          EOF
-          
-          # Create simple file icons
-          cat > images/file-icon-light.svg << 'EOF'
-          <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <rect width="16" height="16" fill="#FF6B35" rx="2"/>
-            <text x="8" y="12" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">ध</text>
-          </svg>
-          EOF
-          
-          cat > images/file-icon-dark.svg << 'EOF'
-          <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <rect width="16" height="16" fill="#FF6B35" rx="2"/>
-            <text x="8" y="12" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">ध</text>
-          </svg>
-          EOF
-          
-          # Convert SVG to PNG for icon (placeholder - would need proper icon)
-          echo "Creating placeholder icon..."
-          # In real scenario, you'd have a proper icon file
-          touch images/icon.png
-          
       - name: Package extension
         working-directory: vscode-extension
         run: vsce package --no-yarn
