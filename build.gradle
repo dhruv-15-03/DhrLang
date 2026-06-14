@@ -46,8 +46,13 @@ dependencies {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+    // Pin the build to Java 17 via a toolchain so the project always compiles and
+    // tests against JDK 17 regardless of the contributor's default JDK on PATH.
+    // Combined with the foojay resolver in settings.gradle, Gradle auto-provisions
+    // JDK 17 when a matching install isn't found.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
     withJavadocJar()
     withSourcesJar()
 }
