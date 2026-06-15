@@ -142,8 +142,7 @@ public final class AbiGenerator {
             Map<String, Object> param = new LinkedHashMap<>();
             param.put("name", p.getName());
             param.put("type", solidityType(p.getType()));
-            // First parameter of an event is typically indexed
-            param.put("indexed", i == 0);
+            param.put("indexed", p.isIndexed());
             inputs.add(param);
         }
         entry.put("inputs", inputs);

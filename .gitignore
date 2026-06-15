@@ -98,3 +98,12 @@ Thumbs.db
 /build/distributions/
 /build/libs/
 /build/scripts/
+
+# Copilot Plan canvas (session-local working plan, not a repo doc)
+plan.md
+
+# Portable local JDKs (not committed)
+.jdks/
+
+# Deployment broadcast artifacts (per-chain, generated)
+deployments/

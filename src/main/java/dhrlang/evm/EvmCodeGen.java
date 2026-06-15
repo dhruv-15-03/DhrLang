@@ -1279,18 +1279,24 @@ public final class EvmCodeGen {
         byte[] topicHash = FunctionSelector.keccak256(
                 sig.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-        // Determine indexed parameters (first N params, up to 3 max for LOG4)
-        int maxIndexed = Math.min(args.size(), 3); // LOG4 supports at most 4 topics = 1 sig + 3 indexed
-        int indexedCount = maxIndexed;
-        // Separate indexed and non-indexed args
+        // Determine indexed parameters from the event declaration's `indexed`
+        // modifiers. When the declaration can't be resolved, no parameters are
+        // treated as indexed (the correct Solidity default).
         List<Integer> indexedIndices = new ArrayList<>();
         List<Integer> dataIndices = new ArrayList<>();
         for (int i = 0; i < args.size(); i++) {
-            if (i < indexedCount) {
+            boolean isIndexed = params != null && i < params.size()
+                    && params.get(i).isIndexed();
+            if (isIndexed) {
                 indexedIndices.add(i);
             } else {
                 dataIndices.add(i);
             }
+        }
+        if (indexedIndices.size() > 3) {
+            throw new IllegalStateException("Event '" + eventName + "' declares "
+                    + indexedIndices.size() + " indexed parameters; the EVM allows"
+                    + " at most 3 (LOG4 = 1 signature topic + 3 indexed).");
         }
 
         // Store non-indexed args in memory as 32-byte words
@@ -1313,7 +1319,7 @@ public final class EvmCodeGen {
         buf.pushInt(0);
 
         // Emit appropriate LOG opcode: LOG1 (sig only) .. LOG4 (sig + 3 indexed)
-        int totalTopics = 1 + indexedCount; // sig topic + indexed params
+        int totalTopics = 1 + indexedIndices.size(); // sig topic + indexed params
         switch (totalTopics) {
             case 1 -> buf.emit(EvmOpcode.LOG1);
             case 2 -> buf.emit(EvmOpcode.LOG2);

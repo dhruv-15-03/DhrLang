@@ -46,6 +46,15 @@ class EvmCodeGenPhase2Test {
         return artifacts.get(0);
     }
 
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0, idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Basic Contract Compilation
     // ═══════════════════════════════════════════════════════════════
@@ -348,6 +357,42 @@ class EvmCodeGenPhase2Test {
                 """);
             String abi = artifact.getAbiJson();
             assertTrue(abi.contains("indexed"), "First event param should be indexed");
+        }
+
+        @Test
+        @DisplayName("Explicit indexed event params are honored in ABI")
+        void indexedEventParamsHonored() {
+            var artifact = compileOne("""
+                @contract
+                class Token {
+                    @storage num supply;
+
+                    @event
+                    kaam Transfer(indexed Address from, indexed Address to, num amount) {}
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertEquals(2, countOccurrences(abi, "\"indexed\":true"),
+                    "from and to are declared indexed; ABI: " + abi);
+            assertEquals(1, countOccurrences(abi, "\"indexed\":false"),
+                    "amount is not indexed; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("Event params default to non-indexed")
+        void eventParamsDefaultNonIndexed() {
+            var artifact = compileOne("""
+                @contract
+                class Token {
+                    @storage num supply;
+
+                    @event
+                    kaam Ping(num a, num b) {}
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertEquals(0, countOccurrences(abi, "\"indexed\":true"),
+                    "No params declared indexed; ABI: " + abi);
         }
     }
 

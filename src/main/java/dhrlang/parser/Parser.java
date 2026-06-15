@@ -298,10 +298,22 @@ public class Parser {
     }
 
     private VarDecl parseParameter() {
+        boolean indexed = false;
+        // Contextual 'indexed' modifier for event parameters (e.g. `indexed num from`).
+        // Only treated as a modifier when a type+name still follow, so an ordinary
+        // parameter whose type happens to be named "indexed" is unaffected.
+        if (check(TokenType.IDENTIFIER) && "indexed".equals(peek().getLexeme())
+                && current + 1 < tokens.size()
+                && tokens.get(current + 1).getType() != TokenType.COMMA
+                && tokens.get(current + 1).getType() != TokenType.RPAREN) {
+            advance();
+            indexed = true;
+        }
         Token type = consumeType("Expected type in parameter declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected parameter name.");
         VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), null);
         varDecl.setSourceLocation(type.getLocation());
+        varDecl.setIndexed(indexed);
         return varDecl;
     }
 
