@@ -859,8 +859,13 @@ public final class EvmCodeGen {
                 emitExpression(expr.getArguments().get(0));
                 String okLabel = buf.newLabel();
                 buf.jumpIf(okLabel);
-                // Revert with message if second arg is a string literal
+                // Revert with a custom error, a string message, or plain revert
                 if (expr.getArguments().size() >= 2
+                        && expr.getArguments().get(1) instanceof CallExpr errCall
+                        && errCall.getCallee() instanceof VariableExpr errVar
+                        && isErrorFunction(errVar.getName().getLexeme())) {
+                    emitCustomErrorRevert(errVar.getName().getLexeme(), errCall.getArguments());
+                } else if (expr.getArguments().size() >= 2
                         && expr.getArguments().get(1) instanceof LiteralExpr lit
                         && lit.getValue() instanceof String msg) {
                     buf.revertWithMessage(msg);
@@ -870,6 +875,26 @@ public final class EvmCodeGen {
                 buf.placeLabel(okLabel);
             }
             buf.pushInt(1);  // require returns a truthy value for expression context
+            return;
+        }
+
+        // Pattern: revert(), revert("message"), or revert(CustomError(args...))
+        if (callee instanceof VariableExpr
+                && "revert".equals(((VariableExpr) callee).getName().getLexeme())) {
+            List<Expression> revertArgs = expr.getArguments();
+            if (revertArgs.isEmpty()) {
+                buf.revert0();
+            } else if (revertArgs.get(0) instanceof CallExpr errCall
+                    && errCall.getCallee() instanceof VariableExpr errVar
+                    && isErrorFunction(errVar.getName().getLexeme())) {
+                emitCustomErrorRevert(errVar.getName().getLexeme(), errCall.getArguments());
+            } else if (revertArgs.get(0) instanceof LiteralExpr lit
+                    && lit.getValue() instanceof String msg) {
+                buf.revertWithMessage(msg);
+            } else {
+                buf.revert0();
+            }
+            buf.pushInt(1);  // expression-context balance (revert never returns)
             return;
         }
 
@@ -1341,6 +1366,65 @@ public final class EvmCodeGen {
         return null;
     }
 
+    private FunctionDecl findErrorFunction(String name) {
+        for (FunctionDecl fn : contract.getFunctions()) {
+            if (fn.getName().equals(name)
+                    && fn.hasContractAnnotation(ContractAnnotation.ERROR)) {
+                return fn;
+            }
+        }
+        return null;
+    }
+
+    private boolean isErrorFunction(String name) {
+        return findErrorFunction(name) != null;
+    }
+
+    /**
+     * Emit a revert with a custom error: {@code revert ErrName(args...)}.
+     *
+     * <p>ABI encoding mirrors Solidity custom errors — a 4-byte selector
+     * (left-aligned in the first word) followed by each argument ABI-encoded as
+     * a 32-byte word, then {@code REVERT(0, 4 + 32*nargs)}. Only value-type
+     * arguments (uint256/address/bool) are supported in this release, matching
+     * the indexed-event-parameter constraint.</p>
+     */
+    private void emitCustomErrorRevert(String errorName, List<Expression> args) {
+        FunctionDecl errorDecl = findErrorFunction(errorName);
+
+        // Compute the 4-byte selector from the declared error signature using
+        // the canonical ABI type mapping, so the on-chain selector matches the
+        // error entry in the generated ABI (off-chain decoders rely on this).
+        byte[] selector;
+        if (errorDecl != null) {
+            selector = AbiGenerator.functionSelector(errorDecl);
+        } else {
+            StringBuilder sig = new StringBuilder(errorName).append('(');
+            for (int i = 0; i < args.size(); i++) {
+                if (i > 0) sig.append(',');
+                sig.append(toSolidityType(null, i));
+            }
+            sig.append(')');
+            selector = FunctionSelector.compute(sig.toString());
+        }
+
+        // Store the selector left-aligned in the first memory word at offset 0.
+        buf.push32(new java.math.BigInteger(1, selector).shiftLeft(224));
+        buf.mstoreAt(0);
+
+        // Store each argument as a 32-byte word starting after the selector.
+        for (int i = 0; i < args.size(); i++) {
+            emitExpression(args.get(i));
+            buf.mstoreAt(4 + i * 32);
+        }
+
+        // REVERT(offset=0, size=4 + 32*nargs)
+        int size = 4 + args.size() * 32;
+        buf.pushInt(size);
+        buf.pushInt(0);
+        buf.emit(EvmOpcode.REVERT);
+    }
+
     private String toSolidityType(List<VarDecl> params, int index) {
         if (params == null || index >= params.size()) return "uint256";
         String type = params.get(index).getType();
@@ -1548,6 +1632,7 @@ public final class EvmCodeGen {
         for (FunctionDecl fn : cls.getFunctions()) {
             if (fn.isContractConstructor()
                     || fn.hasContractAnnotation(ContractAnnotation.EVENT)
+                    || fn.hasContractAnnotation(ContractAnnotation.ERROR)
                     || "fallback".equals(fn.getName())
                     || "receive".equals(fn.getName())) {
                 continue;

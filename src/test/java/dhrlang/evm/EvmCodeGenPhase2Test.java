@@ -397,6 +397,133 @@ class EvmCodeGenPhase2Test {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    //  Custom Errors + revert
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Custom Errors")
+    class CustomErrors {
+
+        private static String toHex(byte[] bytes) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) sb.append(String.format("%02x", b));
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@error declaration produces an ABI error entry")
+        void customErrorInAbi() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @storage num balance;
+
+                    @error
+                    kaam InsufficientBalance(num available, num required) {}
+
+                    kaam withdraw(num amount) {
+                        revert(InsufficientBalance(amount, amount));
+                    }
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertTrue(abi.contains("\"type\":\"error\""),
+                    "ABI should contain an error entry; ABI: " + abi);
+            assertTrue(abi.contains("InsufficientBalance"),
+                    "ABI should contain the error name; ABI: " + abi);
+            // Error inputs are never indexed (that flag is event-only).
+            assertEquals(0, countOccurrences(abi, "\"type\":\"error\",\"name\":\"InsufficientBalance\",\"inputs\":[{\"name\":\"available\",\"type\":\"uint256\",\"indexed\""),
+                    "Error inputs must not carry an indexed flag; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("@error declaration is not emitted as a callable function")
+        void customErrorNotDispatchable() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam Boom(num code) {}
+
+                    kaam ping() {
+                        revert(Boom(1));
+                    }
+                }
+                """);
+            // The error selector must not appear as a dispatchable function in the ABI.
+            String abi = artifact.getAbiJson();
+            assertEquals(0, countOccurrences(abi, "\"type\":\"function\",\"name\":\"Boom\""),
+                    "Error must not be a dispatchable function; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("revert with custom error encodes its 4-byte selector")
+        void revertCustomErrorEmitsSelector() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam InsufficientBalance(num available, num required) {}
+
+                    kaam withdraw(num amount) {
+                        revert(InsufficientBalance(amount, amount));
+                    }
+                }
+                """);
+            byte[] selector = FunctionSelector.compute("InsufficientBalance(uint256,uint256)");
+            String selHex = toHex(selector);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(selHex),
+                    "Runtime bytecode should embed the custom-error selector " + selHex);
+            assertTrue(code.contains("fd"), "Runtime bytecode should contain a REVERT (0xfd)");
+        }
+
+        @Test
+        @DisplayName("revert(\"message\") and bare revert() compile to REVERT")
+        void revertStringAndBare() {
+            var artifact = compileOne("""
+                @contract
+                class Guard {
+                    kaam checkOne(num x) {
+                        revert("nope");
+                    }
+
+                    kaam checkTwo() {
+                        revert();
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains("fd"), "Runtime bytecode should contain a REVERT (0xfd)");
+            // Error(string) selector 0x08c379a0 from revert("nope").
+            assertTrue(code.contains("08c379a0"),
+                    "revert(\"message\") should encode the Error(string) selector");
+        }
+
+        @Test
+        @DisplayName("require(cond, CustomError(args)) reverts with the custom error selector")
+        void requireWithCustomError() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam Unauthorized(Address who) {}
+
+                    kaam guard(Address caller) {
+                        require(1 == 1, Unauthorized(caller));
+                    }
+                }
+                """);
+            byte[] selector = FunctionSelector.compute(
+                    "Unauthorized(" + AbiGenerator.solidityType("Address") + ")");
+            String selHex = toHex(selector);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(selHex),
+                    "require(..., CustomError) should embed the error selector " + selHex);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  Control Flow in Bytecode
     // ═══════════════════════════════════════════════════════════════
 

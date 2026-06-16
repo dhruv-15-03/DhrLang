@@ -73,6 +73,10 @@ public final class AbiGenerator {
                 if (seenNames.add("@event:" + fn.getName())) {
                     abi.add(buildEventEntry(fn));
                 }
+            } else if (fn.hasContractAnnotation(ContractAnnotation.ERROR)) {
+                if (seenNames.add("@error:" + fn.getName())) {
+                    abi.add(buildErrorEntry(fn));
+                }
             } else {
                 if (seenNames.add(fn.getName())) {
                     abi.add(buildFunctionEntry(fn));
@@ -147,6 +151,14 @@ public final class AbiGenerator {
         }
         entry.put("inputs", inputs);
         entry.put("anonymous", false);
+        return entry;
+    }
+
+    private static Map<String, Object> buildErrorEntry(FunctionDecl fn) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("type", "error");
+        entry.put("name", fn.getName());
+        entry.put("inputs", buildInputs(fn.getParameters()));
         return entry;
     }
 

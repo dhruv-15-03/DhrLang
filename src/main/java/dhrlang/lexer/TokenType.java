@@ -47,6 +47,7 @@ public enum TokenType {
     NONREENTRANT,   // @nonreentrant - Reentrancy guard
     CONSTRUCTOR,    // @constructor - Contract constructor
     EVENT,          // @event - Event emission
+    ERROR,          // @error - Custom error declaration
     EMIT,           // emit - Emit an event
     IMMUTABLE,      // @immutable - Set once in constructor
     INVARIANT,      // @invariant - Formal verification invariant

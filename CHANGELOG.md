@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Added
+- **Custom errors + `revert`** (EVM backend): declare gas-efficient typed errors with
+  `@error kaam InsufficientBalance(num available, num required) {}` and raise them with
+  `revert(InsufficientBalance(a, b))`. Reverts encode the Solidity-compatible 4-byte error
+  selector plus ABI-encoded arguments, and the error is emitted as a `"type":"error"` entry
+  in the contract ABI. `revert("message")` (Error(string)) and bare `revert()` are also
+  supported, as is `require(cond, CustomError(args))`.
+- **Explicit `indexed` event parameters** (EVM backend): event params are indexed only when
+  declared `indexed` (e.g. `Transfer(indexed Address from, indexed Address to, num amount)`),
+  driving both the ABI `indexed` flag and `LOG` topics from the same declaration. More than 3
+  indexed params is rejected (EVM `LOG4` limit). Events without `indexed` now correctly default
+  to zero indexed params.
+
 ### Fixed
 - **Numeric `as` casts**: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
   numeric operands, not just strings. `duo as num` truncates toward zero, `num as duo` widens.

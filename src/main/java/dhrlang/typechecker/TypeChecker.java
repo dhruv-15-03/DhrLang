@@ -588,8 +588,9 @@ public class TypeChecker {
 
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
-            // Skip unused-param warnings for @event functions (they're declarations, not implementations)
-            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+            // Skip unused-param warnings for @event/@error functions (they're declarations, not implementations)
+            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR);
             if(errorReporter!=null && !isEvent){
                 for (VarDecl param : function.getParameters()) {
                     Boolean used = local.getLocalUsageMap().get(param.getName());
@@ -608,9 +609,10 @@ public class TypeChecker {
     private void checkBlock(Block block, TypeEnvironment env) {
         TypeEnvironment blockEnv = new TypeEnvironment(env);
         boolean unreachable = false;
-        // Empty block (no statements) warning — skip for @event functions (they're declarations)
+        // Empty block (no statements) warning — skip for @event/@error functions (they're declarations)
         boolean isEventBody = currentFunction != null
-                && currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+                && (currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR));
         if(block.getStatements().isEmpty() && errorReporter!=null && !isEventBody){
             errorReporter.warning(block.getSourceLocation(), "Empty block.", "Remove or add statements", ErrorCode.EMPTY_BLOCK);
         }
@@ -1730,6 +1732,16 @@ public class TypeChecker {
             funcName = ((VariableExpr) callee).getName().getLexeme();
             if (isNativeFunction(funcName)) {
                 return checkNativeFunction(funcName, call.getArguments(), call, env);
+            }
+            // Contract built-in: `revert(...)` lowers to an EVM REVERT — a custom
+            // error, a string message, or a bare revert. Validate argument
+            // expressions (including any inner @error call) without requiring a
+            // user-declared `revert` function.
+            if ("revert".equals(funcName)) {
+                for (Expression arg : call.getArguments()) {
+                    checkExpr(arg, env);
+                }
+                return "kaam";
             }
             try {
                 signature = env.getFunction(funcName);

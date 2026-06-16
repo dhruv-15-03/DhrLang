@@ -56,24 +56,27 @@ class MyToken {
 
     @nonreentrant
     kaam transfer(Address to, num amount) {
-        if (amount <= 0) {
-            throw "Amount must be positive";
-        }
+        require(amount > 0, InvalidAmount(amount));
         totalSupply = totalSupply;
     }
 
     @event
-    kaam Transfer(Address from, Address to, num amount) {}
+    kaam Transfer(indexed Address from, indexed Address to, num amount) {}
+
+    @error
+    kaam InvalidAmount(num amount) {}
 }
 ```
 
 Key annotations:
-- `@contract` â€” marks the class as a smart contract
-- `@storage` â€” fields persisted on-chain (EVM storage slots)
-- `@constructor` â€” runs once at deployment
-- `@view` â€” read-only (no gas for external calls)
-- `@nonreentrant` â€” compiler enforces reentrancy protection
-- `@event` â€” emits EVM log events
+- `@contract` — marks the class as a smart contract
+- `@storage` — fields persisted on-chain (EVM storage slots)
+- `@constructor` — runs once at deployment
+- `@view` — read-only (no gas for external calls)
+- `@nonreentrant` — compiler enforces reentrancy protection
+- `@event` — emits EVM log events; mark params `indexed` to make them filterable topics
+- `@error` — declares a gas-efficient custom error; raise it with `revert(ErrName(args))`
+  or `require(cond, ErrName(args))`
 
 ---
 

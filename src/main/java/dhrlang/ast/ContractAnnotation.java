@@ -80,6 +80,13 @@ public enum ContractAnnotation {
      * Events are logged on-chain for external consumption.
      */
     EVENT(TokenType.EVENT, "@event"),
+
+    /**
+     * Marks a function as a custom error declaration.
+     * Custom errors are reverted with {@code revert ErrName(args)} and emit a
+     * 4-byte selector plus ABI-encoded arguments (gas-efficient reverts).
+     */
+    ERROR(TokenType.ERROR, "@error"),
     
     /**
      * Marks a storage variable as immutable.
@@ -151,7 +158,7 @@ public enum ContractAnnotation {
     public boolean appliesToMethod() {
         return this == VIEW || this == PURE || this == PAYABLE || 
                this == NONREENTRANT || this == CONSTRUCTOR || 
-               this == EVENT || this == INVARIANT ||
+               this == EVENT || this == ERROR || this == INVARIANT ||
                this == TEST || this == BEFORE_EACH || this == AFTER_EACH;
     }
     
