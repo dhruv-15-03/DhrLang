@@ -181,6 +181,15 @@ public class ContractValidator {
                     method.getSourceLocation());
         }
         
+        // @checked and @unchecked are mutually exclusive
+        if (annotations.contains(ContractAnnotation.CHECKED)
+                && annotations.contains(ContractAnnotation.UNCHECKED)) {
+            addError("DHR-E515",
+                    "Method '" + method.getName() + "' cannot be both @checked and @unchecked",
+                    "@checked reverts on overflow, @unchecked wraps. Choose one.",
+                    method.getSourceLocation());
+        }
+        
         // @constructor only in @contract
         if (method.isContractConstructor() && !isContract) {
             addError("DHR-E513",

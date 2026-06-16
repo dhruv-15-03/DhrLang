@@ -48,6 +48,8 @@ public enum TokenType {
     CONSTRUCTOR,    // @constructor - Contract constructor
     EVENT,          // @event - Event emission
     ERROR,          // @error - Custom error declaration
+    CHECKED,        // @checked - Opt-in checked (overflow-reverting) arithmetic
+    UNCHECKED,      // @unchecked - Opt-out to wrapping arithmetic
     EMIT,           // emit - Emit an event
     IMMUTABLE,      // @immutable - Set once in constructor
     INVARIANT,      // @invariant - Formal verification invariant

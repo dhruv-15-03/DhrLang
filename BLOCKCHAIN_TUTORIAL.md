@@ -77,6 +77,30 @@ Key annotations:
 - `@event` — emits EVM log events; mark params `indexed` to make them filterable topics
 - `@error` — declares a gas-efficient custom error; raise it with `revert(ErrName(args))`
   or `require(cond, ErrName(args))`
+- `@checked` / `@unchecked` — select overflow behaviour for `+`, `-`, `*` on `num` in a method.
+  `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2²⁵⁶. (Alpha default is
+  wrapping; this becomes checked-by-default in the v4.0.0 beta.)
+
+### Arithmetic safety example
+
+```dhrlang
+@contract
+class Vault {
+    @storage num balance;
+
+    // Reverts with "arithmetic overflow" / "arithmetic underflow" instead of wrapping.
+    @checked
+    kaam deposit(num amount) {
+        balance = balance + amount;
+    }
+
+    // Opt out for hot paths where wrapping is intentional.
+    @unchecked
+    kaam wrappingAdd(num a, num b) {
+        balance = a + b;
+    }
+}
+```
 
 ---
 

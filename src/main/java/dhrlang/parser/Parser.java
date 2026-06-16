@@ -1447,7 +1447,8 @@ public class Parser {
         // Parse contract annotations first
         while (match(TokenType.CONTRACT, TokenType.STORAGE, TokenType.VIEW, TokenType.PURE, 
                      TokenType.PAYABLE, TokenType.NONREENTRANT, TokenType.CONSTRUCTOR,
-                     TokenType.EVENT, TokenType.ERROR, TokenType.IMMUTABLE, TokenType.INVARIANT)) {
+                     TokenType.EVENT, TokenType.ERROR, TokenType.CHECKED, TokenType.UNCHECKED,
+                     TokenType.IMMUTABLE, TokenType.INVARIANT)) {
             TokenType tokenType = previous().getType();
             ContractAnnotation annotation = ContractAnnotation.fromTokenType(tokenType);
             if (contractAnnotations.contains(annotation)) {

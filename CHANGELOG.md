@@ -7,6 +7,12 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ## [Unreleased]
 
 ### Added
+- **Checked / wrapping arithmetic modes** (EVM backend): per-function `@checked` and
+  `@unchecked` annotations select whether `+`, `-`, `*` on `num` revert on overflow/underflow
+  (`"arithmetic overflow"` / `"arithmetic underflow"`) or wrap modulo 2²⁵⁶. The compiler default
+  is wrapping in this alpha and flips to checked-by-default in beta via a single constant
+  (`CHECKED_ARITHMETIC_BY_DEFAULT`). Declaring both annotations on one method is rejected
+  (`DHR-E515`).
 - **Custom errors + `revert`** (EVM backend): declare gas-efficient typed errors with
   `@error kaam InsufficientBalance(num available, num required) {}` and raise them with
   `revert(InsufficientBalance(a, b))`. Reverts encode the Solidity-compatible 4-byte error
@@ -20,6 +26,15 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
   to zero indexed params.
 
 ### Fixed
+- **EVM backend arithmetic correctness**: `-`, `/`, `%` and the comparison operators
+  (`<`, `>`, `<=`, `>=`) now emit the correct **unsigned** opcodes with the correct operand
+  order (`num` maps to `uint256`). Previously they used signed opcodes and/or reversed operands
+  (e.g. computing `b - a`). The checked multiply now uses the standard SafeMath identity
+  (`a != 0 && (a*b)/a == b`).
+- **EVM peephole optimizer no longer corrupts `PUSH` data**: the optimizer walked one byte at a
+  time and could misread a `PUSH`'s immediate operand as opcodes, spuriously eliminating bytes
+  whenever the data matched a `PUSH+POP` / `DUP1+POP` pattern (e.g. inside embedded revert
+  strings). It now copies each surviving `PUSH` together with its full immediate operand.
 - **Numeric `as` casts**: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
   numeric operands, not just strings. `duo as num` truncates toward zero, `num as duo` widens.
   Previously these failed at type-check, contradicting the v3.0.0 `as`-cast feature. Truncating

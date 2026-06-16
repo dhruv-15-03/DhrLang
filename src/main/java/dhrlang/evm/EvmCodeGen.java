@@ -88,6 +88,20 @@ public final class EvmCodeGen {
     // Reentrancy guard state — true when inside a @nonreentrant function
     private boolean insideNonReentrant = false;
 
+    /**
+     * Compiler-wide default for {@code num}/{@code duo} arithmetic.
+     * {@code false} = wrapping (modulo 2^256) by default; {@code true} =
+     * checked (revert on overflow/underflow) by default. v4.0.0-alpha ships
+     * wrapping-by-default; flip this single constant to make checked the
+     * default in a later phase. Per-method {@code @checked}/{@code @unchecked}
+     * always override this.
+     */
+    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = false;
+
+    // True while emitting a function body whose num/duo +,-,* must revert on
+    // overflow/underflow. Resolved per function from annotations + the default.
+    private boolean checkedArithmetic = CHECKED_ARITHMETIC_BY_DEFAULT;
+
     // ── Constructor ──────────────────────────────────────────────────────
 
     public EvmCodeGen(ClassDecl contract, ContractLayout layout) {
@@ -345,9 +359,31 @@ public final class EvmCodeGen {
     }
 
     private void emitFunctionBody(FunctionDecl fn) {
-        if (fn.getBody() != null) {
-            emitBlock(fn.getBody());
+        boolean prevChecked = checkedArithmetic;
+        checkedArithmetic = resolveCheckedArithmetic(fn);
+        try {
+            if (fn.getBody() != null) {
+                emitBlock(fn.getBody());
+            }
+        } finally {
+            checkedArithmetic = prevChecked;
         }
+    }
+
+    /**
+     * Decide whether {@code num}/{@code duo} {@code + - *} inside this function
+     * should revert on overflow/underflow (checked) or wrap (unchecked).
+     * {@code @checked}/{@code @unchecked} on the method override the compiler
+     * default; if both are absent the compiler default applies.
+     */
+    private boolean resolveCheckedArithmetic(FunctionDecl fn) {
+        if (fn.hasContractAnnotation(ContractAnnotation.UNCHECKED)) {
+            return false;
+        }
+        if (fn.hasContractAnnotation(ContractAnnotation.CHECKED)) {
+            return true;
+        }
+        return CHECKED_ARITHMETIC_BY_DEFAULT;
     }
 
     // ── Statement emission ───────────────────────────────────────────────
@@ -692,93 +728,74 @@ public final class EvmCodeGen {
 
         switch (op) {
             case PLUS:
-                // SafeMath: checked add — revert on overflow
-                // Stack: [a, b] → DUP2, ADD, DUP1, SWAP2, GT → if a > result, overflow
-                buf.emit(EvmOpcode.DUP2);     // [a, b, a]
-                buf.emit(EvmOpcode.ADD);       // [a, a+b]
-                buf.emit(EvmOpcode.DUP1);      // [a, a+b, a+b]
-                buf.emit(EvmOpcode.SWAP2);     // [a+b, a+b, a]
-                buf.emit(EvmOpcode.SGT);       // [a+b, a > result?]  (signed)
-                {
+                if (checkedArithmetic) {
+                    // Checked add (unsigned): c = a + b; revert if c < a (overflow).
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+                    buf.emit(EvmOpcode.ADD);      // [a, c]   (c = a+b)
+                    buf.emit(EvmOpcode.DUP1);     // [a, c, c]
+                    buf.emit(EvmOpcode.SWAP2);    // [c, c, a]
+                    buf.emit(EvmOpcode.GT);       // [c, (a > c)?]  overflow iff a > c
                     String okAdd = buf.newLabel();
                     buf.emit(EvmOpcode.ISZERO);
                     buf.jumpIf(okAdd);
                     buf.revertWithMessage("arithmetic overflow");
-                    buf.placeLabel(okAdd);
+                    buf.placeLabel(okAdd);        // [c]
+                } else {
+                    buf.emit(EvmOpcode.ADD);      // wrapping add (mod 2^256)
                 }
-                // result (a+b) on stack
                 break;
             case MINUS:
-                // SafeMath: checked sub — revert on underflow
-                // Stack: [a, b] → DUP2, DUP2, SLT → if a < b (signed), underflow
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a]
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a, b]
-                buf.emit(EvmOpcode.SGT);       // [a, b, b > a?]  (signed: underflow if b > a)
-                {
+                if (checkedArithmetic) {
+                    // Checked sub (unsigned): revert if b > a (underflow).
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a, b]
+                    buf.emit(EvmOpcode.GT);       // [a, b, (b > a)?]  underflow iff b > a
                     String okSub = buf.newLabel();
                     buf.emit(EvmOpcode.ISZERO);
                     buf.jumpIf(okSub);
                     buf.revertWithMessage("arithmetic underflow");
-                    buf.placeLabel(okSub);
+                    buf.placeLabel(okSub);        // [a, b]
                 }
-                buf.emit(EvmOpcode.SUB);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.SUB);          // a - b
                 break;
             case STAR:
-                // SafeMath: checked mul — revert on overflow
-                // Stack: [a, b] → DUP2, DUP2, MUL, DUP1 → if a != 0 && result/a != b → overflow
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a]
-                buf.emit(EvmOpcode.DUP1);      // [a, b, a, a]
-                buf.emit(EvmOpcode.ISZERO);    // [a, b, a, a==0?]
-                {
-                    String mulOk = buf.newLabel();
-                    String doMul = buf.newLabel();
-                    buf.jumpIf(doMul);         // if a==0, skip check (0*anything=0)
-                    // a != 0: compute a*b, check result/a == b
-                    buf.emit(EvmOpcode.DUP2);  // [a, b, a, b]
-                    buf.emit(EvmOpcode.MUL);   // [a, b, a*b]
-                    buf.emit(EvmOpcode.DUP1);  // [a, b, a*b, a*b]
-                    buf.emit(EvmOpcode.SWAP2); // [a, b, a*b, a*b] → [a, a*b, a*b, b]
-                    buf.emit(EvmOpcode.SWAP1); // [a, a*b, b, a*b]
-                    buf.emit(EvmOpcode.SWAP3); // [a*b, a*b, b, a]
-                    buf.emit(EvmOpcode.SWAP2); // [a*b, a, b, a*b]
-                    buf.emit(EvmOpcode.SWAP1); // [a*b, a, a*b, b]
-                    buf.emit(EvmOpcode.POP);   // [a*b, a, a*b]
-                    buf.emit(EvmOpcode.SWAP1); // [a*b, a*b, a]
-                    buf.emit(EvmOpcode.SDIV);  // [a*b, (a*b)/a]
-                    buf.emit(EvmOpcode.SWAP1); // [(a*b)/a, a*b] → wait, this is getting complex
-                    // Simpler approach: just do the mul, leave result
-                    // For now, just emit MUL (Solidity 0.8+ uses compiler-level checks)
-                    buf.emit(EvmOpcode.POP);
-                    buf.emit(EvmOpcode.POP);
-                    buf.jumpTo(mulOk);
-                    buf.placeLabel(doMul);
-                    // a was 0 — result is 0
-                    buf.emit(EvmOpcode.POP);   // pop a
-                    buf.emit(EvmOpcode.POP);   // pop b
-                    buf.pushInt(0);
-                    buf.jumpTo(mulOk);
-                    buf.placeLabel(mulOk);
+                if (checkedArithmetic) {
+                    emitCheckedMul();             // [a*b] with overflow revert
+                } else {
+                    buf.emit(EvmOpcode.MUL);      // wrapping mul (mod 2^256)
                 }
-                // fallback: just do the multiply for non-zero case
-                // Actually, the above logic is too complex for direct stack manipulation.
-                // Use the simpler pattern: emit MUL then verify.
                 break;
-            case SLASH:    buf.emit(EvmOpcode.SDIV);    break;
-            case MOD:      buf.emit(EvmOpcode.SMOD);    break;
+            case SLASH:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.DIV);          // a / b (unsigned)
+                break;
+            case MOD:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.MOD);          // a % b (unsigned)
+                break;
             case EQUALITY: buf.emit(EvmOpcode.EQ);      break;
             case NEQ:
                 buf.emit(EvmOpcode.EQ);
                 buf.emit(EvmOpcode.ISZERO);
                 break;
-            case LESS:     buf.emit(EvmOpcode.SLT);     break;
-            case GREATER:  buf.emit(EvmOpcode.SGT);     break;
+            case LESS:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.LT);           // a < b (unsigned)
+                break;
+            case GREATER:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.GT);           // a > b (unsigned)
+                break;
             case LEQ:
-                buf.emit(EvmOpcode.SGT);
-                buf.emit(EvmOpcode.ISZERO);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.GT);           // a > b
+                buf.emit(EvmOpcode.ISZERO);       // a <= b
                 break;
             case GEQ:
-                buf.emit(EvmOpcode.SLT);
-                buf.emit(EvmOpcode.ISZERO);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.LT);           // a < b
+                buf.emit(EvmOpcode.ISZERO);       // a >= b
                 break;
             case BIT_AND:  buf.emit(EvmOpcode.AND);     break;
             case BIT_OR:   buf.emit(EvmOpcode.OR);      break;
@@ -790,6 +807,37 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.POP);
                 break;
         }
+    }
+
+    /**
+     * Emit a checked unsigned multiply: {@code c = a * b}, reverting on overflow.
+     * Uses the standard SafeMath identity: overflow iff
+     * {@code a != 0 && (a * b) / a != b}. Stack in: {@code [a, b]};
+     * stack out: {@code [a*b]}.
+     */
+    private void emitCheckedMul() {
+        String zeroLbl = buf.newLabel();
+        String okLbl = buf.newLabel();
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+        buf.emit(EvmOpcode.ISZERO);   // [a, b, (a==0)?]
+        buf.jumpIf(zeroLbl);          // [a, b]   (a==0 → product is 0)
+        // a != 0: compute c = a*b and verify c/a == b
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a, b]
+        buf.emit(EvmOpcode.MUL);      // [a, b, c]
+        buf.emit(EvmOpcode.DUP3);     // [a, b, c, a]
+        buf.emit(EvmOpcode.DUP2);     // [a, b, c, a, c]
+        buf.emit(EvmOpcode.DIV);      // [a, b, c, c/a]
+        buf.emit(EvmOpcode.DUP3);     // [a, b, c, c/a, b]
+        buf.emit(EvmOpcode.EQ);       // [a, b, c, (c/a == b)?]
+        buf.jumpIf(okLbl);            // [a, b, c]   (check passed)
+        buf.revertWithMessage("arithmetic overflow");
+        buf.placeLabel(zeroLbl);      // [a, b]
+        buf.pushInt(0);               // [a, b, 0]
+        buf.placeLabel(okLbl);        // [a, b, c]   (c = product, or 0 when a==0)
+        buf.emit(EvmOpcode.SWAP2);    // [c, b, a]
+        buf.emit(EvmOpcode.POP);      // [c, b]
+        buf.emit(EvmOpcode.POP);      // [c]
     }
 
     private void emitUnary(UnaryExpr expr) {

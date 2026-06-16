@@ -524,6 +524,136 @@ class EvmCodeGenPhase2Test {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    //  Checked / Wrapping Arithmetic
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Checked Arithmetic")
+    class CheckedArithmetic {
+
+        // Error(string) selector emitted by every revert-with-message.
+        private static final String ERROR_STRING_SELECTOR = "08c379a0";
+
+        private static String strHex(String s) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@checked add emits an overflow guard")
+        void checkedAddEmitsOverflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@checked add should embed a revert-with-message overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "@checked add should revert with 'arithmetic overflow'");
+        }
+
+        @Test
+        @DisplayName("Default add wraps (no overflow guard)")
+        void defaultAddIsWrapping() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(strHex("arithmetic overflow")),
+                    "Default (alpha) add should wrap, not emit an overflow guard");
+        }
+
+        @Test
+        @DisplayName("@unchecked add wraps (no overflow guard)")
+        void uncheckedAddIsWrapping() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @unchecked
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(strHex("arithmetic overflow")),
+                    "@unchecked add should wrap, not emit an overflow guard");
+        }
+
+        @Test
+        @DisplayName("@checked subtract emits an underflow guard")
+        void checkedSubEmitsUnderflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam sub(num a, num b) {
+                        result = a - b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(strHex("arithmetic underflow")),
+                    "@checked subtract should revert with 'arithmetic underflow'");
+        }
+
+        @Test
+        @DisplayName("@checked multiply emits an overflow guard")
+        void checkedMulEmitsOverflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam mul(num a, num b) {
+                        result = a * b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@checked multiply should embed an overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "@checked multiply should revert with 'arithmetic overflow'");
+        }
+
+        @Test
+        @DisplayName("Default multiply wraps (no overflow guard)")
+        void defaultMulIsWrapping() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    kaam mul(num a, num b) {
+                        result = a * b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(strHex("arithmetic overflow")),
+                    "Default (alpha) multiply should wrap, not emit an overflow guard");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  Control Flow in Bytecode
     // ═══════════════════════════════════════════════════════════════
 

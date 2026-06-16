@@ -74,6 +74,8 @@ public class Lexer {
         keywords.put("@constructor", TokenType.CONSTRUCTOR);
         keywords.put("@event", TokenType.EVENT);
         keywords.put("@error", TokenType.ERROR);
+        keywords.put("@checked", TokenType.CHECKED);
+        keywords.put("@unchecked", TokenType.UNCHECKED);
         keywords.put("emit", TokenType.EMIT);
         keywords.put("@immutable", TokenType.IMMUTABLE);
         keywords.put("@invariant", TokenType.INVARIANT);

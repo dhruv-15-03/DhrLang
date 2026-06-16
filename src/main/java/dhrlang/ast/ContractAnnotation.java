@@ -87,6 +87,19 @@ public enum ContractAnnotation {
      * 4-byte selector plus ABI-encoded arguments (gas-efficient reverts).
      */
     ERROR(TokenType.ERROR, "@error"),
+
+    /**
+     * Opts a method into checked arithmetic: {@code num}/{@code duo} {@code + - *}
+     * revert on overflow/underflow instead of wrapping. Overrides the compiler
+     * default for that method.
+     */
+    CHECKED(TokenType.CHECKED, "@checked"),
+
+    /**
+     * Opts a method out of checked arithmetic, forcing wrapping (modulo 2^256)
+     * {@code + - *}. Used to opt out when checked arithmetic is the default.
+     */
+    UNCHECKED(TokenType.UNCHECKED, "@unchecked"),
     
     /**
      * Marks a storage variable as immutable.
@@ -159,6 +172,7 @@ public enum ContractAnnotation {
         return this == VIEW || this == PURE || this == PAYABLE || 
                this == NONREENTRANT || this == CONSTRUCTOR || 
                this == EVENT || this == ERROR || this == INVARIANT ||
+               this == CHECKED || this == UNCHECKED ||
                this == TEST || this == BEFORE_EACH || this == AFTER_EACH;
     }
     

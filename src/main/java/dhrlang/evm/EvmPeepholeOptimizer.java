@@ -163,7 +163,21 @@ public final class EvmPeepholeOptimizer {
                 sloadCache.clear(); // conservative: clear all
             }
 
-            // ── Default: copy byte ────────────────────────────────
+            // ── Default: copy instruction ─────────────────────────
+            // For PUSH opcodes that survived the eliminations above, copy the
+            // opcode together with its full immediate operand. Advancing one
+            // byte at a time here would let the next iteration misread the
+            // push data as opcodes and corrupt the bytecode (e.g. data bytes
+            // in the 0x60–0x7F range spuriously matching PUSH/POP patterns).
+            if (op >= 0x60 && op <= 0x7F) {
+                int pushSize = op - 0x5F; // 1..32
+                int end = Math.min(i + 1 + pushSize, code.length);
+                for (int k = i; k < end; k++) {
+                    out.add(code[k]);
+                }
+                i = end;
+                continue;
+            }
             out.add(code[i]);
             i++;
         }
