@@ -6,6 +6,18 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-06-17
+
+### Fixed
+- **Audit SARIF now passes GitHub's schema validation and actually ingests into Code
+  Scanning.** Each result previously emitted a `fixes[]` entry that omitted the required
+  `artifactChanges` property, so every SARIF upload was rejected with
+  `JOB_STATUS_CONFIGURATION_ERROR` — silently, because the upload step was
+  `continue-on-error`. The remediation advice is now folded into the result message and the
+  rule's `help` text instead of an (invalid) fix, and the upload step no longer swallows
+  validation failures. The `SarifFormatterTest` now asserts a fix is never emitted without
+  `artifactChanges`.
+
 ## [3.2.0] - 2026-06-17
 
 ### Added

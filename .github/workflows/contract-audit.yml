@@ -106,7 +106,8 @@ jobs:
         with:
           sarif_file: build/sarif/
           category: dhrlang-security-audit
-        continue-on-error: true  # Don't fail the build if upload fails
+        # NOT continue-on-error: an invalid/rejected SARIF is a real bug we want to
+        # surface loudly (it previously failed silently as JOB_STATUS_CONFIGURATION_ERROR).
 
       - name: Upload audit artifacts
         if: always()

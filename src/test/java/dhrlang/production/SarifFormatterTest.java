@@ -126,6 +126,38 @@ class SarifFormatterTest {
         }
     }
 
+    @Test
+    @DisplayName("does not emit a SARIF fix without artifactChanges (GitHub rejects it)")
+    void noFixWithoutArtifactChanges() {
+        AuditReport report = audit(VULNERABLE);
+        String sarif = SarifFormatter.format(report, "Vuln.dhr");
+
+        // GitHub Code Scanning validates the SARIF schema: a `fix` object REQUIRES
+        // `artifactChanges`. Emitting `fixes` without it makes the whole upload fail
+        // (JOB_STATUS_CONFIGURATION_ERROR), silently when the step is continue-on-error.
+        if (sarif.contains("\"fixes\"")) {
+            assertTrue(sarif.contains("\"artifactChanges\""),
+                    "a SARIF fix must include artifactChanges or GitHub rejects the upload");
+        }
+        assertEquals(countOf(sarif, '['), countOf(sarif, ']'),
+                "unbalanced brackets in SARIF");
+    }
+
+    @Test
+    @DisplayName("remediation advice is surfaced in the result message and rule help")
+    void recommendationIsSurfaced() {
+        AuditReport report = audit(VULNERABLE);
+        boolean anyRec = report.getFindings().stream()
+                .anyMatch(f -> f.getRecommendation() != null && !f.getRecommendation().isEmpty());
+        String sarif = SarifFormatter.format(report, "Vuln.dhr");
+
+        if (anyRec) {
+            assertTrue(sarif.contains("Recommendation:"),
+                    "the finding's recommendation should appear in the message");
+        }
+        assertTrue(sarif.contains("\"help\""), "rules should carry help text");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────
 
     private static int countOf(String s, char c) {

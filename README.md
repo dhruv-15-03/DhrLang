@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.2.0** - see [What's New in v3.2.0](#whats-new-in-v320) and
+> **Current release: v3.2.1** - see [What's New in v3.2.0](#whats-new-in-v320) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -68,6 +68,10 @@ Smart-contract security tooling:
 - **`--audit` now runs on contracts that have errors.** It is an analysis mode: it no longer
   aborts when a contract fails type/validation checks — those issues are reported as findings and
   it always exits `0`. Previously the most security-relevant contracts produced no report at all.
+
+> **v3.2.1** corrects the audit SARIF so it passes GitHub's schema validation and actually
+> appears in the Security tab — the per-finding `fixes` entries were missing a required field,
+> so uploads were silently rejected.
 
 Full details in [CHANGELOG.md](CHANGELOG.md).
 
