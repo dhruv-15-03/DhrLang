@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.2.1** - see [What's New in v3.2.0](#whats-new-in-v320) and
+> **Current release: v3.3.0** - see [What's New in v3.3.0](#whats-new-in-v330) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,20 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.3.0
+
+Smart-contract security — two new detectors (provable safety, layer L1):
+- **Reentrancy (`SEC-REENTRANCY`, SWC-107).** Flags a storage write that happens *after* an
+  external call in the same function — the classic checks-effects-interactions violation —
+  for both value transfers (`this.transfer(...)`) and calls on an `Address`-typed storage
+  field/parameter. `@nonreentrant` is honoured as an explicit guard.
+- **`tx.origin` authorization (`SEC-TX_ORIGIN`, SWC-115).** Flags `tx.origin` used in an
+  equality check, which is phishable — use `msg.sender` for access control.
+- **Richer SARIF.** Every rule now carries `tags` (`security` + the mapped `SWC-*`) and a
+  numeric `security-severity`, so GitHub Code Scanning buckets and filters DhrLang alerts.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [SECURITY_RULES.md](SECURITY_RULES.md).
 
 ## What's New in v3.2.0
 

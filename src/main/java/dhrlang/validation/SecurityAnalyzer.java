@@ -46,7 +46,7 @@ public class SecurityAnalyzer {
      */
     public static class Finding {
         public enum Severity { CRITICAL, HIGH, MEDIUM, LOW, INFO }
-        public enum Category { TAINT, PRIVILEGE, LOOP_BOUND, ACCESS_CONTROL }
+        public enum Category { TAINT, PRIVILEGE, LOOP_BOUND, ACCESS_CONTROL, REENTRANCY, TX_ORIGIN }
 
         private final Severity severity;
         private final Category category;
@@ -107,9 +107,11 @@ public class SecurityAnalyzer {
 
         Set<String> storageFields = new HashSet<>();
         Set<String> privilegedFields = new HashSet<>();
+        Set<String> addressStorage = new HashSet<>();
         for (VarDecl v : classDecl.getVariables()) {
             if (v.hasContractAnnotation(ContractAnnotation.STORAGE)) {
                 storageFields.add(v.getName());
+                if ("Address".equals(v.getType())) addressStorage.add(v.getName());
                 String name = v.getName().toLowerCase();
                 if (name.contains("owner") || name.contains("admin")
                         || name.contains("pauser") || name.contains("minter")) {
@@ -126,6 +128,8 @@ public class SecurityAnalyzer {
             analyzePrivilegeEscalation(fn, storageFields, privilegedFields);
             analyzeTaintFlow(fn, storageFields);
             analyzeLoopBounds(fn);
+            analyzeReentrancy(fn, storageFields, addressStorage);
+            analyzeTxOrigin(fn);
         }
 
         // Report to ErrorReporter
@@ -408,6 +412,270 @@ public class SecurityAnalyzer {
                     "Limit iterations or move computation off-chain.",
                     fn.getSourceLocation()));
         }
+    }
+
+    // ── Reentrancy: state write after external call ───────────────────────
+
+    /**
+     * Flags the classic checks-effects-interactions violation: an external call
+     * (a value transfer via {@code this.transfer(...)} or a method call on an
+     * external contract/address) followed by a storage write, in a function that
+     * is not annotated {@code @nonreentrant}. Maps to SWC-107 (Reentrancy).
+     */
+    private void analyzeReentrancy(FunctionDecl fn, Set<String> storageFields,
+                                   Set<String> addressStorage) {
+        if (fn.getBody() == null) return;
+        if (fn.isNonReentrant()) return; // explicit guard — trust it
+
+        Set<String> externalRefs = new HashSet<>(addressStorage);
+        for (VarDecl p : fn.getParameters()) {
+            if ("Address".equals(p.getType())) externalRefs.add(p.getName());
+        }
+
+        ReentrancyScan scan = new ReentrancyScan();
+        walkReentrancy(fn.getBody().getStatements(), fn, storageFields, externalRefs, scan);
+    }
+
+    private static final class ReentrancyScan {
+        boolean sawExternalCall = false;
+        String callDesc = null;
+        boolean reported = false;
+    }
+
+    private void walkReentrancy(List<Statement> stmts, FunctionDecl fn,
+                                Set<String> storageFields, Set<String> externalRefs,
+                                ReentrancyScan scan) {
+        for (Statement stmt : stmts) {
+            if (scan.reported) return;
+
+            // 1. Storage write while an earlier external call is pending → reentrancy.
+            if (scan.sawExternalCall) {
+                String field = storageWriteField(stmt, storageFields);
+                if (field != null) {
+                    findings.add(new Finding(
+                            Finding.Severity.HIGH,
+                            Finding.Category.REENTRANCY,
+                            "State write after external call",
+                            "Storage field '" + field + "' is written after the external call "
+                                    + scan.callDesc + ", so a reentrant call can observe stale state.",
+                            fn.getName(),
+                            "Apply checks-effects-interactions: update storage before the external "
+                                    + "call, or annotate the function @nonreentrant.",
+                            stmt.getSourceLocation() != null
+                                    ? stmt.getSourceLocation() : fn.getSourceLocation()));
+                    scan.reported = true;
+                    return;
+                }
+            }
+
+            // 2. Update the external-call flag from this statement (source order).
+            scanStatementForExternalCall(stmt, externalRefs, scan);
+
+            // 3. Descend into control flow in source order.
+            if (stmt instanceof Block block) {
+                walkReentrancy(block.getStatements(), fn, storageFields, externalRefs, scan);
+            } else if (stmt instanceof IfStmt ifStmt) {
+                walkReentrancy(asList(ifStmt.getThenBranch()), fn, storageFields, externalRefs, scan);
+                if (ifStmt.getElseBranch() != null) {
+                    walkReentrancy(asList(ifStmt.getElseBranch()), fn, storageFields, externalRefs, scan);
+                }
+            } else if (stmt instanceof WhileStmt whileStmt) {
+                walkReentrancy(asList(whileStmt.getBody()), fn, storageFields, externalRefs, scan);
+            } else if (stmt instanceof TryStmt tryStmt) {
+                if (tryStmt.getTryBlock() != null) {
+                    walkReentrancy(tryStmt.getTryBlock().getStatements(), fn, storageFields, externalRefs, scan);
+                }
+                if (tryStmt.getFinallyBlock() != null) {
+                    walkReentrancy(tryStmt.getFinallyBlock().getStatements(), fn, storageFields, externalRefs, scan);
+                }
+            }
+        }
+    }
+
+    private List<Statement> asList(Statement s) {
+        if (s == null) return List.of();
+        if (s instanceof Block b) return b.getStatements();
+        return List.of(s);
+    }
+
+    private void scanStatementForExternalCall(Statement stmt, Set<String> externalRefs, ReentrancyScan scan) {
+        Expression e = statementExpression(stmt);
+        if (e == null) return;
+        String[] desc = new String[1];
+        if (findExternalCall(e, externalRefs, desc)) {
+            scan.sawExternalCall = true;
+            scan.callDesc = desc[0];
+        }
+    }
+
+    private Expression statementExpression(Statement stmt) {
+        if (stmt instanceof ExpressionStmt es) return es.getExpression();
+        if (stmt instanceof VarDecl vd) return vd.getInitializer();
+        if (stmt instanceof ReturnStmt rs) return rs.getValue();
+        if (stmt instanceof ThrowStmt ts) return ts.getValue();
+        if (stmt instanceof IfStmt ifs) return ifs.getCondition();
+        if (stmt instanceof WhileStmt ws) return ws.getCondition();
+        return null;
+    }
+
+    /** Name of the storage field written by this statement, or null. */
+    private String storageWriteField(Statement stmt, Set<String> storageFields) {
+        if (!(stmt instanceof ExpressionStmt es)) return null;
+        Expression e = es.getExpression();
+        if (e instanceof AssignmentExpr a) {
+            String n = a.getName().getLexeme();
+            if (storageFields.contains(n)) return n;
+        }
+        if (e instanceof SetExpr s && s.getObject() instanceof ThisExpr) {
+            String n = s.getName().getLexeme();
+            if (storageFields.contains(n)) return n;
+        }
+        if (e instanceof IndexAssignExpr ia) {
+            String base = baseName(ia.getObject());
+            if (base != null && storageFields.contains(base)) return base;
+        }
+        return null;
+    }
+
+    private String baseName(Expression e) {
+        if (e instanceof VariableExpr ve) return ve.getName().getLexeme();
+        if (e instanceof IndexExpr ix) return baseName(ix.getObject());
+        if (e instanceof GetExpr ge) return baseName(ge.getObject());
+        return null;
+    }
+
+    /** Recursively search for an external contract call; sets descOut[0] on hit. */
+    private boolean findExternalCall(Expression e, Set<String> externalRefs, String[] descOut) {
+        if (e == null) return false;
+        if (e instanceof CallExpr call) {
+            if (call.getCallee() instanceof GetExpr ge) {
+                Expression obj = ge.getObject();
+                String member = ge.getName().getLexeme();
+                boolean isThis = obj instanceof ThisExpr
+                        || (obj instanceof VariableExpr tv && "this".equals(tv.getName().getLexeme()));
+                if (isThis && "transfer".equals(member)) {
+                    descOut[0] = "this.transfer(...)";
+                    return true;
+                }
+                if (obj instanceof VariableExpr ve) {
+                    String objName = ve.getName().getLexeme();
+                    if (externalRefs.contains(objName) && !isArrayOp(member)) {
+                        descOut[0] = objName + "." + member + "(...)";
+                        return true;
+                    }
+                }
+            }
+            if (findExternalCall(call.getCallee(), externalRefs, descOut)) return true;
+            for (Expression arg : call.getArguments()) {
+                if (findExternalCall(arg, externalRefs, descOut)) return true;
+            }
+            return false;
+        }
+        for (Expression child : children(e)) {
+            if (findExternalCall(child, externalRefs, descOut)) return true;
+        }
+        return false;
+    }
+
+    private boolean isArrayOp(String member) {
+        return "push".equals(member) || "pop".equals(member) || "length".equals(member);
+    }
+
+    // ── tx.origin authorization ───────────────────────────────────────────
+
+    /**
+     * Flags {@code tx.origin} used in an equality check (authorization). tx.origin
+     * is the original externally-owned account and is phishable; access control
+     * must use msg.sender. Maps to SWC-115 (Authorization through tx.origin).
+     */
+    private void analyzeTxOrigin(FunctionDecl fn) {
+        if (fn.getBody() == null) return;
+        Expression hit = findTxOriginAuth(fn.getBody().getStatements());
+        if (hit != null) {
+            findings.add(new Finding(
+                    Finding.Severity.HIGH,
+                    Finding.Category.TX_ORIGIN,
+                    "Authorization via tx.origin",
+                    "tx.origin is compared for authorization. tx.origin is the original "
+                            + "externally-owned account and can be spoofed by a malicious "
+                            + "intermediary contract (phishing).",
+                    fn.getName(),
+                    "Use msg.sender for access control instead of tx.origin.",
+                    hit.getSourceLocation() != null ? hit.getSourceLocation() : fn.getSourceLocation()));
+        }
+    }
+
+    private Expression findTxOriginAuth(List<Statement> stmts) {
+        for (Statement stmt : stmts) {
+            Expression found = findTxOriginComparison(statementExpression(stmt));
+            if (found != null) return found;
+            if (stmt instanceof Block b) {
+                found = findTxOriginAuth(b.getStatements());
+            } else if (stmt instanceof IfStmt ifs) {
+                found = findTxOriginAuth(asList(ifs.getThenBranch()));
+                if (found == null && ifs.getElseBranch() != null) {
+                    found = findTxOriginAuth(asList(ifs.getElseBranch()));
+                }
+            } else if (stmt instanceof WhileStmt ws) {
+                found = findTxOriginAuth(asList(ws.getBody()));
+            } else if (stmt instanceof TryStmt ts) {
+                if (ts.getTryBlock() != null) found = findTxOriginAuth(ts.getTryBlock().getStatements());
+                if (found == null && ts.getFinallyBlock() != null) {
+                    found = findTxOriginAuth(ts.getFinallyBlock().getStatements());
+                }
+            }
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private Expression findTxOriginComparison(Expression e) {
+        if (e == null) return null;
+        if (e instanceof BinaryExpr bin) {
+            var op = bin.getOperator().getType();
+            if ((op == dhrlang.lexer.TokenType.EQUALITY || op == dhrlang.lexer.TokenType.NEQ)
+                    && (containsTxOrigin(bin.getLeft()) || containsTxOrigin(bin.getRight()))) {
+                return e;
+            }
+        }
+        for (Expression child : children(e)) {
+            Expression found = findTxOriginComparison(child);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private boolean containsTxOrigin(Expression e) {
+        if (e == null) return false;
+        if (e instanceof GetExpr ge && ge.getObject() instanceof VariableExpr ve
+                && "tx".equals(ve.getName().getLexeme())
+                && "origin".equals(ge.getName().getLexeme())) {
+            return true;
+        }
+        for (Expression child : children(e)) {
+            if (containsTxOrigin(child)) return true;
+        }
+        return false;
+    }
+
+    /** Direct sub-expressions of an expression (best-effort over known node types). */
+    private List<Expression> children(Expression e) {
+        List<Expression> out = new ArrayList<>();
+        if (e instanceof BinaryExpr b) { out.add(b.getLeft()); out.add(b.getRight()); }
+        else if (e instanceof UnaryExpr u) { out.add(u.getRight()); }
+        else if (e instanceof CallExpr c) { out.add(c.getCallee()); out.addAll(c.getArguments()); }
+        else if (e instanceof GetExpr g) { out.add(g.getObject()); }
+        else if (e instanceof SetExpr s) { out.add(s.getObject()); out.add(s.getValue()); }
+        else if (e instanceof AssignmentExpr a) { out.add(a.getValue()); }
+        else if (e instanceof IndexExpr ix) { out.add(ix.getObject()); out.add(ix.getIndex()); }
+        else if (e instanceof IndexAssignExpr ia) { out.add(ia.getObject()); out.add(ia.getIndex()); out.add(ia.getValue()); }
+        else if (e instanceof TernaryExpr t) { out.add(t.getCondition()); out.add(t.getThenBranch()); out.add(t.getElseBranch()); }
+        else if (e instanceof PostfixIncrementExpr p) { out.add(p.getTarget()); }
+        else if (e instanceof PrefixIncrementExpr p) { out.add(p.getTarget()); }
+        else if (e instanceof ArrayExpr ar) { out.addAll(ar.getElements()); }
+        else if (e instanceof NewExpr n) { out.addAll(n.getArguments()); }
+        out.removeIf(java.util.Objects::isNull);
+        return out;
     }
 
     // ── Utility ──────────────────────────────────────────────────────────

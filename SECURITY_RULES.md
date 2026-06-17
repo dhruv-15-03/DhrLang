@@ -63,7 +63,8 @@ A division whose divisor is not provably non-zero.
 
 ## SEC — semantic security analysis
 
-Detected by `SecurityAnalyzer` (privilege, taint, and loop-bound passes).
+Detected by `SecurityAnalyzer` (privilege, taint, loop-bound, reentrancy, and
+tx.origin passes).
 
 ### SEC-PRIVILEGE
 `CRITICAL` — a function modifies a privileged storage field (e.g. an owner /
@@ -80,6 +81,22 @@ validation. Related to **SWC-123 (Requirement violation)**.
 `CRITICAL` for `while (true)` infinite loops, `MEDIUM` for nested loops. Maps to
 **SWC-128 (DoS with block gas limit)**.
 *Fix:* add a bounded counter / break condition, or move iteration off-chain.
+
+### SEC-REENTRANCY
+`HIGH` — a storage field is written **after** an external call in the same
+function (a checks-effects-interactions violation), so a reentrant call can
+observe stale state and drain funds. External calls are value transfers
+(`this.transfer(to, amount)`) and method calls on an `Address`-typed storage
+field or parameter (`token.transfer(...)`). Maps to **SWC-107 (Reentrancy)**.
+*Fix:* update all storage **before** the external call, or annotate the function
+`@nonreentrant` (which the analyzer treats as an explicit guard and trusts).
+
+### SEC-TX_ORIGIN
+`HIGH` — `tx.origin` is used in an equality check for authorization. `tx.origin`
+is the original externally-owned account and can be spoofed when the user is
+phished into calling a malicious intermediary contract. Maps to
+**SWC-115 (Authorization through tx.origin)**.
+*Fix:* authorize with `msg.sender` instead of `tx.origin`.
 
 ---
 

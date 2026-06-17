@@ -139,7 +139,11 @@ public final class SarifFormatter {
             sb.append("            \"defaultConfiguration\": {\n");
             sb.append("              \"level\": \"").append(sarifLevel(f.getSeverity())).append("\"\n");
             sb.append("            },\n");
-            sb.append("            \"helpUri\": \"https://github.com/dhruv-15-03/DhrLang/blob/main/SECURITY_RULES.md#").append(escape(f.getId().toLowerCase(java.util.Locale.ROOT))).append("\"\n");
+            sb.append("            \"helpUri\": \"https://github.com/dhruv-15-03/DhrLang/blob/main/SECURITY_RULES.md#").append(escape(f.getId().toLowerCase(java.util.Locale.ROOT))).append("\",\n");
+            sb.append("            \"properties\": {\n");
+            sb.append("              \"tags\": [").append(ruleTags(f.getId())).append("],\n");
+            sb.append("              \"security-severity\": \"").append(securitySeverity(f.getSeverity())).append("\"\n");
+            sb.append("            }\n");
             sb.append("          }");
             if (++i < ruleMap.size()) sb.append(",");
             sb.append("\n");
@@ -156,6 +160,40 @@ public final class SarifFormatter {
             case MEDIUM -> "warning";
             case LOW, INFORMATIONAL -> "note";
         };
+    }
+
+    /**
+     * GitHub Code Scanning uses {@code security-severity} (a numeric string) to
+     * bucket alerts into Critical/High/Medium/Low in the Security tab.
+     */
+    private static String securitySeverity(Severity severity) {
+        return switch (severity) {
+            case CRITICAL -> "9.0";
+            case HIGH -> "7.0";
+            case MEDIUM -> "5.0";
+            case LOW, INFORMATIONAL -> "3.0";
+        };
+    }
+
+    /** Map a rule ID to the relevant SWC registry entry, or null if unmapped. */
+    private static String swcFor(String ruleId) {
+        if (ruleId == null) return null;
+        if (ruleId.startsWith("ARITH-")) return "SWC-101";
+        return switch (ruleId) {
+            case "SEC-REENTRANCY" -> "SWC-107";
+            case "SEC-TX_ORIGIN" -> "SWC-115";
+            case "SEC-PRIVILEGE", "SEC-ACCESS_CONTROL" -> "SWC-105";
+            case "SEC-TAINT" -> "SWC-123";
+            case "SEC-LOOP_BOUND" -> "SWC-128";
+            default -> null;
+        };
+    }
+
+    /** Render the SARIF rule {@code tags} array contents (always tagged "security"). */
+    private static String ruleTags(String ruleId) {
+        String swc = swcFor(ruleId);
+        if (swc == null) return "\"security\"";
+        return "\"security\", \"" + swc + "\"";
     }
 
     private static long countBySeverity(List<Finding> findings, Severity severity) {

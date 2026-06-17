@@ -158,6 +158,21 @@ class SarifFormatterTest {
         assertTrue(sarif.contains("\"help\""), "rules should carry help text");
     }
 
+    @Test
+    @DisplayName("rules carry security tags and a numeric security-severity for the Security tab")
+    void rulesCarrySecurityProperties() {
+        AuditReport report = audit(VULNERABLE);
+        String sarif = SarifFormatter.format(report, "Vuln.dhr");
+
+        assertTrue(sarif.contains("\"properties\""), "rules should carry a properties block");
+        assertTrue(sarif.contains("\"security-severity\""),
+                "GitHub buckets the Security tab by security-severity");
+        assertTrue(sarif.contains("\"tags\""), "rules should carry tags");
+        assertTrue(sarif.contains("\"security\""), "every rule should be tagged security");
+        assertEquals(countOf(sarif, '['), countOf(sarif, ']'),
+                "unbalanced brackets in SARIF");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────
 
     private static int countOf(String s, char c) {

@@ -6,6 +6,23 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-06-18
+
+### Added
+- **Two new security detectors (provable safety, layer L1).** `SecurityAnalyzer` now
+  flags **reentrancy** (`SEC-REENTRANCY`, **SWC-107**): a storage write that happens
+  after an external call in the same function — the classic checks-effects-interactions
+  violation — recognising both value transfers (`this.transfer(...)`) and method calls on
+  an `Address`-typed storage field or parameter, and trusting `@nonreentrant` as an
+  explicit guard. It also flags **`tx.origin` authorization** (`SEC-TX_ORIGIN`,
+  **SWC-115**): `tx.origin` used in an equality check, which is phishable; use
+  `msg.sender` instead. Both are documented in
+  [`SECURITY_RULES.md`](SECURITY_RULES.md).
+- **Richer SARIF for the Security tab.** Each SARIF rule now carries a `properties`
+  block with `tags` (`security` plus the mapped `SWC-*` id) and a numeric
+  `security-severity`, so GitHub Code Scanning buckets DhrLang alerts into
+  Critical/High/Medium/Low and lets you filter by tag.
+
 ## [3.2.1] - 2026-06-17
 
 ### Fixed
