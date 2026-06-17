@@ -100,11 +100,34 @@ jobs:
             echo "Results upload to **Security → Code scanning** (category \`dhrlang-security-audit\`)."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Combine per-contract SARIF into a single run
+        if: steps.contracts.outputs.files != ''
+        run: |
+          # GitHub Code Scanning rejects multiple SARIF runs uploaded under the same
+          # category (one run per category). We audit several contracts, so merge the
+          # per-contract reports into ONE run whose results span all the files.
+          mkdir -p build/sarif-upload
+          jq -s '{
+            "$schema": (.[0]["$schema"]),
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {"driver": {
+                "name": .[0].runs[0].tool.driver.name,
+                "version": .[0].runs[0].tool.driver.version,
+                "informationUri": .[0].runs[0].tool.driver.informationUri,
+                "rules": ([.[].runs[0].tool.driver.rules[]] | unique_by(.id))
+              }},
+              "results": [.[].runs[0].results[]],
+              "invocations": [{"executionSuccessful": true}]
+            }]
+          }' build/sarif/*.sarif > build/sarif-upload/combined.sarif
+          echo "Combined $(ls build/sarif/*.sarif | wc -l) report(s) into build/sarif-upload/combined.sarif"
+
       - name: Upload SARIF to GitHub Security
         if: steps.contracts.outputs.files != '' && always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: build/sarif/
+          sarif_file: build/sarif-upload/combined.sarif
           category: dhrlang-security-audit
         # NOT continue-on-error: an invalid/rejected SARIF is a real bug we want to
         # surface loudly (it previously failed silently as JOB_STATUS_CONFIGURATION_ERROR).
