@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-06-17
+
 ### Added
 - **Checked / wrapping arithmetic modes** (EVM backend): per-function `@checked` and
   `@unchecked` annotations select whether `+`, `-`, `*` on `num` revert on overflow/underflow

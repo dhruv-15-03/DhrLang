@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.0.0** - see [What's New in v3.0.0](#whats-new-in-v300) and
+> **Current release: v3.1.0** - see [What's New in v3.1.0](#whats-new-in-v310) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,28 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.1.0
+
+EVM (smart-contract) backend:
+- **Checked / wrapping arithmetic modes**: opt into overflow-safe math per function with
+  `@checked` (reverts with `"arithmetic overflow"` / `"arithmetic underflow"`) or `@unchecked`
+  (wraps mod 2²⁵⁶). Default stays wrapping in this release.
+- **Custom errors + `revert`**: declare gas-efficient typed errors
+  (`@error kaam InsufficientBalance(num available, num required) {}`) and raise them with
+  `revert(...)` / `require(cond, ...)`; emitted as `"type":"error"` in the ABI.
+- **Explicit `indexed` event parameters**: event topics are driven by the `indexed` keyword
+  (e.g. `Transfer(indexed Address from, indexed Address to, num amount)`).
+
+Fixed:
+- EVM backend now emits correct **unsigned** opcodes and operand order for `-`, `/`, `%` and
+  comparisons (`num` is `uint256`); checked multiply uses the SafeMath identity.
+- Peephole optimizer no longer misreads `PUSH` immediate data as opcodes (it could corrupt
+  bytecode — e.g. embedded revert strings).
+- Numeric `as` casts: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept numeric
+  operands; `(7 / 2) as num` → `3` is the supported integer-division idiom.
+
+Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## What's New in v3.0.0
 
