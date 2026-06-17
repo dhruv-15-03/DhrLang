@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-06-17
+
+### Added
+- **SARIF code-scanning is now first-class (provable safety, layer L0).** The security
+  auditor's SARIF output (`--audit --sarif`) now emits real source line numbers
+  (`region.startLine`) for every finding from the arithmetic, security, invariant, and
+  validation analyzers, plus a stable per-result `partialFingerprints` value so GitHub Code
+  Scanning can track and dedupe alerts across runs. Rule `helpUri`s now resolve to the new
+  [`SECURITY_RULES.md`](SECURITY_RULES.md), which documents every rule family (`ARITH-*`,
+  `SEC-*`, `INV-*`, `AUD-*`, `DHR-E5xx`) with severities and SWC mappings. The
+  `Smart Contract Security Audit` workflow now writes a per-contract findings table to the
+  run summary.
+
+### Fixed
+- **`--audit` no longer silently produces nothing on contracts that have errors.** The audit
+  pipeline was gated behind a clean type-check, so any contract with a validation error (e.g.
+  `DHR-E550`) yielded no report or SARIF at all — exactly the contracts most worth scanning.
+  Audit is now treated as an analysis mode that runs after parsing regardless of semantic
+  errors and exits `0`, surfacing those errors as findings instead of aborting.
+
 ## [3.1.0] - 2026-06-17
 
 ### Added

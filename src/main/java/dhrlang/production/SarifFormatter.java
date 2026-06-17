@@ -60,13 +60,23 @@ public final class SarifFormatter {
             sb.append("        \"locations\": [{\n");
             sb.append("          \"physicalLocation\": {\n");
             sb.append("            \"artifactLocation\": {\n");
-            sb.append("              \"uri\": \"").append(escape(sourceFile != null ? sourceFile : "contract.dhr")).append("\"\n");
-            sb.append("            }\n");
+            sb.append("              \"uri\": \"").append(escape((sourceFile != null ? sourceFile : "contract.dhr").replace('\\', '/'))).append("\"\n");
+            if (f.getLine() > 0) {
+                sb.append("            },\n");
+                sb.append("            \"region\": {\n");
+                sb.append("              \"startLine\": ").append(f.getLine()).append("\n");
+                sb.append("            }\n");
+            } else {
+                sb.append("            }\n");
+            }
             sb.append("          },\n");
             sb.append("          \"logicalLocations\": [{\n");
             sb.append("            \"fullyQualifiedName\": \"").append(escape(f.getLocation())).append("\"\n");
             sb.append("          }]\n");
             sb.append("        }],\n");
+            sb.append("        \"partialFingerprints\": {\n");
+            sb.append("          \"dhrlangAuditFingerprint/v1\": \"").append(fingerprint(f)).append("\"\n");
+            sb.append("        },\n");
             sb.append("        \"fixes\": [{\n");
             sb.append("          \"description\": {\n");
             sb.append("            \"text\": \"").append(escape(f.getRecommendation())).append("\"\n");
@@ -122,7 +132,7 @@ public final class SarifFormatter {
             sb.append("            \"defaultConfiguration\": {\n");
             sb.append("              \"level\": \"").append(sarifLevel(f.getSeverity())).append("\"\n");
             sb.append("            },\n");
-            sb.append("            \"helpUri\": \"https://github.com/dhruv-15-03/DhrLang/blob/main/ERROR_CODES.md#").append(escape(f.getId())).append("\"\n");
+            sb.append("            \"helpUri\": \"https://github.com/dhruv-15-03/DhrLang/blob/main/SECURITY_RULES.md#").append(escape(f.getId().toLowerCase(java.util.Locale.ROOT))).append("\"\n");
             sb.append("          }");
             if (++i < ruleMap.size()) sb.append(",");
             sb.append("\n");
@@ -152,5 +162,28 @@ public final class SarifFormatter {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    /**
+     * Stable per-result fingerprint so GitHub Code Scanning can track an alert
+     * across runs (and dedupe identical findings) even as line numbers shift.
+     * Derived from the rule id, logical location, and title — never the line.
+     */
+    private static String fingerprint(Finding f) {
+        String basis = f.getId() + "|"
+                + (f.getLocation() == null ? "" : f.getLocation()) + "|"
+                + (f.getTitle() == null ? "" : f.getTitle());
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(basis.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(basis.hashCode());
+        }
     }
 }

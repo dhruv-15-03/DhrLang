@@ -71,15 +71,22 @@ public final class AuditReportGenerator {
         private final String description;
         private final String recommendation;
         private final String location;
+        private final int line;
 
         public Finding(String id, Severity severity, String title,
                        String description, String recommendation, String location) {
+            this(id, severity, title, description, recommendation, location, 0);
+        }
+
+        public Finding(String id, Severity severity, String title,
+                       String description, String recommendation, String location, int line) {
             this.id = id;
             this.severity = severity;
             this.title = title;
             this.description = description;
             this.recommendation = recommendation;
             this.location = location;
+            this.line = line;
         }
 
         public String getId() { return id; }
@@ -88,6 +95,9 @@ public final class AuditReportGenerator {
         public String getDescription() { return description; }
         public String getRecommendation() { return recommendation; }
         public String getLocation() { return location; }
+
+        /** 1-based source line, or 0 when the originating analyzer has no position. */
+        public int getLine() { return line; }
 
         @Override
         public String toString() {
@@ -258,12 +268,14 @@ public final class AuditReportGenerator {
                 var risks = overflow.analyze(cls);
                 for (var risk : risks) {
                     Severity sev = risk.hasGuard() ? Severity.LOW : Severity.HIGH;
+                    int riskLine = risk.getLocation() != null ? risk.getLocation().getLine() : 0;
                     addFinding("ARITH-" + risk.getKind().name(),
                             sev,
                             "Arithmetic risk: " + risk.getKind().name().toLowerCase().replace('_', ' '),
                             risk.getExpression() + " in " + risk.getFunctionName() + "()",
                             risk.getHint(),
-                            contractName + "." + risk.getFunctionName());
+                            contractName + "." + risk.getFunctionName(),
+                            riskLine);
                 }
             } catch (Exception ignored) {}
 
@@ -279,12 +291,14 @@ public final class AuditReportGenerator {
                         case LOW -> Severity.LOW;
                         default -> Severity.INFORMATIONAL;
                     };
+                    int secLine = sf.getLocation() != null ? sf.getLocation().getLine() : 0;
                     addFinding("SEC-" + sf.getCategory().name(),
                             sev,
                             sf.getTitle(),
                             sf.getDescription(),
                             sf.getHint(),
-                            contractName + (sf.getFunctionName() != null ? "." + sf.getFunctionName() : ""));
+                            contractName + (sf.getFunctionName() != null ? "." + sf.getFunctionName() : ""),
+                            secLine);
                 }
             } catch (Exception ignored) {}
 
@@ -295,12 +309,14 @@ public final class AuditReportGenerator {
                 for (var v : violations) {
                     String kindName = v.getInvariant() != null && v.getInvariant().getKind() != null
                             ? v.getInvariant().getKind().name() : "UNKNOWN";
+                    int invLine = v.getLocation() != null ? v.getLocation().getLine() : 0;
                     addFinding("INV-" + kindName,
                             Severity.HIGH,
                             "Invariant violation: " + kindName.toLowerCase().replace('_', ' '),
                             v.getReason(),
                             "Add validation before the state modification to ensure the invariant holds.",
-                            contractName + "." + v.getFunctionName());
+                            contractName + "." + v.getFunctionName(),
+                            invLine);
                 }
             } catch (Exception ignored) {}
         }
@@ -411,11 +427,13 @@ public final class AuditReportGenerator {
         validator.validate(program);
         for (ValidationError err : validator.getErrors()) {
             Severity severity = mapValidationSeverity(err.getCode());
+            int errLine = err.getLocation() != null ? err.getLocation().getLine() : 0;
             addFinding(err.getCode(), severity,
                     err.getMessage(),
                     err.getMessage(),
                     err.getSuggestion() != null ? err.getSuggestion() : "Review the code.",
-                    err.getLocation() != null ? err.getLocation().toString() : "unknown");
+                    err.getLocation() != null ? err.getLocation().toString() : "unknown",
+                    errLine);
         }
     }
 
@@ -597,7 +615,12 @@ public final class AuditReportGenerator {
 
     private void addFinding(String id, Severity severity, String title,
                             String description, String recommendation, String location) {
-        findings.add(new Finding(id, severity, title, description, recommendation, location));
+        addFinding(id, severity, title, description, recommendation, location, 0);
+    }
+
+    private void addFinding(String id, Severity severity, String title,
+                            String description, String recommendation, String location, int line) {
+        findings.add(new Finding(id, severity, title, description, recommendation, location, line));
     }
 
     /**

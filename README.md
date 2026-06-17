@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.1.0** - see [What's New in v3.1.0](#whats-new-in-v310) and
+> **Current release: v3.2.0** - see [What's New in v3.2.0](#whats-new-in-v320) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,20 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.2.0
+
+Smart-contract security tooling:
+- **SARIF code scanning is first-class.** `--audit --sarif` now emits real source line numbers
+  (`region.startLine`) and a stable `partialFingerprints` per finding, so results land precisely
+  in GitHub's **Security → Code scanning** tab and dedupe across runs. Rule links resolve to the
+  new [SECURITY_RULES.md](SECURITY_RULES.md) (every `ARITH-*`, `SEC-*`, `INV-*`, `AUD-*`,
+  `DHR-E5xx` rule with severities + SWC mappings).
+- **`--audit` now runs on contracts that have errors.** It is an analysis mode: it no longer
+  aborts when a contract fails type/validation checks — those issues are reported as findings and
+  it always exits `0`. Previously the most security-relevant contracts produced no report at all.
+
+Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## What's New in v3.1.0
 

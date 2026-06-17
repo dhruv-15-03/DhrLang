@@ -298,6 +298,19 @@ public class Main {
         TypeChecker typeChecker = new TypeChecker(errorReporter);
         typeChecker.check(program);
         pt.typeMs = msSince(s);
+
+        // --audit / --sarif is an ANALYSIS mode: it must run even when the
+        // type-checker or validator reported errors, because surfacing those
+        // problems as findings is its entire purpose. (Lexer/parser failures
+        // still short-circuit above, since findings need a usable AST.)
+        if(opts.audit) {
+            s = System.nanoTime();
+            handleAudit(program, opts);
+            pt.execMs = msSince(s);
+            pt.totalMs = msSince(tStart);
+            return pt;
+        }
+
         if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
 
         // --check mode: type-check passed, exit successfully
@@ -323,15 +336,6 @@ public class Main {
         if(opts.compileEvm) {
             s = System.nanoTime();
             handleCompileEvm(program, opts);
-            pt.execMs = msSince(s);
-            pt.totalMs = msSince(tStart);
-            return pt;
-        }
-
-        // --audit mode: generate security audit report
-        if(opts.audit) {
-            s = System.nanoTime();
-            handleAudit(program, opts);
             pt.execMs = msSince(s);
             pt.totalMs = msSince(tStart);
             return pt;
@@ -493,7 +497,9 @@ public class Main {
                     Files.writeString(outPath.resolve("audit-report.sarif"), sarif);
                     System.err.println("SARIF report written to: " + outPath.resolve("audit-report.sarif"));
                 }
-                return;
+                // Audit is a terminal analysis action: succeed cleanly so a
+                // non-empty findings list does not surface as a build failure.
+                System.exit(0);
             }
 
             if (opts.jsonMode) {
@@ -513,6 +519,7 @@ public class Main {
                 Files.writeString(outPath.resolve("audit-report" + ext), content);
                 System.out.println("\nAudit report written to: " + outPath.resolve("audit-report" + ext));
             }
+            System.exit(0);
         } catch (Exception e) {
             System.err.println("Audit failed: " + e.getMessage());
             System.err.println("Hint: Ensure your file contains @contract annotated classes for meaningful analysis.");
