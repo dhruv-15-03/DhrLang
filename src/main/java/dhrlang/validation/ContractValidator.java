@@ -112,6 +112,91 @@ public class ContractValidator {
         if (isContract) {
             validateContractRules(classDecl);
         }
+
+        // Validate @requires/@ensures/@invariant spec expressions
+        validateSpecExpressions(classDecl);
+    }
+
+    /**
+     * Validate identifiers used inside {@code @requires}, {@code @ensures} and
+     * {@code @invariant} spec expressions. Unknown identifiers are reported as
+     * DHR-E516: on the EVM backend an unresolved name silently lowers to a
+     * constant 0, which would turn a spec into an always-true/always-false
+     * guard. Catching it here surfaces the typo instead.
+     *
+     * <p>Resolution is intentionally lenient: a name is accepted if it is a
+     * function parameter (requires/ensures), a class field, another function,
+     * the {@code result} keyword (ensures only), a known builtin root
+     * ({@code msg}/{@code block}/{@code tx}/{@code this}), or begins with an
+     * uppercase letter (a type, contract, error or event reference).
+     */
+    private void validateSpecExpressions(ClassDecl classDecl) {
+        Set<String> fields = new java.util.HashSet<>();
+        for (VarDecl f : classDecl.getVariables()) fields.add(f.getName());
+        Set<String> functions = new java.util.HashSet<>();
+        for (FunctionDecl fn : classDecl.getFunctions()) functions.add(fn.getName());
+
+        for (FunctionDecl fn : classDecl.getFunctions()) {
+            Set<String> params = new java.util.HashSet<>();
+            for (VarDecl p : fn.getParameters()) params.add(p.getName());
+            for (Expression pre : fn.getRequires()) {
+                checkSpecIdentifiers(pre, params, fields, functions, false, fn.getName(), classDecl);
+            }
+            for (Expression post : fn.getEnsures()) {
+                checkSpecIdentifiers(post, params, fields, functions, true, fn.getName(), classDecl);
+            }
+        }
+        Set<String> none = java.util.Collections.emptySet();
+        for (Expression inv : classDecl.getInvariants()) {
+            checkSpecIdentifiers(inv, none, fields, functions, false, classDecl.getName(), classDecl);
+        }
+    }
+
+    private void checkSpecIdentifiers(Expression expr, Set<String> params, Set<String> fields,
+                                      Set<String> functions, boolean allowResult,
+                                      String where, ClassDecl classDecl) {
+        if (expr == null) return;
+        if (expr instanceof VariableExpr v) {
+            String name = v.getName().getLexeme();
+            boolean resolved = params.contains(name)
+                    || fields.contains(name)
+                    || functions.contains(name)
+                    || SPEC_BUILTIN_ROOTS.contains(name)
+                    || (allowResult && "result".equals(name))
+                    || (!name.isEmpty() && Character.isUpperCase(name.charAt(0)));
+            if (!resolved) {
+                addError("DHR-E516",
+                        "Unknown identifier '" + name + "' in spec expression of '" + where + "'",
+                        "Spec expressions (@requires/@ensures/@invariant) may only reference "
+                                + "parameters, contract fields"
+                                + (allowResult ? ", the 'result' keyword," : "")
+                                + " or builtins (msg, block, tx). On the EVM backend an unknown "
+                                + "name compiles to 0, silently breaking the check.",
+                        v.getSourceLocation() != null ? v.getSourceLocation() : classDecl.getSourceLocation());
+            }
+        }
+        for (Expression child : specChildren(expr)) {
+            checkSpecIdentifiers(child, params, fields, functions, allowResult, where, classDecl);
+        }
+    }
+
+    /** Root identifiers that are always valid in a spec expression. */
+    private static final Set<String> SPEC_BUILTIN_ROOTS =
+            Set.of("msg", "block", "tx", "this", "now");
+
+    /** Child expressions to recurse into (mirrors the AST node shapes). */
+    private List<Expression> specChildren(Expression e) {
+        List<Expression> out = new ArrayList<>();
+        if (e instanceof BinaryExpr b) { out.add(b.getLeft()); out.add(b.getRight()); }
+        else if (e instanceof UnaryExpr u) { out.add(u.getRight()); }
+        else if (e instanceof CallExpr c) { out.add(c.getCallee()); out.addAll(c.getArguments()); }
+        else if (e instanceof GetExpr g) { out.add(g.getObject()); }
+        else if (e instanceof IndexExpr ix) { out.add(ix.getObject()); out.add(ix.getIndex()); }
+        else if (e instanceof TernaryExpr t) { out.add(t.getCondition()); out.add(t.getThenBranch()); out.add(t.getElseBranch()); }
+        else if (e instanceof ArrayExpr ar) { out.addAll(ar.getElements()); }
+        else if (e instanceof NewExpr n) { out.addAll(n.getArguments()); }
+        out.removeIf(java.util.Objects::isNull);
+        return out;
     }
     
     /**

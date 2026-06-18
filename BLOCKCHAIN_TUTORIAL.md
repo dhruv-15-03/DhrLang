@@ -80,6 +80,11 @@ Key annotations:
 - `@checked` / `@unchecked` — select overflow behaviour for `+`, `-`, `*` on `num` in a method.
   `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2²⁵⁶. (Alpha default is
   wrapping; this becomes checked-by-default in the v4.0.0 beta.)
+- `@requires(expr)` / `@ensures(expr)` — design-by-contract pre/postconditions on a method.
+  `@requires` is checked at entry (reverts `precondition failed`); `@ensures` is checked at
+  every return (reverts `postcondition failed`) and may reference `result`, the return value.
+- `@invariant(expr)` — a contract-level invariant (declared next to `@contract`), re-checked
+  after every state-mutating method and reverting `invariant violated`.
 
 ### Arithmetic safety example
 
@@ -101,6 +106,40 @@ class Vault {
     }
 }
 ```
+
+### Design-by-contract example
+
+```dhrlang
+// Invariant re-checked after every state change: the bank can never go negative.
+@invariant(balance >= 0)
+@contract
+class Bank {
+    @storage num balance;
+
+    // Precondition: callers may only deposit a positive amount.
+    @requires(amount > 0)
+    kaam deposit(num amount) {
+        balance = balance + amount;
+    }
+
+    // Precondition + postcondition working together.
+    @requires(amount <= balance)
+    @ensures(balance >= 0)
+    kaam withdraw(num amount) {
+        balance = balance - amount;
+    }
+
+    // `result` binds to the return value inside @ensures.
+    @ensures(result >= 0)
+    @view
+    num currentBalance() {
+        return balance;
+    }
+}
+```
+
+> A typo'd name inside a spec (e.g. `@requires(amunt > 0)`) is rejected at compile time
+> with **DHR-E516** — on the EVM an unresolved identifier would silently compile to `0`.
 
 ---
 

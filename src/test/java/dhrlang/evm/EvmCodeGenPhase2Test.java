@@ -869,4 +869,118 @@ class EvmCodeGenPhase2Test {
         }
         return false;
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Design-by-Contract spec annotations (@requires/@ensures/@invariant)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Spec Annotations (DbC)")
+    class SpecAnnotations {
+
+        private static final String ERROR_STRING_SELECTOR = "08c379a0";
+
+        private static String specHex(String s) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@requires emits a precondition revert guard")
+        void requiresEmitsGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amount > 0)
+                    kaam deposit(num amount) {
+                        balance = balance + amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@requires should embed a revert-with-message guard");
+            assertTrue(code.contains(specHex("precondition failed")),
+                    "@requires should revert with 'precondition failed'");
+        }
+
+        @Test
+        @DisplayName("@ensures emits a postcondition revert guard")
+        void ensuresEmitsGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @ensures(balance >= 0)
+                    kaam withdraw(num amount) {
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("postcondition failed")),
+                    "@ensures should revert with 'postcondition failed'");
+        }
+
+        @Test
+        @DisplayName("@ensures can reference the result keyword on a value return")
+        void ensuresResultBinding() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @ensures(result >= a)
+                    @view
+                    num maxZero(num a) {
+                        return a;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("postcondition failed")),
+                    "@ensures(result ...) on a value return should emit a postcondition guard");
+        }
+
+        @Test
+        @DisplayName("contract-level @invariant emits a revert guard on mutators")
+        void invariantEmitsGuard() {
+            var artifact = compileOne("""
+                @invariant(totalSupply >= 0)
+                @contract
+                class Token {
+                    @storage num totalSupply;
+                    kaam mint(num amount) {
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("invariant violated")),
+                    "@invariant should revert with 'invariant violated' on a mutator");
+        }
+
+        @Test
+        @DisplayName("functions without specs emit no spec guards")
+        void noSpecsNoGuards() {
+            var artifact = compileOne("""
+                @contract
+                class Plain {
+                    @storage num x;
+                    kaam set(num v) {
+                        x = v;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(specHex("precondition failed")),
+                    "no @requires should mean no precondition guard");
+            assertFalse(code.contains(specHex("postcondition failed")),
+                    "no @ensures should mean no postcondition guard");
+            assertFalse(code.contains(specHex("invariant violated")),
+                    "no @invariant should mean no invariant guard");
+        }
+    }
 }

@@ -52,7 +52,9 @@ public enum TokenType {
     UNCHECKED,      // @unchecked - Opt-out to wrapping arithmetic
     EMIT,           // emit - Emit an event
     IMMUTABLE,      // @immutable - Set once in constructor
-    INVARIANT,      // @invariant - Formal verification invariant
+    INVARIANT,      // @invariant - Formal verification invariant (optionally @invariant(expr))
+    REQUIRES,       // @requires(expr) - Precondition (runtime-enforced)
+    ENSURES,        // @ensures(expr) - Postcondition (runtime-enforced)
     TEST,           // @test - Contract test method
     BEFORE_EACH,    // @beforeEach - Test setup hook
     AFTER_EACH,     // @afterEach - Test teardown hook

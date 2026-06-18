@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.3.0** - see [What's New in v3.3.0](#whats-new-in-v330) and
+> **Current release: v3.4.0** - see [What's New in v3.4.0](#whats-new-in-v340) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,25 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.4.0
+
+Design-by-contract spec annotations, runtime-enforced on the EVM backend (provable
+safety, layer L2a):
+- **`@requires(expr)` preconditions.** Checked at function entry, after parameters are
+  decoded; a false condition reverts with `precondition failed`. Multiple `@requires`
+  on one function are AND-ed.
+- **`@ensures(expr)` postconditions.** Checked at every return; a false condition reverts
+  with `postcondition failed`. May reference the **`result`** keyword to constrain a
+  function's scalar return value.
+- **`@invariant(expr)` contract invariants.** Declared at the class level (alongside
+  `@contract`); re-checked after every state-mutating call and reverts with
+  `invariant violated`. `@view`/`@pure` functions are exempt.
+- **Typo guard (`DHR-E516`).** Unknown identifiers in a spec expression are rejected at
+  compile time, since on the EVM an unresolved name would silently lower to `0` and
+  quietly defeat the check.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [SPEC.md](SPEC.md).
 
 ## What's New in v3.3.0
 

@@ -325,6 +325,19 @@ public final class EvmCodeGen {
             buf.mstoreAt(offset);
         }
 
+        // Track current function for return-type / spec awareness
+        currentFn = fn;
+
+        // @requires preconditions: revert at entry if any condition is false.
+        // Checked after parameters are decoded so conditions can reference them.
+        for (Expression pre : fn.getRequires()) {
+            emitExpression(pre);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("precondition failed");
+            buf.placeLabel(ok);
+        }
+
         // @nonreentrant guard: check lock, set lock, emit body, clear lock
         boolean guarded = fn.hasContractAnnotation(ContractAnnotation.NONREENTRANT);
         if (guarded) {
@@ -341,9 +354,6 @@ public final class EvmCodeGen {
             insideNonReentrant = true;
         }
 
-        // Track current function for return type awareness
-        currentFn = fn;
-
         // Emit function body
         emitFunctionBody(fn);
 
@@ -354,8 +364,50 @@ public final class EvmCodeGen {
             insideNonReentrant = false;
         }
 
+        // Fall-through epilogue: enforce postconditions + invariants on the
+        // implicit (void) return path. Explicit returns are handled in
+        // emitReturnStmt; at runtime each path reaches exactly one exit.
+        emitEnsuresChecks();
+        emitInvariantChecks();
+
         // Implicit return (stop) if no explicit return was encountered
         buf.emit(EvmOpcode.STOP);
+    }
+
+    /** Memory-backed local holding the return value, bound to {@code result} in @ensures. */
+    private static final String RESULT_LOCAL = "result";
+
+    /**
+     * Emit {@code @ensures} postcondition guards for {@link #currentFn}. Each
+     * condition is evaluated and, if false, reverts. Postconditions may
+     * reference {@code result}; callers that return a value must store it into
+     * the {@link #RESULT_LOCAL} memory slot before invoking this.
+     */
+    private void emitEnsuresChecks() {
+        if (currentFn == null) return;
+        for (Expression post : currentFn.getEnsures()) {
+            emitExpression(post);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("postcondition failed");
+            buf.placeLabel(ok);
+        }
+    }
+
+    /**
+     * Emit contract-level {@code @invariant} guards. Each invariant is
+     * evaluated against current storage and, if false, reverts. Skipped for
+     * {@code @view}/{@code @pure} functions, which cannot mutate state.
+     */
+    private void emitInvariantChecks() {
+        if (currentFn != null && (currentFn.isView() || currentFn.isPure())) return;
+        for (Expression inv : contract.getInvariants()) {
+            emitExpression(inv);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("invariant violated");
+            buf.placeLabel(ok);
+        }
     }
 
     private void emitFunctionBody(FunctionDecl fn) {
@@ -481,13 +533,29 @@ public final class EvmCodeGen {
             buf.pushInt(0);
             buf.sstoreSlot(REENTRANCY_LOCK_SLOT);
         }
+        boolean hasSpecExits = currentFn != null
+                && (!currentFn.getEnsures().isEmpty() || !contract.getInvariants().isEmpty());
         if (stmt.getValue() != null) {
             // Check if return type is string (sab) — requires dynamic ABI encoding
             String retType = currentFn != null ? currentFn.getReturnType() : null;
             if ("sab".equals(retType) || "string".equals(retType)) {
+                // Postconditions/invariants run before the dynamic-string return.
+                // `result` binding is not supported for sab returns.
+                emitEnsuresChecks();
+                emitInvariantChecks();
                 emitDynamicStringReturn(stmt.getValue());
             } else {
                 emitExpression(stmt.getValue());
+                if (hasSpecExits) {
+                    // Bind the return value to `result` (a memory local) so
+                    // @ensures can reference it, keeping a copy on the stack.
+                    int rslot = locals.containsKey(RESULT_LOCAL)
+                            ? locals.get(RESULT_LOCAL) : allocLocal(RESULT_LOCAL);
+                    buf.emit(EvmOpcode.DUP1);
+                    buf.mstoreAt(rslot);
+                    emitEnsuresChecks();
+                    emitInvariantChecks();
+                }
                 // ABI-encode return value: store at memory offset 0, return 32 bytes
                 buf.pushInt(0);
                 buf.emit(EvmOpcode.MSTORE);
@@ -496,6 +564,8 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.RETURN);
             }
         } else {
+            emitEnsuresChecks();
+            emitInvariantChecks();
             buf.emit(EvmOpcode.STOP);
         }
     }

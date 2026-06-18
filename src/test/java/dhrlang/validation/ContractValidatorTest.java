@@ -537,4 +537,100 @@ class ContractValidatorTest {
             assertEquals(0, validator.getErrorCount());
         }
     }
+
+    @Nested
+    @DisplayName("Spec Expression Validation (@requires/@ensures/@invariant)")
+    class SpecExpressionValidationTests {
+
+        @Test
+        @DisplayName("@requires referencing a parameter is valid")
+        void requiresKnownParamValid() {
+            String code = """
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amount > 0)
+                    kaam deposit(num amount) {
+                        balance = balance + amount;
+                    }
+                }
+                """;
+            validator.validate(parse(code));
+            assertFalse(validator.hasError("DHR-E516"),
+                    "A parameter reference in @requires should resolve");
+        }
+
+        @Test
+        @DisplayName("@requires with an unknown identifier is DHR-E516")
+        void requiresUnknownIdentifier() {
+            String code = """
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amunt > 0)
+                    kaam deposit(num amount) {
+                        balance = balance + amount;
+                    }
+                }
+                """;
+            validator.validate(parse(code));
+            assertTrue(validator.hasError("DHR-E516"),
+                    "A typo'd identifier in @requires should be flagged DHR-E516");
+        }
+
+        @Test
+        @DisplayName("@ensures may reference the result keyword")
+        void ensuresResultValid() {
+            String code = """
+                @contract
+                class Calc {
+                    @ensures(result >= a)
+                    @view
+                    num maxZero(num a) {
+                        return a;
+                    }
+                }
+                """;
+            validator.validate(parse(code));
+            assertFalse(validator.hasError("DHR-E516"),
+                    "'result' is a valid identifier inside @ensures");
+        }
+
+        @Test
+        @DisplayName("@invariant referencing a contract field is valid")
+        void invariantKnownFieldValid() {
+            String code = """
+                @invariant(totalSupply >= 0)
+                @contract
+                class Token {
+                    @storage num totalSupply;
+                    kaam mint(num amount) {
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """;
+            validator.validate(parse(code));
+            assertFalse(validator.hasError("DHR-E516"),
+                    "A contract field reference in @invariant should resolve");
+        }
+
+        @Test
+        @DisplayName("@requires may reference msg builtins")
+        void requiresMsgBuiltinValid() {
+            String code = """
+                @contract
+                class Vault {
+                    @storage num balance;
+                    @requires(msg.value > 0)
+                    @payable
+                    kaam fund() {
+                        balance = balance + msg.value;
+                    }
+                }
+                """;
+            validator.validate(parse(code));
+            assertFalse(validator.hasError("DHR-E516"),
+                    "msg.value is a valid builtin reference in a spec");
+        }
+    }
 }

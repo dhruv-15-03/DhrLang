@@ -6,6 +6,34 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-06-19
+
+### Added
+- **Design-by-contract spec annotations, runtime-enforced on the EVM backend
+  (provable safety, layer L2a).** Three new contract specification annotations that
+  lower to revert checks in the compiled bytecode:
+  - **`@requires(expr)`** — a function precondition, evaluated at entry after the
+    parameters are decoded (so it can reference them). A false condition reverts with
+    `precondition failed`. Multiple `@requires` on one function are AND-ed.
+  - **`@ensures(expr)`** — a function postcondition, evaluated at every `return` (and on
+    the implicit void return). A false condition reverts with `postcondition failed`.
+    Postconditions may reference the new **`result`** keyword, which binds to the
+    function's scalar return value.
+  - **`@invariant(expr)`** — a contract-level invariant, declared next to `@contract`,
+    re-checked after every state-mutating function and reverting with `invariant
+    violated`. `@view`/`@pure` functions are exempt (they cannot mutate state).
+- **`DHR-E516` — unknown identifier in a spec expression.** `ContractValidator` now walks
+  every `@requires`/`@ensures`/`@invariant` expression and rejects names that do not
+  resolve to a parameter, a contract field, the `result` keyword (in `@ensures`), or a
+  known builtin (`msg`/`block`/`tx`). This closes a footgun: on the EVM backend an
+  unresolved identifier silently compiles to `0`, which would quietly turn a spec into an
+  always-true or always-false guard.
+
+### Notes
+- Additive, non-breaking: contracts without spec annotations compile to identical
+  bytecode. `result` binding is supported for scalar returns; on `sab`/string returns the
+  postcondition runs but `result` is unbound.
+
 ## [3.3.0] - 2026-06-18
 
 ### Added

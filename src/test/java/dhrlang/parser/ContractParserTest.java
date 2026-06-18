@@ -396,4 +396,67 @@ class ContractParserTest {
             assertTrue(method.hasModifier(Modifier.PUBLIC));
         }
     }
+
+    @Nested
+    @DisplayName("Spec Annotation Tests (@requires/@ensures/@invariant)")
+    class SpecAnnotationTests {
+
+        @Test
+        @DisplayName("Parse @requires and @ensures into function spec lists")
+        void parseRequiresEnsures() {
+            String code = """
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amount > 0)
+                    @ensures(balance >= 0)
+                    kaam withdraw(num amount) {
+                        balance = balance - amount;
+                    }
+                }
+                """;
+            Program program = parse(code);
+            ClassDecl classDecl = program.getClasses().get(0);
+            FunctionDecl fn = classDecl.getFunctions().get(0);
+            assertEquals(1, fn.getRequires().size(), "one @requires expected");
+            assertEquals(1, fn.getEnsures().size(), "one @ensures expected");
+        }
+
+        @Test
+        @DisplayName("Multiple @requires accumulate on one function")
+        void parseMultipleRequires() {
+            String code = """
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amount > 0)
+                    @requires(amount < 100)
+                    kaam deposit(num amount) {
+                        balance = balance + amount;
+                    }
+                }
+                """;
+            Program program = parse(code);
+            FunctionDecl fn = program.getClasses().get(0).getFunctions().get(0);
+            assertEquals(2, fn.getRequires().size(), "two @requires expected");
+        }
+
+        @Test
+        @DisplayName("Parse contract-level @invariant(expr) into class invariants")
+        void parseInvariantExpression() {
+            String code = """
+                @invariant(totalSupply >= 0)
+                @contract
+                class Token {
+                    @storage num totalSupply;
+                    kaam mint(num amount) {
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """;
+            Program program = parse(code);
+            ClassDecl classDecl = program.getClasses().get(0);
+            assertEquals(1, classDecl.getInvariants().size(), "one @invariant expected");
+        }
+    }
 }

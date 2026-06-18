@@ -16,6 +16,8 @@ public class ClassDecl implements ASTNode {
     private final List<VarDecl> variables;
     private final Set<Modifier> modifiers;
     private final Set<ContractAnnotation> contractAnnotations;
+    /** Contract-level design-by-contract invariants ({@code @invariant(expr)}). */
+    private final List<Expression> invariants = new ArrayList<>();
     private boolean isBeingResolved = false;
     private boolean isResolved = false;
     private SourceLocation sourceLocation;
@@ -115,6 +117,16 @@ public class ClassDecl implements ASTNode {
      */
     public boolean isContract() {
         return hasContractAnnotation(ContractAnnotation.CONTRACT);
+    }
+
+    /**
+     * Contract-level design-by-contract invariants declared via
+     * {@code @invariant(expr)}. Each is a boolean expression over storage
+     * fields, re-checked at the exit of every public state-changing function;
+     * a false result reverts. Empty when the contract has no invariants.
+     */
+    public List<Expression> getInvariants() {
+        return invariants;
     }
     
     public void setSourceLocation(SourceLocation location) {

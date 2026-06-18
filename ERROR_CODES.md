@@ -90,6 +90,7 @@ DHR-[E/W][NNN]
 | Code | Name | Description | Common Fix |
 |------|------|-------------|------------|
 | DHR-E501 | ACCESS_MODIFIER | Private/protected access violation | Use public member or accessor method |
+| DHR-E516 | SPEC_UNKNOWN_IDENTIFIER | Unknown identifier in a `@requires`/`@ensures`/`@invariant` spec expression | Reference a parameter, contract field, `result` (in `@ensures`), or a builtin (`msg`/`block`/`tx`) |
 
 ---
 
