@@ -154,6 +154,7 @@ public class Main {
         System.out.println("  contract deploy      Build, sign, and deploy contracts to a network");
         System.out.println("  contract verify      Verify contract source on block explorer");
         System.out.println("  contract gas         Estimate deployment gas costs + ETH cost");
+        System.out.println("  contract fuzz        Property-fuzz @ensures/@invariant specs for counterexamples");
         System.out.println("  contract wallet      Manage wallet keys (create keystore, show address)");
         System.out.println("  contract networks    List all supported blockchain networks");
         System.out.println("  contract status      Check contract deployment status on-chain");
@@ -166,6 +167,7 @@ public class Main {
         System.out.println("  java -jar DhrLang.jar contract compile token.dhr");
         System.out.println("  java -jar DhrLang.jar contract deploy --network=sepolia token.dhr");
         System.out.println("  java -jar DhrLang.jar contract gas token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract fuzz --runs=512 --seed=42 token.dhr");
         System.out.println("  java -jar DhrLang.jar contract verify --address=0x... token.dhr");
         System.out.println("  java -jar DhrLang.jar contract wallet create");
         System.out.println("  java -jar DhrLang.jar contract networks");

@@ -21,6 +21,7 @@ import java.util.*;
  *   <li>{@code deploy}   — build + sign + send deployment transactions</li>
  *   <li>{@code verify}   — verify contract source on block explorer</li>
  *   <li>{@code gas}      — estimate deployment and call gas costs</li>
+ *   <li>{@code fuzz}     — property-fuzz @ensures/@invariant specs for counterexamples</li>
  *   <li>{@code wallet}   — manage keys (create keystore, show address)</li>
  *   <li>{@code networks} — list supported networks and their configs</li>
  *   <li>{@code status}   — check deployment/verification status</li>
@@ -39,7 +40,7 @@ public final class BlockchainCLI {
      * Parsed blockchain CLI options.
      */
     public static final class BlockchainOptions {
-        public String subcommand;        // compile | deploy | verify | gas | wallet | networks | status
+        public String subcommand;        // compile | deploy | verify | gas | fuzz | wallet | networks | status
         public String network = "local"; // network name or chain ID
         public String outputDir = "build/evm";
         public String deployFormat = "foundry"; // foundry | ethers
@@ -51,6 +52,9 @@ public final class BlockchainCLI {
         public boolean verbose = false;
         // wallet sub-subcommand
         public String walletAction;      // create | show | import
+        // fuzz options
+        public int fuzzRuns = 256;       // --runs=<n>
+        public long fuzzSeed = -1;       // --seed=<n>  (-1 = random)
     }
 
     // ── Main Entry Point ─────────────────────────────────────────────────
@@ -75,6 +79,7 @@ public final class BlockchainCLI {
             case "deploy"  -> handleDeploy(program, sourceCode, opts, errorReporter);
             case "verify"  -> handleVerify(program, sourceCode, opts, errorReporter);
             case "gas"     -> handleGas(program, opts, errorReporter);
+            case "fuzz"    -> handleFuzz(program, opts);
             case "wallet"  -> handleWallet(opts);
             case "networks" -> handleNetworks(opts);
             case "status"  -> handleStatus(opts);
@@ -382,6 +387,37 @@ public final class BlockchainCLI {
         }
     }
 
+    // ── fuzz ─────────────────────────────────────────────────────────────
+
+    /**
+     * Property-fuzz every contract's specifications (provable-safety level L3).
+     * Generates random inputs, executes each function over a simulated EVM state,
+     * and reports any {@code @ensures}/{@code @invariant} counterexamples. Exits
+     * non-zero when a violation is found, so it doubles as a CI gate.
+     */
+    private static void handleFuzz(Program program, BlockchainOptions opts) {
+        if (program == null) {
+            System.err.println("No program to fuzz. Provide a .dhr source file.");
+            System.exit(2);
+            return;
+        }
+
+        var fuzzer = new dhrlang.testing.ContractFuzzer(program);
+        if (opts.fuzzRuns > 0) {
+            fuzzer.setRuns(opts.fuzzRuns);
+        }
+        if (opts.fuzzSeed >= 0) {
+            fuzzer.setSeed(opts.fuzzSeed);
+        }
+
+        fuzzer.fuzzAll();
+        System.out.println(fuzzer.formatReport());
+
+        if (fuzzer.hasFailures()) {
+            System.exit(1);
+        }
+    }
+
     // ── wallet ───────────────────────────────────────────────────────────
 
     private static void handleWallet(BlockchainOptions opts) {
@@ -497,6 +533,7 @@ public final class BlockchainCLI {
         System.out.println("  deploy     Build, sign, and deploy contracts to a network");
         System.out.println("  verify     Verify contract source on block explorer (Etherscan)");
         System.out.println("  gas        Estimate deployment and function call gas costs");
+        System.out.println("  fuzz       Property-fuzz @ensures/@invariant specs for counterexamples");
         System.out.println("  wallet     Manage wallet keys (create keystore, show address)");
         System.out.println("  networks   List supported blockchain networks");
         System.out.println("  status     Check contract deployment status");
@@ -509,6 +546,8 @@ public final class BlockchainCLI {
         System.out.println("  --deploy-format=<fmt>   Deploy script format: foundry | ethers");
         System.out.println("  --etherscan-key=<key>   Etherscan API key (or set DHRLANG_ETHERSCAN_API_KEY)");
         System.out.println("  --keystore=<path>       Path to encrypted keystore file");
+        System.out.println("  --runs=<n>              Fuzz iterations per function (default: 256)");
+        System.out.println("  --seed=<n>              Fuzz RNG seed for reproducible runs");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -516,6 +555,7 @@ public final class BlockchainCLI {
         System.out.println("Examples:");
         System.out.println("  dhrlang contract compile token.dhr");
         System.out.println("  dhrlang contract gas token.dhr");
+        System.out.println("  dhrlang contract fuzz --runs=512 --seed=42 token.dhr");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
@@ -640,6 +680,14 @@ public final class BlockchainCLI {
                 opts.etherscanKey = a.substring("--etherscan-key=".length());
             } else if (a.startsWith("--keystore=")) {
                 opts.keystorePath = a.substring("--keystore=".length());
+            } else if (a.startsWith("--runs=")) {
+                try {
+                    opts.fuzzRuns = Integer.parseInt(a.substring("--runs=".length()).trim());
+                } catch (NumberFormatException ignored) { /* keep default */ }
+            } else if (a.startsWith("--seed=")) {
+                try {
+                    opts.fuzzSeed = Long.parseLong(a.substring("--seed=".length()).trim());
+                } catch (NumberFormatException ignored) { /* keep default */ }
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
             } else if ("--json".equals(a)) {

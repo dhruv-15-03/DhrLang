@@ -6,7 +6,31 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
-## [3.4.0] - 2026-06-19
+## [3.5.0] - 2026-06-20
+
+### Added
+- **Specification fuzzing for smart contracts (`contract fuzz`), provable safety
+  layer L3.** A new property-based fuzzer that searches for inputs which falsify a
+  contract's declared `@ensures` postconditions and `@invariant` contract invariants.
+  - **`SpecFuzzEngine`** — a sound, concrete `uint256` evaluator that executes a
+    contract function over a simulated EVM state (`2^256` wrapping arithmetic,
+    `@checked` overflow reverts, mapping/storage reads defaulting to zero) and then
+    checks every applicable specification. It is deliberately **sound, not complete**:
+    it only reports a `VIOLATION` when a faithful execution falsifies a spec; anything
+    it cannot model faithfully (user-function calls, unsupported statements, non-numeric
+    arguments) degrades to a skip, never a false positive.
+  - **`ContractFuzzer`** is now backed by that engine (previously a stub). It generates
+    randomized arguments, runs each fuzzable function, **minimizes** any failing input
+    toward a smaller counterexample, and reports per-function `ok / violations / reverts
+    / skipped / errors` tallies. A run is reproducible under `--seed`.
+  - **CLI:** `dhrlang contract fuzz [--runs=N] [--seed=N] <file.dhr>` fuzzes every
+    contract's specs and exits non-zero when a counterexample is found, so it doubles as
+    a CI gate. `--runs` controls iterations per function (default 256); `--seed` makes a
+    run deterministic.
+  - Preconditions (`@requires`) are treated as input-domain filters: an input that fails
+    a precondition is reported as *skipped* (out of scope), not as a bug.
+
+
 
 ### Added
 - **Design-by-contract spec annotations, runtime-enforced on the EVM backend

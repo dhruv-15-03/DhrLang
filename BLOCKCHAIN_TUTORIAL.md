@@ -141,6 +141,36 @@ class Bank {
 > A typo'd name inside a spec (e.g. `@requires(amunt > 0)`) is rejected at compile time
 > with **DHR-E516** — on the EVM an unresolved identifier would silently compile to `0`.
 
+### Fuzz your specs (`contract fuzz`)
+
+Specs are only useful if they actually hold. The fuzzer searches for an input that
+*falsifies* an `@ensures` or `@invariant`, so you can catch a logic bug before you deploy:
+
+```bash
+java -jar DhrLang-3.5.0.jar contract fuzz MyToken.dhr
+# reproducible run, more iterations:
+java -jar DhrLang-3.5.0.jar contract fuzz --runs=512 --seed=42 MyToken.dhr
+```
+
+It runs each function over a simulated EVM state (uint256 wrapping arithmetic, `@checked`
+overflow reverts, storage and mappings default to `0`) and prints a per-function tally.
+If a spec is violated it reports a **minimized counterexample**:
+
+```
+  Buggy::set — 256 runs: 0 ok, 256 violations, 0 reverts, 0 skipped, 0 errors
+
+Failing inputs:
+  ✗ Buggy::set(0, 0) → invariant violated: @invariant(total == a + b)
+
+Result: ISSUES FOUND ✗
+```
+
+The fuzzer is **sound, not complete**: it only flags a violation on a faithful execution.
+Inputs that fail a `@requires` precondition are reported as *skipped* (out of scope), and
+anything it cannot model faithfully (e.g. a call into another function) is skipped rather
+than reported as a false positive. The command exits non-zero when a counterexample is
+found, so `contract fuzz` works as a CI gate.
+
 ---
 
 ## Step 2: Compile to EVM Bytecode
@@ -361,6 +391,7 @@ java -jar DhrLang-3.0.0.jar contract networks
 |---------|-------------|
 | `contract compile <file>` | Compile to EVM bytecode + ABI |
 | `contract gas <file>` | Gas cost estimation report |
+| `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
 | `contract deploy --network=<net> <file>` | Build + sign + deploy |
 | `contract verify --address=<addr> <file>` | Verify on block explorer |
 | `contract wallet create` | Create encrypted keystore |
