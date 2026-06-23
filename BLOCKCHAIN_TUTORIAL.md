@@ -385,6 +385,36 @@ java -jar DhrLang-3.0.0.jar contract deploy --network=mainnet MyToken.dhr
 
 ---
 
+## Step 10: Export for Hardhat / Foundry / viem
+
+Already have a JavaScript/TypeScript or Solidity-tooling project? `contract export`
+projects every `@contract` into the artifact shapes those toolchains already consume,
+so a DhrLang contract drops in without hand-copying ABIs or bytecode:
+
+```bash
+# Emit all three targets into build/contracts/ (default):
+java -jar DhrLang-3.7.0.jar contract export MyToken.dhr
+
+# Pick a single target and destination:
+java -jar DhrLang-3.7.0.jar contract export --format=ts --output=app/src/contracts MyToken.dhr
+```
+
+`--format=all` (default) writes, per contract:
+
+| Path | Consumed by |
+|------|-------------|
+| `hardhat/<Name>.json` | Hardhat, ethers, viem, wagmi (`hh-sol-artifact-1`) |
+| `foundry/<Name>.json` | Foundry / `forge` (`out/`-shaped artifact) |
+| `ts/<Name>.ts` | viem / wagmi - ABI exported `as const` + `0x` bytecode consts |
+| `ts/index.ts` | Barrel re-exporting every generated module |
+
+Narrow the output with `--format=hardhat|foundry|ts`. The ABI `as const` assertion in the
+TypeScript module is what lets viem and wagmi infer fully-typed `read`/`write` calls. Export
+is a read-only projection of the compiled artifacts, so it never changes codegen or audit
+results, and the generated files are deterministic ASCII.
+
+---
+
 ## Supported Networks
 
 ```bash
@@ -411,6 +441,7 @@ java -jar DhrLang-3.0.0.jar contract networks
 | `contract gas <file>` | Gas cost estimation report |
 | `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
 | `contract safety [--fail-on=<sev>] <file>` | Audit + fuzz -> safety score, grade, SARIF; CI gate |
+| `contract export [--format=<fmt>] [--output=<dir>] <file>` | Emit Hardhat / Foundry / viem artifacts |
 | `contract deploy --network=<net> <file>` | Build + sign + deploy |
 | `contract verify --address=<addr> <file>` | Verify on block explorer |
 | `contract wallet create` | Create encrypted keystore |

@@ -4,6 +4,7 @@ import dhrlang.ast.Program;
 import dhrlang.error.ErrorReporter;
 import dhrlang.evm.EvmContractCompiler;
 import dhrlang.evm.EvmContractCompiler.ContractArtifact;
+import dhrlang.interop.InteropExporter;
 import dhrlang.production.AuditReportGenerator;
 import dhrlang.validation.StorageLayouter;
 
@@ -23,6 +24,7 @@ import java.util.*;
  *   <li>{@code gas}      — estimate deployment and call gas costs</li>
  *   <li>{@code fuzz}     — property-fuzz @ensures/@invariant specs for counterexamples</li>
  *   <li>{@code safety}   — unified safety report (audit + fuzzing) with a CI gate</li>
+ *   <li>{@code export}   — emit Hardhat/Foundry artifacts + viem/wagmi TS typings</li>
  *   <li>{@code wallet}   — manage keys (create keystore, show address)</li>
  *   <li>{@code networks} — list supported networks and their configs</li>
  *   <li>{@code status}   — check deployment/verification status</li>
@@ -59,6 +61,8 @@ public final class BlockchainCLI {
         // safety gate options
         public String failOn = "high";   // --fail-on=critical|high|medium|low|none
         public String sourceFile;        // resolved .dhr path (for report locations)
+        // export options
+        public String exportFormat = "all"; // --format=all|hardhat|foundry|ts
     }
 
     // ── Main Entry Point ─────────────────────────────────────────────────
@@ -85,6 +89,7 @@ public final class BlockchainCLI {
             case "gas"     -> handleGas(program, opts, errorReporter);
             case "fuzz"    -> handleFuzz(program, opts);
             case "safety"  -> handleSafety(program, opts);
+            case "export"  -> handleExport(program, opts, errorReporter);
             case "wallet"  -> handleWallet(opts);
             case "networks" -> handleNetworks(opts);
             case "status"  -> handleStatus(opts);
@@ -128,6 +133,101 @@ public final class BlockchainCLI {
             System.err.println("Failed to write artifacts: " + e.getMessage());
             System.exit(2);
         }
+    }
+
+    // ── export (Hardhat / Foundry / viem-wagmi interop) ───────────────────
+
+    /**
+     * Emit framework-ready interop artifacts for every {@code @contract} in the
+     * program: Hardhat ({@code hardhat/<Name>.json}), Foundry
+     * ({@code foundry/<Name>.json}) and viem/wagmi TypeScript typings
+     * ({@code ts/<Name>.ts} + {@code ts/index.ts} barrel), selected via
+     * {@code --format=all|hardhat|foundry|ts}. Purely additive build step — no
+     * network access, exits 0 on success.
+     */
+    private static void handleExport(Program program, BlockchainOptions opts,
+                                     ErrorReporter errorReporter) {
+        if (program == null) {
+            System.err.println("No program to export. Provide a .dhr source file.");
+            System.exit(2);
+            return;
+        }
+
+        String fmt = opts.exportFormat == null ? "all" : opts.exportFormat.toLowerCase(Locale.ROOT);
+        boolean doHardhat = fmt.equals("all") || fmt.equals("hardhat");
+        boolean doFoundry = fmt.equals("all") || fmt.equals("foundry");
+        boolean doTs = fmt.equals("all") || fmt.equals("ts") || fmt.equals("typescript");
+        if (!doHardhat && !doFoundry && !doTs) {
+            System.err.println("Unknown --format: " + opts.exportFormat
+                    + " (expected: all | hardhat | foundry | ts)");
+            System.exit(2);
+            return;
+        }
+
+        var compiler = new EvmContractCompiler(program, errorReporter);
+        var artifacts = compiler.compileAll();
+        if (artifacts.isEmpty()) {
+            System.out.println("No @contract classes found.");
+            System.out.println("Hint: Add @contract above your class declaration.");
+            return;
+        }
+
+        String version = dhrlang.Main.class.getPackage() != null
+                ? dhrlang.Main.class.getPackage().getImplementationVersion() : null;
+        String sourceName = deriveSourceName(opts.sourceFile);
+
+        Path base = Path.of(opts.outputDir);
+        try {
+            int written = 0;
+            List<String> tsNames = new ArrayList<>();
+            for (var artifact : artifacts) {
+                String src = sourceName != null ? sourceName
+                        : artifact.getContractName() + ".dhr";
+                if (doHardhat) {
+                    Path dir = base.resolve("hardhat");
+                    Files.createDirectories(dir);
+                    Files.writeString(dir.resolve(artifact.getContractName() + ".json"),
+                            InteropExporter.hardhatArtifact(artifact, src, version));
+                    written++;
+                }
+                if (doFoundry) {
+                    Path dir = base.resolve("foundry");
+                    Files.createDirectories(dir);
+                    Files.writeString(dir.resolve(artifact.getContractName() + ".json"),
+                            InteropExporter.foundryArtifact(artifact, src, version));
+                    written++;
+                }
+                if (doTs) {
+                    Path dir = base.resolve("ts");
+                    Files.createDirectories(dir);
+                    Files.writeString(dir.resolve(artifact.getContractName() + ".ts"),
+                            InteropExporter.viemModule(artifact, version));
+                    tsNames.add(artifact.getContractName());
+                    written++;
+                }
+            }
+            if (doTs && !tsNames.isEmpty()) {
+                Files.writeString(base.resolve("ts").resolve("index.ts"),
+                        InteropExporter.tsBarrel(tsNames, version));
+                written++;
+            }
+            System.out.println(artifacts.size() + " contract(s) exported -> "
+                    + written + " file(s) under " + base.toAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("Failed to write interop artifacts: " + e.getMessage());
+            System.exit(2);
+        }
+    }
+
+    /**
+     * Derive a logical source-file name (basename) from a possibly path-qualified
+     * {@code --output}-style argument; returns {@code null} when unset.
+     */
+    private static String deriveSourceName(String sourceFile) {
+        if (sourceFile == null || sourceFile.isEmpty()) return null;
+        String s = sourceFile.replace('\\', '/');
+        int slash = s.lastIndexOf('/');
+        return slash >= 0 ? s.substring(slash + 1) : s;
     }
 
     // ── deploy ───────────────────────────────────────────────────────────
@@ -621,6 +721,7 @@ public final class BlockchainCLI {
         System.out.println("  gas        Estimate deployment and function call gas costs");
         System.out.println("  fuzz       Property-fuzz @ensures/@invariant specs for counterexamples");
         System.out.println("  safety     Unified safety report (audit + fuzzing) with a CI gate");
+        System.out.println("  export     Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
         System.out.println("  wallet     Manage wallet keys (create keystore, show address)");
         System.out.println("  networks   List supported blockchain networks");
         System.out.println("  status     Check contract deployment status");
@@ -636,6 +737,7 @@ public final class BlockchainCLI {
         System.out.println("  --runs=<n>              Fuzz iterations per function (default: 256)");
         System.out.println("  --seed=<n>              Fuzz RNG seed for reproducible runs");
         System.out.println("  --fail-on=<severity>    Safety gate threshold: critical|high|medium|low|none (default: high)");
+        System.out.println("  --format=<fmt>          Export format: all|hardhat|foundry|ts (default: all)");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -645,6 +747,7 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract gas token.dhr");
         System.out.println("  dhrlang contract fuzz --runs=512 --seed=42 token.dhr");
         System.out.println("  dhrlang contract safety --fail-on=high token.dhr");
+        System.out.println("  dhrlang contract export --format=all token.dhr");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
@@ -779,6 +882,8 @@ public final class BlockchainCLI {
                 } catch (NumberFormatException ignored) { /* keep default */ }
             } else if (a.startsWith("--fail-on=")) {
                 opts.failOn = a.substring("--fail-on=".length()).trim();
+            } else if (a.startsWith("--format=")) {
+                opts.exportFormat = a.substring("--format=".length()).trim();
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
             } else if ("--json".equals(a)) {

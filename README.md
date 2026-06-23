@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.6.0** - see [What's New in v3.6.0](#whats-new-in-v360) and
+> **Current release: v3.7.0** - see [What's New in v3.7.0](#whats-new-in-v370) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,21 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.7.0
+
+`contract export` - turn a DhrLang contract into framework-ready interop artifacts:
+- **Hardhat + Foundry artifacts.** `dhrlang contract export token.dhr` writes a
+  Hardhat `hh-sol-artifact-1` JSON and a Foundry-style `out/`-shaped JSON per contract,
+  so the compiled ABI + bytecode drop into either toolchain unchanged.
+- **viem / wagmi typings.** Emits a TypeScript module exporting the ABI `as const`
+  (the assertion that unlocks viem's fully-typed contract calls) plus `0x`-prefixed
+  bytecode constants, with an `index.ts` barrel re-exporting every contract.
+- **Pick your targets.** `--format=all|hardhat|foundry|ts` (default `all`) and
+  `--output=<dir>` control what gets written and where. Pure projection of the compiled
+  artifacts - no codegen or audit path is touched, and output is deterministic ASCII.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.6.0
 

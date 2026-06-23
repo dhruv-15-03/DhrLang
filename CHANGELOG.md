@@ -6,6 +6,33 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-06-24
+
+### Added
+- **`contract export` - framework-ready interop artifacts (Hardhat, Foundry,
+  viem/wagmi).** A new subcommand that compiles every `@contract` in a source file
+  and emits the artifacts the surrounding EVM ecosystem already knows how to consume,
+  so a DhrLang contract drops straight into an existing JavaScript/TypeScript or
+  Solidity-tooling project.
+  - **Hardhat.** Writes `hardhat/<Name>.json` in the `hh-sol-artifact-1` shape
+    (`_format`, `contractName`, `sourceName`, `compiler`, `abi`, `bytecode`,
+    `deployedBytecode`, `linkReferences`), readable by Hardhat, ethers, viem and wagmi.
+  - **Foundry.** Writes `foundry/<Name>.json` matching the shape `forge` emits under
+    `out/` (`abi`, `bytecode.object`, `deployedBytecode.object`, `metadata`).
+  - **viem / wagmi.** Writes `ts/<Name>.ts` exporting the ABI `as const` (the assertion
+    that unlocks viem's compile-time type inference) plus `0x`-prefixed creation and
+    runtime bytecode constants, and a `ts/index.ts` barrel re-exporting every module.
+  - **Selectable output.** `--format=all|hardhat|foundry|ts` (default `all`) picks which
+    targets to emit; `--output=<dir>` chooses the destination (default `build/contracts`).
+    The same per-contract `AbiGenerator` selectors back both the ABI entries and the
+    bytecode, so off-chain decoders line up with on-chain dispatch.
+
+### Notes
+- Additive, non-breaking. `export` is a pure, read-only projection of the compiled
+  artifacts - it touches no codegen, audit or SARIF path, so existing behavior and the
+  Security Audit alerts are unaffected. All generated output is plain ASCII for
+  byte-for-byte deterministic artifacts across platforms.
+
 ## [3.6.0] - 2026-06-23
 
 ### Added
