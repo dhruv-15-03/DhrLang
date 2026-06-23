@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.5.0** - see [What's New in v3.5.0](#whats-new-in-v350) and
+> **Current release: v3.6.0** - see [What's New in v3.6.0](#whats-new-in-v360) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -57,20 +57,18 @@ Some constructs (modules, concurrency, lambdas/closures) are either experimental
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
 
-## What's New in v3.5.0
+## What's New in v3.6.0
 
-Specification fuzzing for smart contracts (`contract fuzz`) - provable safety, layer L3:
-- **Property-fuzz your specs.** `dhrlang contract fuzz token.dhr` generates randomized
-  inputs for every contract function and searches for a case that falsifies a declared
-  `@ensures` postcondition or `@invariant` contract invariant, printing a minimized
-  counterexample when it finds one.
-- **Sound by construction.** A new concrete `uint256` evaluator runs each function over a
-  simulated EVM state (`2^256` wrapping arithmetic, `@checked` overflow reverts, storage
-  and mappings defaulting to zero). It only reports a violation on a faithful execution;
-  anything it cannot model degrades to *skipped*, never a false alarm.
-- **CI gate.** `--runs=N` controls iterations per function (default 256) and `--seed=N`
-  makes a campaign reproducible; the command exits non-zero when a counterexample is
-  found, so it drops straight into a pipeline.
+Smart-contract safety report with a CI gate (`contract safety`) - provable safety, layer L4:
+- **One command, one grade.** `dhrlang contract safety token.dhr` runs the full security
+  audit *and* the L3 spec fuzzer, then prints a Markdown report led by a **safety score**
+  (`100 - risk`) and an **A-F grade**.
+- **Spec bugs become findings.** Every invariant/postcondition counterexample the fuzzer
+  finds is folded in as a HIGH `FUZZ-INVARIANT` finding with a minimized counterexample,
+  alongside the static reentrancy / taint / overflow detectors.
+- **CI-ready.** Writes `safety.sarif` (GitHub Code Scanning) and `safety-report.md`, and
+  gates the build with `--fail-on=critical|high|medium|low|none` (default `high`) - exiting
+  non-zero when a finding crosses the threshold.
 
 Full details in [CHANGELOG.md](CHANGELOG.md) and [SPEC.md](SPEC.md).
 

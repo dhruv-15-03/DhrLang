@@ -22,6 +22,7 @@ import java.util.*;
  *   <li>{@code verify}   — verify contract source on block explorer</li>
  *   <li>{@code gas}      — estimate deployment and call gas costs</li>
  *   <li>{@code fuzz}     — property-fuzz @ensures/@invariant specs for counterexamples</li>
+ *   <li>{@code safety}   — unified safety report (audit + fuzzing) with a CI gate</li>
  *   <li>{@code wallet}   — manage keys (create keystore, show address)</li>
  *   <li>{@code networks} — list supported networks and their configs</li>
  *   <li>{@code status}   — check deployment/verification status</li>
@@ -40,7 +41,7 @@ public final class BlockchainCLI {
      * Parsed blockchain CLI options.
      */
     public static final class BlockchainOptions {
-        public String subcommand;        // compile | deploy | verify | gas | fuzz | wallet | networks | status
+        public String subcommand;        // compile | deploy | verify | gas | fuzz | safety | wallet | networks | status
         public String network = "local"; // network name or chain ID
         public String outputDir = "build/evm";
         public String deployFormat = "foundry"; // foundry | ethers
@@ -55,6 +56,9 @@ public final class BlockchainCLI {
         // fuzz options
         public int fuzzRuns = 256;       // --runs=<n>
         public long fuzzSeed = -1;       // --seed=<n>  (-1 = random)
+        // safety gate options
+        public String failOn = "high";   // --fail-on=critical|high|medium|low|none
+        public String sourceFile;        // resolved .dhr path (for report locations)
     }
 
     // ── Main Entry Point ─────────────────────────────────────────────────
@@ -80,6 +84,7 @@ public final class BlockchainCLI {
             case "verify"  -> handleVerify(program, sourceCode, opts, errorReporter);
             case "gas"     -> handleGas(program, opts, errorReporter);
             case "fuzz"    -> handleFuzz(program, opts);
+            case "safety"  -> handleSafety(program, opts);
             case "wallet"  -> handleWallet(opts);
             case "networks" -> handleNetworks(opts);
             case "status"  -> handleStatus(opts);
@@ -418,6 +423,87 @@ public final class BlockchainCLI {
         }
     }
 
+    // ── safety ───────────────────────────────────────────────────────────
+
+    /**
+     * Generate a unified safety report (provable-safety level L4) and gate CI.
+     *
+     * <p>Composes the static audit (ContractValidator + L1 SecurityAnalyzer +
+     * arithmetic/invariant analyzers) with an L3 spec-fuzzing pass, then emits a
+     * safety score, a human-readable Markdown report (stdout, or JSON with
+     * {@code --json}), and SARIF + Markdown artifacts for CI ingestion. Exits
+     * non-zero when any finding meets the {@code --fail-on} severity threshold
+     * (default {@code high}), so it doubles as a release gate.
+     */
+    private static void handleSafety(Program program, BlockchainOptions opts) {
+        if (program == null) {
+            System.err.println("No program to analyze. Provide a .dhr source file.");
+            System.exit(2);
+            return;
+        }
+
+        var auditor = new AuditReportGenerator();
+        auditor.setProjectName(opts.sourceFile != null ? opts.sourceFile : "DhrLang Project");
+        String version = dhrlang.Main.class.getPackage() != null
+                ? dhrlang.Main.class.getPackage().getImplementationVersion() : null;
+        auditor.setCompilerVersion(version != null ? version : "(development)");
+        auditor.enableSpecFuzzing(opts.fuzzRuns, opts.fuzzSeed >= 0 ? opts.fuzzSeed : 0L);
+
+        var report = auditor.analyze(program);
+
+        // Human / machine readable report to stdout
+        if (opts.json) {
+            System.out.println(AuditReportGenerator.formatJson(report));
+        } else {
+            System.out.println(AuditReportGenerator.formatMarkdown(report));
+        }
+
+        // Persist SARIF + Markdown artifacts for CI ingestion (Code Scanning, job summary)
+        try {
+            Path outPath = Path.of(opts.outputDir);
+            Files.createDirectories(outPath);
+            String sarif = dhrlang.production.SarifFormatter.format(report, opts.sourceFile);
+            Files.writeString(outPath.resolve("safety.sarif"), sarif);
+            Files.writeString(outPath.resolve("safety-report.md"),
+                    AuditReportGenerator.formatMarkdown(report));
+            System.err.println("Wrote " + outPath.resolve("safety.sarif")
+                    + " and " + outPath.resolve("safety-report.md"));
+        } catch (IOException e) {
+            System.err.println("Warning: could not write safety artifacts: " + e.getMessage());
+        }
+
+        // CI gate
+        int gate = severityRank(opts.failOn);
+        long blocking = gate < 0 ? 0 : report.getFindings().stream()
+                .filter(f -> f.getSeverity().getWeight() >= gate)
+                .count();
+        String scoreLine = "safety score " + report.getSafetyScore()
+                + "/100, grade " + report.getSafetyGrade();
+        if (blocking > 0) {
+            System.err.println();
+            System.err.println("Safety gate FAILED: " + blocking + " finding(s) at or above "
+                    + opts.failOn.toUpperCase(Locale.ROOT) + " (" + scoreLine + ").");
+            System.exit(1);
+        }
+        System.err.println("Safety gate passed (" + scoreLine + ").");
+    }
+
+    /**
+     * Map a {@code --fail-on} keyword to a {@link AuditReportGenerator.Severity}
+     * weight. Returns {@code -1} for {@code none}/{@code off} (gate disabled).
+     */
+    private static int severityRank(String failOn) {
+        if (failOn == null) return AuditReportGenerator.Severity.HIGH.getWeight();
+        return switch (failOn.toLowerCase(Locale.ROOT)) {
+            case "critical" -> AuditReportGenerator.Severity.CRITICAL.getWeight();
+            case "high"     -> AuditReportGenerator.Severity.HIGH.getWeight();
+            case "medium"   -> AuditReportGenerator.Severity.MEDIUM.getWeight();
+            case "low"      -> AuditReportGenerator.Severity.LOW.getWeight();
+            case "none", "off" -> -1;
+            default         -> AuditReportGenerator.Severity.HIGH.getWeight();
+        };
+    }
+
     // ── wallet ───────────────────────────────────────────────────────────
 
     private static void handleWallet(BlockchainOptions opts) {
@@ -534,6 +620,7 @@ public final class BlockchainCLI {
         System.out.println("  verify     Verify contract source on block explorer (Etherscan)");
         System.out.println("  gas        Estimate deployment and function call gas costs");
         System.out.println("  fuzz       Property-fuzz @ensures/@invariant specs for counterexamples");
+        System.out.println("  safety     Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  wallet     Manage wallet keys (create keystore, show address)");
         System.out.println("  networks   List supported blockchain networks");
         System.out.println("  status     Check contract deployment status");
@@ -548,6 +635,7 @@ public final class BlockchainCLI {
         System.out.println("  --keystore=<path>       Path to encrypted keystore file");
         System.out.println("  --runs=<n>              Fuzz iterations per function (default: 256)");
         System.out.println("  --seed=<n>              Fuzz RNG seed for reproducible runs");
+        System.out.println("  --fail-on=<severity>    Safety gate threshold: critical|high|medium|low|none (default: high)");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -556,6 +644,7 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract compile token.dhr");
         System.out.println("  dhrlang contract gas token.dhr");
         System.out.println("  dhrlang contract fuzz --runs=512 --seed=42 token.dhr");
+        System.out.println("  dhrlang contract safety --fail-on=high token.dhr");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
@@ -688,6 +777,8 @@ public final class BlockchainCLI {
                 try {
                     opts.fuzzSeed = Long.parseLong(a.substring("--seed=".length()).trim());
                 } catch (NumberFormatException ignored) { /* keep default */ }
+            } else if (a.startsWith("--fail-on=")) {
+                opts.failOn = a.substring("--fail-on=".length()).trim();
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
             } else if ("--json".equals(a)) {
@@ -698,8 +789,11 @@ public final class BlockchainCLI {
                 // Subcommand-specific positional arg (e.g., "wallet create")
                 if ("wallet".equals(opts.subcommand) && opts.walletAction == null) {
                     opts.walletAction = a;
+                } else if (a.endsWith(".dhr")) {
+                    // Record the source file for report locations (SARIF/markdown)
+                    opts.sourceFile = a;
                 }
-                // else: could be the .dhr file — handled by Main.java
+                // else: handled by Main.java
             }
         }
         return opts;

@@ -147,9 +147,9 @@ Specs are only useful if they actually hold. The fuzzer searches for an input th
 *falsifies* an `@ensures` or `@invariant`, so you can catch a logic bug before you deploy:
 
 ```bash
-java -jar DhrLang-3.5.0.jar contract fuzz MyToken.dhr
+java -jar DhrLang-3.6.0.jar contract fuzz MyToken.dhr
 # reproducible run, more iterations:
-java -jar DhrLang-3.5.0.jar contract fuzz --runs=512 --seed=42 MyToken.dhr
+java -jar DhrLang-3.6.0.jar contract fuzz --runs=512 --seed=42 MyToken.dhr
 ```
 
 It runs each function over a simulated EVM state (uint256 wrapping arithmetic, `@checked`
@@ -341,7 +341,7 @@ Verifying MyToken at 0xDeployed... on Sepolia Testnet...
 Run the built-in security auditor before deploying to mainnet:
 
 ```bash
-java -jar DhrLang-3.0.0.jar --audit MyToken.dhr
+java -jar DhrLang-3.6.0.jar --audit MyToken.dhr
 ```
 
 This checks for:
@@ -350,6 +350,24 @@ This checks for:
 - View/pure function state access violations
 - Storage layout issues
 - Access control gaps
+
+### Safety report + CI gate (`contract safety`)
+
+For a single, gradeable verdict that also gates CI, use `contract safety`. It runs the
+audit **and** the L3 spec fuzzer, folds any invariant/postcondition counterexample in as a
+`FUZZ-INVARIANT` finding, and prints a Markdown report led by a **safety score**
+(`100 - risk`) and an **A-F grade**:
+
+```bash
+java -jar DhrLang-3.6.0.jar contract safety MyToken.dhr
+# report-only (don't fail the build):
+java -jar DhrLang-3.6.0.jar contract safety --fail-on=none MyToken.dhr
+```
+
+It also writes `safety.sarif` (ingestible by GitHub Code Scanning) and `safety-report.md`
+to the output directory. The command exits non-zero when any finding meets the `--fail-on`
+threshold (`critical|high|medium|low|none`, default `high`), so it drops straight into a
+pipeline.
 
 ---
 
@@ -392,6 +410,7 @@ java -jar DhrLang-3.0.0.jar contract networks
 | `contract compile <file>` | Compile to EVM bytecode + ABI |
 | `contract gas <file>` | Gas cost estimation report |
 | `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
+| `contract safety [--fail-on=<sev>] <file>` | Audit + fuzz -> safety score, grade, SARIF; CI gate |
 | `contract deploy --network=<net> <file>` | Build + sign + deploy |
 | `contract verify --address=<addr> <file>` | Verify on block explorer |
 | `contract wallet create` | Create encrypted keystore |

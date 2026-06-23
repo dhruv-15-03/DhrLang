@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-06-23
+
+### Added
+- **Smart-contract safety report with a CI gate (`contract safety`), provable
+  safety layer L4.** A new subcommand that folds the L3 specification fuzzer into
+  the static security audit and turns the result into a single, gradeable safety
+  artifact.
+  - **Unified analysis.** `dhrlang contract safety token.dhr` runs the full
+    `AuditReportGenerator` deep analysis (reentrancy, `tx.origin`, taint-to-storage,
+    arithmetic overflow, access-control and view/pure detectors) *and*, opt-in, the
+    L3 fuzzer. Each invariant/postcondition counterexample the fuzzer finds is folded
+    back in as a HIGH-severity `FUZZ-INVARIANT` (or `FUZZ-EXCEPTION`) finding carrying
+    the **minimized counterexample**, so spec bugs and code smells surface in one place.
+  - **Safety score + letter grade.** The report derives a `safetyScore`
+    (`100 - riskScore`) and an A-F `safetyGrade` (A >= 90, B >= 75, C >= 60, D >= 40,
+    F < 40), so a contract's posture is a single, glanceable number.
+  - **Human + machine output.** Emits a GitHub-flavored **Markdown report** (score,
+    severity table, per-contract table, findings + details) to stdout, or JSON with
+    `--json`. It also writes `safety.sarif` (GitHub Code Scanning ingestible) and
+    `safety-report.md` to the output directory for CI job summaries.
+  - **CI gate.** `--fail-on=critical|high|medium|low|none` sets the severity threshold
+    (default `high`); the command exits non-zero when any finding meets it, so
+    `contract safety` drops straight into a pipeline. `--fail-on=none` disables the
+    gate (report-only).
+
+### Notes
+- Additive, non-breaking. The existing `--audit`/`--sarif` path is unchanged, so the
+  Security Audit workflow and its Code Scanning alerts are unaffected. Fuzzing inside
+  the auditor is **opt-in** (off by default), so contracts without specs produce an
+  identical audit to before.
+
 ## [3.5.0] - 2026-06-20
 
 ### Added

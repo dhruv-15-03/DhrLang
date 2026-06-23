@@ -185,6 +185,22 @@ public final class AuditReportGenerator {
         public int getRiskScore() { return riskScore; }
         public String getRiskRating() { return riskRating; }
 
+        /**
+         * Safety score 0 (unsafe) – 100 (safe): the inverse of the risk score.
+         * Higher is better, suitable for a headline "how safe is this" number.
+         */
+        public int getSafetyScore() { return 100 - riskScore; }
+
+        /** Letter grade (A–F) derived from the {@link #getSafetyScore() safety score}. */
+        public String getSafetyGrade() {
+            int s = getSafetyScore();
+            if (s >= 90) return "A";
+            if (s >= 75) return "B";
+            if (s >= 60) return "C";
+            if (s >= 40) return "D";
+            return "F";
+        }
+
         public long countBySeverity(Severity severity) {
             return findings.stream().filter(f -> f.getSeverity() == severity).count();
         }
@@ -197,6 +213,12 @@ public final class AuditReportGenerator {
     private final List<Finding> findings = new ArrayList<>();
     private final List<ContractSummary> summaries = new ArrayList<>();
 
+    // L4: optional spec-fuzzing pass (disabled by default so plain audits stay
+    // deterministic and fast — the CLI safety gate opts in).
+    private boolean fuzzingEnabled = false;
+    private int fuzzRuns = 64;
+    private long fuzzSeed = 0L;
+
     // ── Configuration ────────────────────────────────────────────────────
 
     public AuditReportGenerator setProjectName(String name) {
@@ -206,6 +228,22 @@ public final class AuditReportGenerator {
 
     public AuditReportGenerator setCompilerVersion(String version) {
         this.compilerVersion = version;
+        return this;
+    }
+
+    /**
+     * Enable the L3 spec-fuzzing pass as part of the audit. Every invariant or
+     * postcondition counterexample the fuzzer finds becomes a HIGH-severity
+     * {@code FUZZ-*} finding, so it flows into the risk score, SARIF output and
+     * the markdown report. Disabled by default.
+     *
+     * @param runs iterations per function (values &le; 0 keep the default)
+     * @param seed RNG seed for reproducible campaigns
+     */
+    public AuditReportGenerator enableSpecFuzzing(int runs, long seed) {
+        this.fuzzingEnabled = true;
+        if (runs > 0) this.fuzzRuns = runs;
+        this.fuzzSeed = seed;
         return this;
     }
 
@@ -237,6 +275,11 @@ public final class AuditReportGenerator {
 
         // 4. Run Phase 4 deep analyzers on each contract
         runDeepAnalysis(program);
+
+        // 4.5 Spec fuzzing (L3) — surface @invariant/@ensures counterexamples
+        if (fuzzingEnabled) {
+            runSpecFuzzing(program);
+        }
 
         // 5. Compute risk score
         int riskScore = computeRiskScore();
@@ -320,6 +363,63 @@ public final class AuditReportGenerator {
                 }
             } catch (Exception ignored) {}
         }
+    }
+
+    /**
+     * Run the L3 {@link dhrlang.testing.ContractFuzzer} and turn each
+     * invariant/postcondition counterexample into a HIGH-severity finding.
+     *
+     * <p>Sound, not complete: the fuzzer only reports a violation it could
+     * faithfully reproduce (anything it cannot execute is skipped), so this
+     * never raises a false alarm. One finding is emitted per offending
+     * function, carrying the minimized counterexample. Best-effort: a fuzzing
+     * failure never breaks the audit.
+     */
+    private void runSpecFuzzing(Program program) {
+        try {
+            var fuzzer = new dhrlang.testing.ContractFuzzer(program);
+            fuzzer.setRuns(fuzzRuns);
+            fuzzer.setSeed(fuzzSeed);
+            fuzzer.fuzzAll();
+
+            Set<String> seen = new HashSet<>();
+            for (var r : fuzzer.getResults()) {
+                var outcome = r.getOutcome();
+                boolean violation =
+                        outcome == dhrlang.testing.ContractFuzzer.FuzzOutcome.INVARIANT_VIOLATION;
+                boolean exception =
+                        outcome == dhrlang.testing.ContractFuzzer.FuzzOutcome.EXCEPTION;
+                if (!violation && !exception) continue;
+
+                String loc = r.getContractName() + "." + r.getFunctionName();
+                if (!seen.add(loc)) continue; // one finding per function
+
+                String args = "(" + joinArgs(r.getArguments()) + ")";
+                String detail = r.getDetail() == null ? "Specification check failed" : r.getDetail();
+                addFinding(
+                        violation ? "FUZZ-INVARIANT" : "FUZZ-EXCEPTION",
+                        Severity.HIGH,
+                        violation ? "Specification violated under fuzzing"
+                                  : "Fuzzer could not evaluate specification",
+                        detail + " Counterexample: " + r.getFunctionName() + args + ".",
+                        violation
+                            ? "Strengthen the @requires preconditions or fix the implementation so the @ensures/@invariant holds for this input."
+                            : "Review the function so its specification can be evaluated, or constrain its inputs with @requires.",
+                        loc,
+                        0);
+            }
+        } catch (Exception ignored) {
+            // Fuzzing is best-effort; never fail the audit because of it.
+        }
+    }
+
+    private static String joinArgs(List<Object> args) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < args.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(args.get(i));
+        }
+        return sb.toString();
     }
 
     /**
@@ -570,6 +670,81 @@ public final class AuditReportGenerator {
     }
 
     /**
+     * Format the audit report as GitHub-flavored Markdown, suitable for a pull
+     * request comment or a {@code $GITHUB_STEP_SUMMARY} job summary. Leads with
+     * the safety score and grade, then a severity breakdown, per-contract table
+     * and the full finding list.
+     */
+    public static String formatMarkdown(AuditReport report) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# DhrLang Safety Report\n\n");
+        sb.append("**Project:** ").append(report.getProjectName()).append("  \n");
+        sb.append("**Compiler:** ").append(report.getCompilerVersion()).append("  \n");
+        sb.append("**Generated:** ").append(report.getGeneratedAt()).append("\n\n");
+
+        sb.append("## Safety score: ").append(report.getSafetyScore())
+                .append("/100 (Grade ").append(report.getSafetyGrade()).append(")\n\n");
+        sb.append("Risk score **").append(report.getRiskScore()).append("/100** — ")
+                .append(report.getRiskRating()).append(".\n\n");
+
+        // Severity summary
+        sb.append("| Severity | Count |\n|----------|------:|\n");
+        sb.append("| Critical | ").append(report.countBySeverity(Severity.CRITICAL)).append(" |\n");
+        sb.append("| High | ").append(report.countBySeverity(Severity.HIGH)).append(" |\n");
+        sb.append("| Medium | ").append(report.countBySeverity(Severity.MEDIUM)).append(" |\n");
+        sb.append("| Low | ").append(report.countBySeverity(Severity.LOW)).append(" |\n");
+        sb.append("| Info | ").append(report.countBySeverity(Severity.INFORMATIONAL)).append(" |\n\n");
+
+        // Contracts
+        if (!report.getContracts().isEmpty()) {
+            sb.append("## Contracts\n\n");
+            sb.append("| Contract | Functions | Storage | Reentrancy guard | Access control |\n");
+            sb.append("|----------|----------:|--------:|:----------------:|:--------------:|\n");
+            for (ContractSummary cs : report.getContracts()) {
+                sb.append("| `").append(cs.getName()).append("` | ")
+                        .append(cs.getFunctionCount()).append(" | ")
+                        .append(cs.getStorageVariableCount()).append(" | ")
+                        .append(cs.hasReentrancyGuard() ? "yes" : "no").append(" | ")
+                        .append(cs.hasAccessControl() ? "yes" : "no").append(" |\n");
+            }
+            sb.append('\n');
+        }
+
+        // Findings
+        sb.append("## Findings (").append(report.getFindings().size()).append(")\n\n");
+        if (report.getFindings().isEmpty()) {
+            sb.append("No issues found.\n");
+        } else {
+            sb.append("| Severity | Rule | Title | Location |\n");
+            sb.append("|----------|------|-------|----------|\n");
+            for (Finding f : report.getFindings()) {
+                sb.append("| ").append(f.getSeverity().getLabel())
+                        .append(" | `").append(f.getId()).append("`")
+                        .append(" | ").append(mdCell(f.getTitle()))
+                        .append(" | `").append(f.getLocation())
+                        .append(f.getLine() > 0 ? ":" + f.getLine() : "").append("`")
+                        .append(" |\n");
+            }
+            sb.append("\n### Details\n\n");
+            for (Finding f : report.getFindings()) {
+                sb.append("- **[").append(f.getSeverity().getLabel()).append("] ")
+                        .append(f.getId()).append(": ").append(mdCell(f.getTitle())).append("**  \n");
+                sb.append("  ").append(mdCell(f.getDescription())).append("  \n");
+                sb.append("  _Recommendation:_ ").append(mdCell(f.getRecommendation())).append("  \n");
+                sb.append("  _Location:_ `").append(f.getLocation())
+                        .append(f.getLine() > 0 ? ":" + f.getLine() : "").append("`\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Escape a string for use inside a Markdown table cell / inline text. */
+    private static String mdCell(String s) {
+        if (s == null) return "";
+        return s.replace("|", "\\|").replace("\n", " ").replace("\r", " ");
+    }
+
+    /**
      * Format the audit report as JSON.
      */
     public static String formatJson(AuditReport report) {
@@ -579,6 +754,8 @@ public final class AuditReportGenerator {
                 .append("\",\"compiler\":\"").append(escJson(report.getCompilerVersion()))
                 .append("\",\"riskScore\":").append(report.getRiskScore())
                 .append(",\"riskRating\":\"").append(escJson(report.getRiskRating()))
+                .append("\",\"safetyScore\":").append(report.getSafetyScore())
+                .append(",\"safetyGrade\":\"").append(report.getSafetyGrade())
                 .append("\",\"contracts\":[");
 
         for (int i = 0; i < report.getContracts().size(); i++) {
