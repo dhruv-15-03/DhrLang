@@ -1743,6 +1743,26 @@ public class TypeChecker {
                 }
                 return "kaam";
             }
+            // Contract built-in: `address(x)` casts a numeric value to an Address
+            // (e.g. the zero address `address(0)`). Lowered on the EVM to a 160-bit
+            // mask. There is no user-declarable `address` function.
+            if ("address".equals(funcName)) {
+                if (call.getArguments().size() != 1) {
+                    errorWithHint("address(x) takes exactly one argument.", call.getSourceLocation(),
+                                 "Use address(0) for the zero address, or address(n) to cast a number",
+                                 ErrorCode.NATIVE_ARITY);
+                } else {
+                    String argType = checkExpr(call.getArguments().get(0), env);
+                    TypeDesc argDesc = TypeDesc.parse(argType);
+                    if (!"Address".equals(argType) && !"unknown".equals(argType)
+                            && !isAssignable(argDesc, TypeDesc.parse("num"))) {
+                        errorWithHint("address(x) expects a numeric argument, got '" + argType + "'.",
+                                     call.getSourceLocation(), "Pass a num, e.g. address(0)",
+                                     ErrorCode.TYPE_MISMATCH);
+                    }
+                }
+                return "Address";
+            }
             try {
                 signature = env.getFunction(funcName);
             } catch (TypeException e) {

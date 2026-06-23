@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.7.0** - see [What's New in v3.7.0](#whats-new-in-v370) and
+> **Current release: v3.8.0** - see [What's New in v3.8.0](#whats-new-in-v380) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,25 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.8.0
+
+A standard-library you can actually reach, plus the language feature it needed:
+- **`contract stdlib` - browse & scaffold base contracts.** Eight OpenZeppelin-style
+  templates (Ownable, ReentrancyGuard, Pausable, SafeMath, ERC20, ERC721, AccessControl,
+  TimelockController) are now first-class: `dhrlang contract stdlib list` to browse,
+  `stdlib show <Name>` to read the source, and `stdlib new <Name> [--name=<Custom>]
+  [--output=<dir>]` to scaffold a ready-to-edit `.dhr` file. Every template is compiled
+  by the test suite, so the catalog can't silently rot.
+- **`address(0)` / `address(num)` builtin.** A first-class numeric-to-`Address` cast
+  (lowered to a 160-bit mask on the EVM), so zero/sentinel-address guards like
+  `if (newOwner == address(0)) { ... }` are finally expressible in source. Typed as
+  `Address`, arity- and type-checked.
+
+Honest framing: ERC20/ERC721 ship as **starter scaffolds** (transfer/balance bookkeeping
+is stubbed for you to complete); the access-control / safety templates are complete
+patterns. Full details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.7.0
 

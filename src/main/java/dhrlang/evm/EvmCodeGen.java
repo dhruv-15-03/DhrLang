@@ -6,6 +6,8 @@ import dhrlang.validation.StorageLayouter;
 import dhrlang.validation.StorageLayouter.ContractLayout;
 import dhrlang.validation.StorageLayouter.SlotInfo;
 
+import java.math.BigInteger;
+
 import java.util.*;
 
 /**
@@ -967,6 +969,17 @@ public final class EvmCodeGen {
         if (callee instanceof VariableExpr
                 && "gasleft".equals(((VariableExpr) callee).getName().getLexeme())) {
             buf.emit(EvmOpcode.GAS);
+            return;
+        }
+
+        // Pattern: address(x) → cast a numeric value to an Address by masking to
+        // 160 bits. address(0) yields the zero address. Leaves one word on the stack.
+        if (callee instanceof VariableExpr
+                && "address".equals(((VariableExpr) callee).getName().getLexeme())
+                && expr.getArguments().size() == 1) {
+            emitExpression(expr.getArguments().get(0));
+            buf.push32(BigInteger.TWO.pow(160).subtract(BigInteger.ONE));
+            buf.emit(EvmOpcode.AND);
             return;
         }
 

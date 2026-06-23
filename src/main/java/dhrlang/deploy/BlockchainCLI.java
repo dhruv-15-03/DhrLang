@@ -6,6 +6,7 @@ import dhrlang.evm.EvmContractCompiler;
 import dhrlang.evm.EvmContractCompiler.ContractArtifact;
 import dhrlang.interop.InteropExporter;
 import dhrlang.production.AuditReportGenerator;
+import dhrlang.stdlib.ContractStdlib;
 import dhrlang.validation.StorageLayouter;
 
 import java.io.IOException;
@@ -63,6 +64,10 @@ public final class BlockchainCLI {
         public String sourceFile;        // resolved .dhr path (for report locations)
         // export options
         public String exportFormat = "all"; // --format=all|hardhat|foundry|ts
+        // stdlib options
+        public String stdlibAction;      // list | show | new
+        public String stdlibName;        // template name (Ownable, ERC20, ...)
+        public String stdlibCustomName;  // --name=<Custom> (rename scaffolded contract)
     }
 
     // ── Main Entry Point ─────────────────────────────────────────────────
@@ -90,6 +95,7 @@ public final class BlockchainCLI {
             case "fuzz"    -> handleFuzz(program, opts);
             case "safety"  -> handleSafety(program, opts);
             case "export"  -> handleExport(program, opts, errorReporter);
+            case "stdlib"  -> handleStdlib(opts);
             case "wallet"  -> handleWallet(opts);
             case "networks" -> handleNetworks(opts);
             case "status"  -> handleStatus(opts);
@@ -228,6 +234,103 @@ public final class BlockchainCLI {
         String s = sourceFile.replace('\\', '/');
         int slash = s.lastIndexOf('/');
         return slash >= 0 ? s.substring(slash + 1) : s;
+    }
+
+    // ── stdlib ───────────────────────────────────────────────────────────
+
+    /**
+     * Handle {@code dhrlang contract stdlib <list|show|new>}: browse and scaffold
+     * the built-in standard-library base contracts (Ownable, ERC20, ...).
+     *
+     * <ul>
+     *   <li>{@code list} — print the catalog (name + one-line description)</li>
+     *   <li>{@code show <Name>} — print the template source to stdout</li>
+     *   <li>{@code new <Name> [--name=<Custom>] [--output=<dir>]} — scaffold
+     *       {@code <Name>.dhr} (or {@code <Custom>.dhr}) into the output directory</li>
+     * </ul>
+     */
+    private static void handleStdlib(BlockchainOptions opts) {
+        String action = opts.stdlibAction == null ? "list" : opts.stdlibAction.toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "list" -> stdlibList();
+            case "show" -> stdlibShow(opts);
+            case "new"  -> stdlibNew(opts);
+            default -> {
+                System.err.println("Unknown stdlib action: " + opts.stdlibAction
+                        + " (expected: list | show | new)");
+                System.exit(2);
+            }
+        }
+    }
+
+    private static void stdlibList() {
+        System.out.println("DhrLang Standard Library - base contracts\n");
+        var catalog = ContractStdlib.catalog();
+        int width = catalog.keySet().stream().mapToInt(String::length).max().orElse(18);
+        for (var entry : catalog.entrySet()) {
+            System.out.printf("  %-" + width + "s  %s%n", entry.getKey(), entry.getValue());
+        }
+        System.out.println();
+        System.out.println("Show source:  dhrlang contract stdlib show <Name>");
+        System.out.println("Scaffold:     dhrlang contract stdlib new <Name> [--name=<Custom>] [--output=<dir>]");
+    }
+
+    private static void stdlibShow(BlockchainOptions opts) {
+        if (opts.stdlibName == null) {
+            System.err.println("Missing template name. Usage: dhrlang contract stdlib show <Name>");
+            System.err.println("Available: " + String.join(", ", ContractStdlib.availableContracts()));
+            System.exit(2);
+            return;
+        }
+        String source = ContractStdlib.getByName(opts.stdlibName);
+        if (source == null) {
+            System.err.println("Unknown stdlib contract: " + opts.stdlibName);
+            System.err.println("Available: " + String.join(", ", ContractStdlib.availableContracts()));
+            System.exit(2);
+            return;
+        }
+        System.out.println(source);
+    }
+
+    private static void stdlibNew(BlockchainOptions opts) {
+        if (opts.stdlibName == null) {
+            System.err.println("Missing template name. Usage: dhrlang contract stdlib new <Name> [--name=<Custom>]");
+            System.err.println("Available: " + String.join(", ", ContractStdlib.availableContracts()));
+            System.exit(2);
+            return;
+        }
+        String source = ContractStdlib.getByName(opts.stdlibName);
+        if (source == null) {
+            System.err.println("Unknown stdlib contract: " + opts.stdlibName);
+            System.err.println("Available: " + String.join(", ", ContractStdlib.availableContracts()));
+            System.exit(2);
+            return;
+        }
+
+        String outName = opts.stdlibName;
+        if (opts.stdlibCustomName != null && !opts.stdlibCustomName.isBlank()) {
+            outName = opts.stdlibCustomName.trim();
+            // Rename the scaffolded contract's class to the custom name.
+            source = source.replaceFirst("class\\s+" + java.util.regex.Pattern.quote(opts.stdlibName) + "\\b",
+                    "class " + java.util.regex.Matcher.quoteReplacement(outName));
+        }
+
+        Path base = Path.of(opts.outputDir);
+        Path target = base.resolve(outName + ".dhr");
+        try {
+            Files.createDirectories(base);
+            if (Files.exists(target)) {
+                System.err.println("Refusing to overwrite existing file: " + target.toAbsolutePath());
+                System.err.println("Use --output=<dir> or --name=<Custom> to choose a different path.");
+                System.exit(2);
+                return;
+            }
+            Files.writeString(target, source);
+            System.out.println("Scaffolded " + opts.stdlibName + " -> " + target.toAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("Failed to write scaffold: " + e.getMessage());
+            System.exit(2);
+        }
     }
 
     // ── deploy ───────────────────────────────────────────────────────────
@@ -722,6 +825,7 @@ public final class BlockchainCLI {
         System.out.println("  fuzz       Property-fuzz @ensures/@invariant specs for counterexamples");
         System.out.println("  safety     Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  export     Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
+        System.out.println("  stdlib     Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
         System.out.println("  wallet     Manage wallet keys (create keystore, show address)");
         System.out.println("  networks   List supported blockchain networks");
         System.out.println("  status     Check contract deployment status");
@@ -738,6 +842,7 @@ public final class BlockchainCLI {
         System.out.println("  --seed=<n>              Fuzz RNG seed for reproducible runs");
         System.out.println("  --fail-on=<severity>    Safety gate threshold: critical|high|medium|low|none (default: high)");
         System.out.println("  --format=<fmt>          Export format: all|hardhat|foundry|ts (default: all)");
+        System.out.println("  --name=<Custom>         Rename a scaffolded stdlib contract (stdlib new)");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -748,6 +853,9 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract fuzz --runs=512 --seed=42 token.dhr");
         System.out.println("  dhrlang contract safety --fail-on=high token.dhr");
         System.out.println("  dhrlang contract export --format=all token.dhr");
+        System.out.println("  dhrlang contract stdlib list");
+        System.out.println("  dhrlang contract stdlib show ERC20");
+        System.out.println("  dhrlang contract stdlib new Ownable --name=MyToken --output=input/contracts");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
@@ -884,6 +992,8 @@ public final class BlockchainCLI {
                 opts.failOn = a.substring("--fail-on=".length()).trim();
             } else if (a.startsWith("--format=")) {
                 opts.exportFormat = a.substring("--format=".length()).trim();
+            } else if (a.startsWith("--name=")) {
+                opts.stdlibCustomName = a.substring("--name=".length()).trim();
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
             } else if ("--json".equals(a)) {
@@ -894,6 +1004,10 @@ public final class BlockchainCLI {
                 // Subcommand-specific positional arg (e.g., "wallet create")
                 if ("wallet".equals(opts.subcommand) && opts.walletAction == null) {
                     opts.walletAction = a;
+                } else if ("stdlib".equals(opts.subcommand) && opts.stdlibAction == null) {
+                    opts.stdlibAction = a;
+                } else if ("stdlib".equals(opts.subcommand) && opts.stdlibName == null) {
+                    opts.stdlibName = a;
                 } else if (a.endsWith(".dhr")) {
                     // Record the source file for report locations (SARIF/markdown)
                     opts.sourceFile = a;

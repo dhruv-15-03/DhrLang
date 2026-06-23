@@ -6,7 +6,39 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
-## [3.7.0] - 2026-06-24
+## [3.8.0] - 2026-06-25
+
+### Added
+- **`contract stdlib` - browse & scaffold the standard base-contract library.** A new
+  subcommand exposes the eight OpenZeppelin-style base contracts that previously lived
+  as dead code, turning them into a real, discoverable starting point for new contracts:
+  - `dhrlang contract stdlib list` prints the catalog (Ownable, ReentrancyGuard,
+    Pausable, SafeMath, ERC20, ERC721, AccessControl, TimelockController) with a
+    one-line description for each.
+  - `dhrlang contract stdlib show <Name>` prints a template's DhrLang source to stdout.
+  - `dhrlang contract stdlib new <Name> [--name=<Custom>] [--output=<dir>]` scaffolds
+    `<Name>.dhr` (or `<Custom>.dhr`, renaming the contract class) into the output
+    directory, refusing to overwrite an existing file.
+
+  Every template is validated by the build: `ContractStdlibTest` compiles all eight
+  through the real Lexer -> Parser -> TypeChecker -> EVM pipeline and asserts a
+  non-empty ABI, so the library can never silently rot again. The token templates
+  (ERC20/ERC721) ship as honest **starter scaffolds** - transfer/balance bookkeeping is
+  stubbed for you to fill in; Ownable, Pausable, ReentrancyGuard, SafeMath,
+  AccessControl and TimelockController are complete patterns.
+
+- **`address(num)` builtin - first-class numeric-to-Address cast.** DhrLang now
+  understands `address(0)` (the zero address) and `address(n)` generally, lowering on
+  the EVM to a 160-bit mask (`x AND 0xff..ff`). This closes a real language gap: there
+  was previously no way to write a zero/sentinel address in source, which is exactly
+  what owner-guard patterns (`if (newOwner == address(0)) { ... }`) need. The
+  type-checker types `address(x)` as `Address`, requires a single numeric argument, and
+  reports a clear error otherwise (`DHR-E601` arity / `DHR-E201` type mismatch).
+
+### Notes
+- Additive and non-breaking: existing contracts compile identically. The `address`
+  builtin occupies a previously unused call name (lowercase `address`; the capitalised
+  `Address` type keyword is unaffected).
 
 ### Added
 - **`contract export` - framework-ready interop artifacts (Hardhat, Foundry,

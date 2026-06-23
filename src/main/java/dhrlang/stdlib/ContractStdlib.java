@@ -189,6 +189,9 @@ public final class ContractStdlib {
         return """
             @contract
             class SafeMath {
+                @constructor
+                kaam init() {}
+            
                 @pure
                 static kaam add(num a, num b) {
                     num c = a + b;

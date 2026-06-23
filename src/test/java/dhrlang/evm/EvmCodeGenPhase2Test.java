@@ -983,4 +983,95 @@ class EvmCodeGenPhase2Test {
                     "no @invariant should mean no invariant guard");
         }
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  address(num) builtin — numeric→Address cast (e.g. zero address)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("address() builtin")
+    class AddressBuiltin {
+
+        @Test
+        @DisplayName("address(0) compiles and assigns to an Address field")
+        void zeroAddressAssign() {
+            var artifact = compileOne("""
+                @contract
+                class Owned {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address(0);
+                    }
+                }
+                """);
+            assertNotNull(artifact.getRuntimeBytecode());
+            assertTrue(artifact.getCreationBytecode().length > 0);
+            // The 160-bit mask (0x00..ff*20) must be embedded for the cast.
+            String code = artifact.getCreationBytecodeHex().toLowerCase();
+            assertTrue(code.contains("ffffffffffffffffffffffffffffffffffffffff"),
+                    "address(x) should emit a 160-bit AND mask");
+        }
+
+        @Test
+        @DisplayName("address(0) compares equal against an Address param")
+        void zeroAddressCompare() {
+            // Mirrors the Ownable stdlib guard: newOwner == address(0).
+            var artifact = compileOne("""
+                @contract
+                class Guard {
+                    @storage num flagged;
+                    kaam check(Address who) {
+                        if (who == address(0)) {
+                            flagged = 1;
+                        }
+                    }
+                }
+                """);
+            assertNotNull(artifact.getRuntimeBytecode());
+            assertTrue(artifact.getRuntimeBytecode().length > 0);
+        }
+
+        @Test
+        @DisplayName("address(x) with wrong arity is rejected")
+        void wrongArityRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class Bad {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address(0, 1);
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, errors);
+            Program program = parser.parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "address(0, 1) should be a type error");
+        }
+
+        @Test
+        @DisplayName("address(string) is rejected (non-numeric argument)")
+        void nonNumericRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class Bad {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address("0x0");
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, errors);
+            Program program = parser.parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "address with a string argument should be a type error");
+        }
+    }
 }

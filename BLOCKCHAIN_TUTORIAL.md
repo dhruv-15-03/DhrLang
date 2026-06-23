@@ -173,6 +173,40 @@ found, so `contract fuzz` works as a CI gate.
 
 ---
 
+## Start From a Standard-Library Template
+
+Don't write boilerplate from scratch. DhrLang ships eight audited-pattern base contracts
+you can browse and scaffold straight from the CLI:
+
+```bash
+# Browse the catalog:
+java -jar DhrLang-3.8.0.jar contract stdlib list
+
+# Read a template's source:
+java -jar DhrLang-3.8.0.jar contract stdlib show ERC20
+
+# Scaffold a ready-to-edit file (optionally renaming the contract):
+java -jar DhrLang-3.8.0.jar contract stdlib new Ownable --name=MyToken --output=input/contracts
+```
+
+| Template | What you get |
+|----------|--------------|
+| `Ownable` | Single-owner access control (`transferOwnership`, `renounceOwnership`) |
+| `ReentrancyGuard` | Runtime reentrancy mutex |
+| `Pausable` | Emergency pause / unpause switch |
+| `SafeMath` | Checked `add`/`sub`/`mul`/`div`/`mod` |
+| `ERC20` | Fungible-token **starter scaffold** (EIP-20 surface; transfer logic stubbed) |
+| `ERC721` | NFT **starter scaffold** (EIP-721 surface; transfer logic stubbed) |
+| `AccessControl` | Role-based access control (grant / revoke / check) |
+| `TimelockController` | Governance timelock (schedule / execute / cancel) |
+
+`Ownable`, `Pausable`, `ReentrancyGuard`, `SafeMath`, `AccessControl` and
+`TimelockController` are complete patterns; the `ERC20`/`ERC721` token templates are
+honest starting points whose per-account bookkeeping you fill in. The owner-guard in
+`Ownable` uses the `address(0)` builtin (new in v3.8.0) to reject the zero address.
+
+---
+
 ## Step 2: Compile to EVM Bytecode
 
 ```bash
@@ -438,6 +472,7 @@ java -jar DhrLang-3.0.0.jar contract networks
 | Command | Description |
 |---------|-------------|
 | `contract compile <file>` | Compile to EVM bytecode + ABI |
+| `contract stdlib <list\|show\|new> [Name]` | Browse & scaffold standard base contracts |
 | `contract gas <file>` | Gas cost estimation report |
 | `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
 | `contract safety [--fail-on=<sev>] <file>` | Audit + fuzz -> safety score, grade, SARIF; CI gate |
