@@ -10,6 +10,7 @@ import dhrlang.stdlib.ContractStdlib;
 import dhrlang.validation.StorageLayouter;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -68,6 +69,19 @@ public final class BlockchainCLI {
         public String stdlibAction;      // list | show | new
         public String stdlibName;        // template name (Ownable, ERC20, ...)
         public String stdlibCustomName;  // --name=<Custom> (rename scaffolded contract)
+        // account (ERC-4337) options
+        public String accountAction;            // entrypoint | userop
+        public String entrypointVersion = "0.6"; // --version=0.6|0.7
+        public String accountSender;            // --sender=0x...
+        public String accountNonce = "0";       // --nonce=<n|0x..>
+        public String accountInitCode = "0x";   // --init-code=0x...
+        public String accountCallData = "0x";   // --call-data=0x...
+        public String accountPaymasterData = "0x"; // --paymaster-data=0x...
+        public String accountCallGas = "0";          // --call-gas=<n>
+        public String accountVerificationGas = "0";  // --verification-gas=<n>
+        public String accountPreVerificationGas = "0"; // --pre-verification-gas=<n>
+        public String accountMaxFee = "0";           // --max-fee=<n>
+        public String accountMaxPriorityFee = "0";   // --max-priority-fee=<n>
     }
 
     // ── Main Entry Point ─────────────────────────────────────────────────
@@ -96,6 +110,7 @@ public final class BlockchainCLI {
             case "safety"  -> handleSafety(program, opts);
             case "export"  -> handleExport(program, opts, errorReporter);
             case "stdlib"  -> handleStdlib(opts);
+            case "account" -> handleAccount(opts);
             case "wallet"  -> handleWallet(opts);
             case "networks" -> handleNetworks(opts);
             case "status"  -> handleStatus(opts);
@@ -770,6 +785,123 @@ public final class BlockchainCLI {
         }
     }
 
+    // ── account (ERC-4337) ───────────────────────────────────────────────
+
+    private static void handleAccount(BlockchainOptions opts) {
+        String action = opts.accountAction;
+        if (action == null) {
+            System.err.println("Missing account action.");
+            System.err.println("Usage: dhrlang contract account [entrypoint|userop] [options]");
+            System.exit(2);
+            return;
+        }
+        switch (action) {
+            case "entrypoint" -> handleAccountEntrypoint(opts);
+            case "userop"     -> handleAccountUserOp(opts);
+            default -> {
+                System.err.println("Unknown account action: " + action);
+                System.err.println("Usage: dhrlang contract account [entrypoint|userop] [options]");
+                System.exit(2);
+            }
+        }
+    }
+
+    private static void handleAccountEntrypoint(BlockchainOptions opts) {
+        String version = opts.entrypointVersion;
+        String addr = AccountAbstraction.entryPointFor(version);
+        if (addr == null) {
+            System.err.println("Unknown EntryPoint version: " + version + " (supported: 0.6, 0.7)");
+            System.exit(2);
+            return;
+        }
+        String label = AccountAbstraction.versionLabel(addr);
+        if (opts.json) {
+            System.out.println("{\n  \"version\": \"" + label + "\",\n  \"entryPoint\": \"" + addr + "\"\n}");
+            return;
+        }
+        System.out.println("ERC-4337 EntryPoint v" + label);
+        System.out.println("  Address: " + addr);
+        System.out.println("  Note:    Identical on every EVM chain (deployed via CREATE2).");
+    }
+
+    private static void handleAccountUserOp(BlockchainOptions opts) {
+        if (opts.accountSender == null || opts.accountSender.isBlank()) {
+            System.err.println("Missing --sender=0x... for account userop.");
+            System.err.println("Usage: dhrlang contract account userop --sender=0x.. [--nonce=N] "
+                    + "[--call-data=0x..] [--network=sepolia]");
+            System.exit(2);
+            return;
+        }
+        String entryPoint = AccountAbstraction.entryPointFor(opts.entrypointVersion);
+        if (entryPoint == null) {
+            System.err.println("Unknown EntryPoint version: " + opts.entrypointVersion + " (supported: 0.6, 0.7)");
+            System.exit(2);
+            return;
+        }
+        if (!AccountAbstraction.ENTRYPOINT_V0_6.equals(entryPoint)) {
+            System.err.println("account userop currently computes the EntryPoint v0.6 userOpHash only.");
+            System.err.println("(v0.7 repacks the UserOperation differently - use --version=0.6 or omit it.)");
+            System.exit(2);
+            return;
+        }
+        L2ChainConfig chain = resolveChain(opts.network);
+        if (chain == null) {
+            System.err.println("Unknown network: " + opts.network);
+            System.exit(2);
+            return;
+        }
+        BigInteger chainId;
+        try {
+            chainId = new BigInteger(chain.getChainId());
+        } catch (NumberFormatException e) {
+            System.err.println("Network has a non-numeric chainId: " + chain.getChainId());
+            System.exit(2);
+            return;
+        }
+
+        AccountAbstraction.UserOperation op;
+        try {
+            op = new AccountAbstraction.UserOperation()
+                    .sender(opts.accountSender)
+                    .nonce(AccountAbstraction.parseUint(opts.accountNonce))
+                    .initCode(AccountAbstraction.parseBytes(opts.accountInitCode))
+                    .callData(AccountAbstraction.parseBytes(opts.accountCallData))
+                    .callGasLimit(AccountAbstraction.parseUint(opts.accountCallGas))
+                    .verificationGasLimit(AccountAbstraction.parseUint(opts.accountVerificationGas))
+                    .preVerificationGas(AccountAbstraction.parseUint(opts.accountPreVerificationGas))
+                    .maxFeePerGas(AccountAbstraction.parseUint(opts.accountMaxFee))
+                    .maxPriorityFeePerGas(AccountAbstraction.parseUint(opts.accountMaxPriorityFee))
+                    .paymasterAndData(AccountAbstraction.parseBytes(opts.accountPaymasterData));
+        } catch (IllegalArgumentException | ArithmeticException e) {
+            System.err.println("Invalid UserOperation field: " + e.getMessage());
+            System.exit(2);
+            return;
+        }
+
+        String userOpHash = AccountAbstraction.userOpHashHex(op, entryPoint, chainId);
+        String json = AccountAbstraction.toJson(op);
+
+        if (opts.json) {
+            System.out.println("{\n"
+                    + "  \"entryPoint\": \"" + entryPoint + "\",\n"
+                    + "  \"chainId\": " + chainId + ",\n"
+                    + "  \"network\": \"" + chain.getName() + "\",\n"
+                    + "  \"userOpHash\": \"" + userOpHash + "\",\n"
+                    + "  \"userOp\": " + json.replace("\n", "\n  ") + "\n"
+                    + "}");
+            return;
+        }
+
+        System.out.println("ERC-4337 UserOperation (v0.6)");
+        System.out.println("  Network:    " + chain.getName() + " (chainId " + chainId + ")");
+        System.out.println("  EntryPoint: " + entryPoint);
+        System.out.println();
+        System.out.println(json);
+        System.out.println();
+        System.out.println("  userOpHash: " + userOpHash);
+        System.out.println("  (Canonical EntryPoint.getUserOpHash - the value the account owner signs.)");
+    }
+
     // ── networks ─────────────────────────────────────────────────────────
 
     private static void handleNetworks(BlockchainOptions opts) {
@@ -826,6 +958,7 @@ public final class BlockchainCLI {
         System.out.println("  safety     Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  export     Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
         System.out.println("  stdlib     Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
+        System.out.println("  account    ERC-4337 account abstraction: EntryPoint + offline userOpHash");
         System.out.println("  wallet     Manage wallet keys (create keystore, show address)");
         System.out.println("  networks   List supported blockchain networks");
         System.out.println("  status     Check contract deployment status");
@@ -843,6 +976,10 @@ public final class BlockchainCLI {
         System.out.println("  --fail-on=<severity>    Safety gate threshold: critical|high|medium|low|none (default: high)");
         System.out.println("  --format=<fmt>          Export format: all|hardhat|foundry|ts (default: all)");
         System.out.println("  --name=<Custom>         Rename a scaffolded stdlib contract (stdlib new)");
+        System.out.println("  --version=<0.6|0.7>     ERC-4337 EntryPoint version (account; default: 0.6)");
+        System.out.println("  --sender=<0x...>        Smart-account sender address (account userop)");
+        System.out.println("  --nonce=<n>             UserOperation nonce (account userop; default: 0)");
+        System.out.println("  --call-data=<0x...>     UserOperation callData (account userop; default: 0x)");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -856,6 +993,8 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract stdlib list");
         System.out.println("  dhrlang contract stdlib show ERC20");
         System.out.println("  dhrlang contract stdlib new Ownable --name=MyToken --output=input/contracts");
+        System.out.println("  dhrlang contract account entrypoint --version=0.6");
+        System.out.println("  dhrlang contract account userop --sender=0xabc... --nonce=1 --network=base");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
@@ -1006,6 +1145,28 @@ public final class BlockchainCLI {
                 opts.exportFormat = a.substring("--format=".length()).trim();
             } else if (a.startsWith("--name=")) {
                 opts.stdlibCustomName = a.substring("--name=".length()).trim();
+            } else if (a.startsWith("--version=")) {
+                opts.entrypointVersion = a.substring("--version=".length()).trim();
+            } else if (a.startsWith("--sender=")) {
+                opts.accountSender = a.substring("--sender=".length()).trim();
+            } else if (a.startsWith("--nonce=")) {
+                opts.accountNonce = a.substring("--nonce=".length()).trim();
+            } else if (a.startsWith("--init-code=")) {
+                opts.accountInitCode = a.substring("--init-code=".length()).trim();
+            } else if (a.startsWith("--call-data=")) {
+                opts.accountCallData = a.substring("--call-data=".length()).trim();
+            } else if (a.startsWith("--paymaster-data=")) {
+                opts.accountPaymasterData = a.substring("--paymaster-data=".length()).trim();
+            } else if (a.startsWith("--call-gas=")) {
+                opts.accountCallGas = a.substring("--call-gas=".length()).trim();
+            } else if (a.startsWith("--verification-gas=")) {
+                opts.accountVerificationGas = a.substring("--verification-gas=".length()).trim();
+            } else if (a.startsWith("--pre-verification-gas=")) {
+                opts.accountPreVerificationGas = a.substring("--pre-verification-gas=".length()).trim();
+            } else if (a.startsWith("--max-priority-fee=")) {
+                opts.accountMaxPriorityFee = a.substring("--max-priority-fee=".length()).trim();
+            } else if (a.startsWith("--max-fee=")) {
+                opts.accountMaxFee = a.substring("--max-fee=".length()).trim();
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
             } else if ("--json".equals(a)) {
@@ -1020,6 +1181,8 @@ public final class BlockchainCLI {
                     opts.stdlibAction = a;
                 } else if ("stdlib".equals(opts.subcommand) && opts.stdlibName == null) {
                     opts.stdlibName = a;
+                } else if ("account".equals(opts.subcommand) && opts.accountAction == null) {
+                    opts.accountAction = a;
                 } else if (a.endsWith(".dhr")) {
                     // Record the source file for report locations (SARIF/markdown)
                     opts.sourceFile = a;

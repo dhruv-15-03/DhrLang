@@ -6,6 +6,36 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-06-28
+
+### Added
+- **Offline ERC-4337 account abstraction** via a new `dhrlang contract account`
+  subcommand - build and hash UserOperations entirely off-chain (no bundler or RPC
+  node required):
+  - `contract account entrypoint [--version=0.6|0.7]` prints the canonical EntryPoint
+    address (v0.6 `0x5FF1...2789`, v0.7 `0x0000...a032`), identical on every EVM chain
+    via CREATE2.
+  - `contract account userop --sender=0x.. [--nonce=N] [--call-data=0x..]
+    [--init-code=0x..] [--paymaster-data=0x..] [--call-gas=..] [--verification-gas=..]
+    [--pre-verification-gas=..] [--max-fee=..] [--max-priority-fee=..]
+    [--network=<name>]` builds a v0.6 UserOperation, prints it in the
+    `eth_sendUserOperation` JSON shape, and computes the deterministic **`userOpHash`** -
+    the exact value the smart-account owner signs. `--json` emits a machine-readable
+    object.
+- **`AccountAbstraction`** deploy helper: EntryPoint registry plus the canonical v0.6
+  `userOpHash = keccak256(abi.encode(keccak256(pack(op)), entryPoint, chainId))`, where
+  `pack` is the 10-field `abi.encode` (signature excluded). Reuses the existing
+  dependency-free keccak-256, and is validated byte-for-byte against ethers.js v6
+  reference vectors (chain-id domain separation included).
+
+### Notes
+- Additive and non-breaking. The hash is chain-scoped, so the same UserOperation yields
+  a different `userOpHash` per network (e.g. mainnet vs Polygon).
+- v0.7 EntryPoint **address** lookup is supported; v0.7 `userOpHash` (a different packing)
+  is intentionally rejected by `account userop` - use `--version=0.6` (the default).
+- Bundler submission (`eth_sendUserOperation`) remains out of scope (it needs a live
+  bundler); the emitted JSON is ready to pipe to one.
+
 ## [3.10.0] - 2026-06-27
 
 ### Added

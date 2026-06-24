@@ -29,11 +29,11 @@ public class Main {
             return;
         }
 
-        // Handle "contract" subcommand: wallet/networks/stdlib don't need a .dhr file
+        // Handle "contract" subcommand: wallet/networks/stdlib/account don't need a .dhr file
         if (options.contractMode) {
             var bcOpts = dhrlang.deploy.BlockchainCLI.parseArgs(options.contractArgs, 1);
             if ("wallet".equals(bcOpts.subcommand) || "networks".equals(bcOpts.subcommand)
-                    || "stdlib".equals(bcOpts.subcommand)) {
+                    || "stdlib".equals(bcOpts.subcommand) || "account".equals(bcOpts.subcommand)) {
                 dhrlang.deploy.BlockchainCLI.execute(null, null, bcOpts, errorReporter);
                 return;
             }
@@ -159,6 +159,7 @@ public class Main {
         System.out.println("  contract safety      Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  contract export      Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
         System.out.println("  contract stdlib      Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
+        System.out.println("  contract account     ERC-4337 EntryPoint + offline userOpHash builder");
         System.out.println("  contract wallet      Manage wallet keys (create keystore, show address)");
         System.out.println("  contract networks    List all supported blockchain networks");
         System.out.println("  contract status      Check contract deployment status on-chain");
@@ -175,6 +176,7 @@ public class Main {
         System.out.println("  java -jar DhrLang.jar contract safety --fail-on=high token.dhr");
         System.out.println("  java -jar DhrLang.jar contract export --format=all token.dhr");
         System.out.println("  java -jar DhrLang.jar contract stdlib new Ownable --name=MyToken");
+        System.out.println("  java -jar DhrLang.jar contract account userop --sender=0x.. --network=base");
         System.out.println("  java -jar DhrLang.jar contract verify --address=0x... token.dhr");
         System.out.println("  java -jar DhrLang.jar contract wallet create");
         System.out.println("  java -jar DhrLang.jar contract networks");

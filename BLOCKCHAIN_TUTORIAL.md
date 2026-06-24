@@ -467,6 +467,59 @@ results, and the generated files are deterministic ASCII.
 
 ---
 
+## Step 11: Account Abstraction (ERC-4337)
+
+Build and hash [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) UserOperations
+**entirely offline** - no bundler or RPC node required. This is everything the
+smart-account owner needs to produce the value they sign; only the final
+`eth_sendUserOperation` submission needs a live bundler.
+
+Look up the canonical EntryPoint (identical on every chain via CREATE2):
+
+```bash
+java -jar DhrLang.jar contract account entrypoint            # v0.6 (default)
+java -jar DhrLang.jar contract account entrypoint --version=0.7
+```
+
+Build a v0.6 UserOperation and compute its deterministic `userOpHash`:
+
+```bash
+java -jar DhrLang.jar contract account userop \
+    --sender=0xYourSmartAccount \
+    --nonce=1 \
+    --call-data=0xb61d27f6... \
+    --call-gas=100000 --verification-gas=200000 --pre-verification-gas=21000 \
+    --max-fee=1000000000 --max-priority-fee=1000000000 \
+    --network=base
+```
+
+The command prints the UserOperation in the `eth_sendUserOperation` JSON shape plus:
+
+```
+  userOpHash: 0x994c271a... (the value the account owner signs)
+```
+
+`userOpHash` is the canonical v0.6
+`keccak256(abi.encode(keccak256(pack(op)), entryPoint, chainId))` - validated
+byte-for-byte against ethers.js reference vectors. It is **chain-scoped**: the same
+UserOperation produces a different hash per network, which is why `--network` matters.
+Add `--json` for a machine-readable object. v0.7 `userOpHash` (a different packing) is
+intentionally rejected by `userop`; use the default `--version=0.6`.
+
+| Flag | Meaning | Default |
+|------|---------|---------|
+| `--sender=0x..` | Smart-account address (required) | - |
+| `--nonce=N` | UserOperation nonce (decimal or `0x`) | `0` |
+| `--call-data=0x..` | Encoded account `execute(...)` calldata | `0x` |
+| `--init-code=0x..` | Factory + calldata for first-time deploy | `0x` |
+| `--paymaster-data=0x..` | `paymasterAndData` (gas sponsorship) | `0x` |
+| `--call-gas`, `--verification-gas`, `--pre-verification-gas` | Gas limits | `0` |
+| `--max-fee`, `--max-priority-fee` | EIP-1559 fees (wei) | `0` |
+| `--version=0.6\|0.7` | EntryPoint version | `0.6` |
+| `--network=<name>` | Target chain (sets `chainId`) | `local` |
+
+---
+
 ## Supported Networks
 
 ```bash
@@ -511,6 +564,8 @@ java -jar DhrLang-3.0.0.jar contract networks
 | `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
 | `contract safety [--fail-on=<sev>] <file>` | Audit + fuzz -> safety score, grade, SARIF; CI gate |
 | `contract export [--format=<fmt>] [--output=<dir>] <file>` | Emit Hardhat / Foundry / viem artifacts |
+| `contract account entrypoint [--version=0.6\|0.7]` | Print the canonical ERC-4337 EntryPoint address |
+| `contract account userop --sender=0x.. [--network=<net>]` | Build a UserOperation + compute `userOpHash` (offline) |
 | `contract deploy --network=<net> <file>` | Build + sign + deploy |
 | `contract verify --address=<addr> <file>` | Verify on block explorer |
 | `contract wallet create` | Create encrypted keystore |

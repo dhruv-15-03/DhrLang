@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.10.0** - see [What's New in v3.10.0](#whats-new-in-v3100) and
+> **Current release: v3.11.0** - see [What's New in v3.11.0](#whats-new-in-v3110) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,22 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.11.0
+
+Offline **ERC-4337 account abstraction**. A new `contract account` subcommand builds and
+hashes UserOperations entirely off-chain - no bundler or RPC node needed:
+- `contract account entrypoint [--version=0.6|0.7]` prints the canonical EntryPoint
+  address (identical on every chain via CREATE2).
+- `contract account userop --sender=0x.. [--nonce=N] [--call-data=0x..] [--network=base]`
+  builds a v0.6 UserOperation, prints it in the `eth_sendUserOperation` JSON shape, and
+  computes the deterministic **`userOpHash`** the account owner signs.
+
+The hash is the canonical v0.6 `keccak256(abi.encode(keccak256(pack(op)), entryPoint,
+chainId))`, validated byte-for-byte against ethers.js reference vectors and chain-scoped
+(the same op hashes differently per network). Additive and non-breaking; bundler
+submission stays out of scope. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.10.0
 
