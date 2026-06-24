@@ -1491,7 +1491,17 @@ public class TypeChecker {
                 return resolvedType;
             }
             errorWithHint("Unknown property 'msg." + propName + "'.", expr.getSourceLocation(),
-                         "Available msg properties: sender (Address), value (uint256)");
+                         "Available msg properties: sender (Address), value (uint256), data (calldata), sig (uint256)");
+            return "unknown";
+        }
+        // Handle msg.data.length (calldata size) for smart contracts
+        if (objectType.equals(MsgContext.CALLDATA_TYPE)) {
+            String resolvedType = MsgContext.getCallDataPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'msg.data." + propName + "'.", expr.getSourceLocation(),
+                         "msg.data only supports '.length' (uint256); use msg.sig for the function selector");
             return "unknown";
         }
         if (objectType.equals(MsgContext.BLOCK_TYPE)) {

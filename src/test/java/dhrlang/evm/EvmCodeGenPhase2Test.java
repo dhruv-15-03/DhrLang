@@ -1074,4 +1074,149 @@ class EvmCodeGenPhase2Test {
             assertTrue(errors.hasErrors(), "address with a string argument should be a type error");
         }
     }
+
+    // ===============================================================
+    //  msg.data / msg.sig builtins (calldata size + function selector)
+    // ===============================================================
+
+    @Nested
+    @DisplayName("msg.data / msg.sig")
+    class MsgData {
+
+        @Test
+        @DisplayName("msg.data.length lowers to CALLDATASIZE (0x36)")
+        void msgDataLengthLowersToCalldatasize() {
+            // Differential check: msg.data.length and msg.value compile to byte-identical
+            // contracts except for one opcode (CALLDATASIZE 0x36 vs CALLVALUE 0x34),
+            // so the data.length variant carries exactly one extra 0x36.
+            // Same class/function name in both => byte-identical dispatcher; the only
+            // differing byte is the returned global's opcode.
+            String withLen = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num f() {
+                        return msg.data.length;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            String withValue = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num f() {
+                        return msg.value;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(countOccurrences(withLen, "36") > countOccurrences(withValue, "36"),
+                    "msg.data.length should emit CALLDATASIZE (0x36)");
+        }
+
+        @Test
+        @DisplayName("msg.sig lowers to calldataload(0) >> 224 (selector)")
+        void msgSigLowersToSelectorShift() {
+            String code = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num selector() {
+                        return msg.sig;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            // Selector extraction = PUSH0, CALLDATALOAD, PUSH1 0xE0, SHR = 5f 35 60e0 1c.
+            // The dispatcher emits this once; reading msg.sig adds a second occurrence.
+            assertTrue(countOccurrences(code, "5f3560e01c") >= 2,
+                    "msg.sig should emit the selector shift calldataload(0) >> 224");
+        }
+
+        @Test
+        @DisplayName("num n = msg.data.length typechecks as a number")
+        void msgDataLengthTypechecks() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num len() {
+                        num n = msg.data.length;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertFalse(errors.hasErrors(), "msg.data.length should typecheck as a number");
+        }
+
+        @Test
+        @DisplayName("num s = msg.sig typechecks as a number")
+        void msgSigTypechecks() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num selector() {
+                        num s = msg.sig;
+                        return s;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertFalse(errors.hasErrors(), "msg.sig should typecheck as a number");
+        }
+
+        @Test
+        @DisplayName("bare msg.data is rejected (calldata is not a scalar)")
+        void bareMsgDataRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num bad() {
+                        num n = msg.data;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "bare msg.data assigned to num should be a type error");
+        }
+
+        @Test
+        @DisplayName("unknown msg.data property is rejected")
+        void unknownMsgDataPropertyRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num bad() {
+                        num n = msg.data.size;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "msg.data.size (unknown property) should be a type error");
+        }
+    }
 }

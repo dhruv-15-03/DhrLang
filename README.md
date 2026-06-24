@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.8.0** - see [What's New in v3.8.0](#whats-new-in-v380) and
+> **Current release: v3.9.0** - see [What's New in v3.9.0](#whats-new-in-v390) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,21 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.9.0
+
+First-class calldata introspection in contracts, closing the last `msg.*` gap:
+- **`msg.data.length`** - the size of the transaction calldata, lowered to the EVM
+  `CALLDATASIZE` opcode and typed as a number.
+- **`msg.sig`** - the 4-byte function selector (first calldata word, right-aligned),
+  lowered to `calldataload(0) >> 224`. Handy for selector-based routing, logging, or
+  access guards.
+
+Both read like any other number (usable in `@view` getters and `@requires` / `@ensures`
+specs), and both are correctly treated as transaction-context reads - so `@pure` methods
+reject them, exactly like `msg.sender`. `msg.data` deliberately exposes only `.length`
+(DhrLang has no dynamic `bytes` value type); bare `msg.data` is a type error. Full details
+in [CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.8.0
 

@@ -86,6 +86,24 @@ Key annotations:
 - `@invariant(expr)` — a contract-level invariant (declared next to `@contract`), re-checked
   after every state-mutating method and reverting `invariant violated`.
 
+### Transaction context globals
+
+Inside a contract you can read the transaction and block context directly:
+
+| Expression | Type | EVM | Meaning |
+|------------|------|-----|---------|
+| `msg.sender` | `Address` | `CALLER` | Account that called this contract |
+| `msg.value` | `uint256` | `CALLVALUE` | Wei sent with the call |
+| `msg.data.length` | `uint256` | `CALLDATASIZE` | Size of the calldata, in bytes |
+| `msg.sig` | `uint256` | `calldataload(0) >> 224` | 4-byte function selector |
+| `block.timestamp` / `block.number` | `uint256` | `TIMESTAMP` / `NUMBER` | Current block |
+| `tx.origin` | `Address` | `ORIGIN` | Original external sender (avoid for auth) |
+
+`msg.data` itself is not a value (DhrLang has no dynamic `bytes`): use `msg.data.length`
+for the calldata size and `msg.sig` for the selector. Reading any other `msg.data.<x>`,
+or using bare `msg.data`, is a type error. These are transaction-context reads, so a
+`@view` method may use them but a `@pure` method may not.
+
 ### Arithmetic safety example
 
 ```dhrlang

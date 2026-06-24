@@ -57,6 +57,7 @@ public final class TypeDesc {
             // Synthetic types for blockchain context globals (msg, block)
             case "$MsgContext"->cls("$MsgContext");
             case "$BlockContext"->cls("$BlockContext");
+            case "$CallData"->cls("$CallData");
             default -> { if(raw.startsWith("mapping")) yield mapping(unknown(),unknown()); if(raw.matches("[A-Z][A-Za-z0-9_]*")) yield cls(raw); if(raw.matches("[A-Z]")) yield generic(raw); yield unknown(); }
         };
     }

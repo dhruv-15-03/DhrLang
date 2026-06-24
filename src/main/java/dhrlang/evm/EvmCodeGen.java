@@ -1093,7 +1093,23 @@ public final class EvmCodeGen {
             } else if ("value".equals(member)) {
                 buf.emit(EvmOpcode.CALLVALUE);
                 return;
+            } else if ("sig".equals(member)) {
+                // First 4 calldata bytes (function selector), right-aligned: calldataload(0) >> 224
+                buf.pushInt(0);
+                buf.emit(EvmOpcode.CALLDATALOAD);
+                buf.pushInt(0xE0);
+                buf.emit(EvmOpcode.SHR);
+                return;
             }
+        }
+
+        // msg.data.length → CALLDATASIZE
+        if ("length".equals(member) && obj instanceof GetExpr inner
+                && inner.getObject() instanceof VariableExpr dv
+                && "msg".equals(dv.getName().getLexeme())
+                && "data".equals(inner.getName().getLexeme())) {
+            buf.emit(EvmOpcode.CALLDATASIZE);
+            return;
         }
 
         // block.timestamp, block.number, block.coinbase, block.gaslimit, block.chainid

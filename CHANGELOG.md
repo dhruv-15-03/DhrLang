@@ -6,6 +6,31 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-06-26
+
+### Added
+- **First-class `msg.data` and `msg.sig` in contract code.** The transaction-context
+  surface now exposes the raw calldata alongside `msg.sender` / `msg.value`, closing the
+  last `msg.*` language gap:
+  - `msg.data.length` reads the calldata size, lowering on the EVM to the `CALLDATASIZE`
+    opcode. It is typed as `uint256` (freely assignable to `num`).
+  - `msg.sig` reads the 4-byte function selector (the first calldata word, right-aligned),
+    lowering to `calldataload(0) >> 224` - the exact extraction the function dispatcher
+    already performs. Also typed as `uint256`.
+
+  Both are usable anywhere a number is expected, including `@view` getters and
+  design-by-contract `@requires` / `@ensures` specs. Because they read transaction
+  context, `@pure` methods reject them and `@view` methods allow them - identical to
+  `msg.sender`, and enforced automatically by the existing view/pure checker.
+
+### Notes
+- Additive and non-breaking: existing contracts compile identically.
+- DhrLang has no dynamic `bytes` value type, so `msg.data` has no scalar form. It is
+  intentionally usable **only** as `msg.data.length`; using bare `msg.data` as a value,
+  or reading any other `msg.data.<x>`, is a type error whose hint points at `.length`
+  and `msg.sig`.
+- VS Code extension stays at 3.0.1 (no editor-facing change this release).
+
 ## [3.8.0] - 2026-06-25
 
 ### Added
