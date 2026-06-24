@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.9.0** - see [What's New in v3.9.0](#whats-new-in-v390) and
+> **Current release: v3.10.0** - see [What's New in v3.10.0](#whats-new-in-v3100) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,22 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.10.0
+
+Twelve more deployment targets - the chain registry grows from 9 to 21 networks and
+gains first-class **ZK rollup** support:
+- **ZK rollups:** zkSync Era, Polygon zkEVM, Scroll and Linea (plus their testnets) -
+  the first chains tagged `L2_ZK`.
+- **Blast** (and Blast Sepolia), an additional optimistic rollup.
+- **Optimism Sepolia** and **Polygon Amoy**, filling in testnets for chains that only
+  had mainnet entries.
+
+Target any of them with `contract deploy --network=<name>` using a friendly alias
+(`zksync`, `era`, `zkevm`, `scroll`, `linea`, `blast`, `amoy`, `op-sepolia`, ...) or the
+raw chain ID; run `contract networks` to see the full list. Additive and non-breaking -
+no existing network changed. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.9.0
 

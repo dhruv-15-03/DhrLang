@@ -6,6 +6,28 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-06-27
+
+### Added
+- **Twelve more supported chains**, taking the deployment registry from 9 to 21
+  networks and activating first-class **ZK rollup** support (`ChainType.L2_ZK`):
+  - **ZK rollups (mainnet + testnet):** zkSync Era (`324`) / zkSync Sepolia (`300`),
+    Polygon zkEVM (`1101`) / Cardona (`2442`), Scroll (`534352`) / Scroll Sepolia
+    (`534351`), Linea (`59144`) / Linea Sepolia (`59141`).
+  - **Optimistic rollup:** Blast (`81457`) / Blast Sepolia (`168587773`).
+  - **Filled-in testnets for existing chains:** Optimism Sepolia (`11155420`) and
+    Polygon Amoy (`80002`, replacing the deprecated Mumbai).
+- Each chain ships its canonical chain ID, public RPC endpoint, block-explorer URL,
+  native token and EIP-1559 flag, and is reachable from `contract deploy` /
+  `contract verify` via `--network=<name>` using friendly aliases (e.g. `zksync`,
+  `era`, `zkevm`, `scroll`, `linea`, `blast`, `amoy`, `op-sepolia`) or the raw
+  numeric chain ID. `contract networks` lists them all.
+
+### Notes
+- Additive and non-breaking: no existing chain entry, alias, or default changed.
+- zkSync Era is flagged as non-EIP-1559 (it uses a native fee model); the other ZK
+  rollups accept standard type-2 transactions.
+
 ## [3.9.0] - 2026-06-26
 
 ### Added

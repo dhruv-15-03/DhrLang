@@ -65,10 +65,86 @@ public final class L2ChainConfig {
             "https://optimistic.etherscan.io", 30_000_000L, 2.0, "ETH", true, ChainType.L2_OPTIMISTIC
     );
 
+    /** Optimism Sepolia Testnet (chainId 11155420). */
+    public static final L2ChainConfig OPTIMISM_SEPOLIA = new L2ChainConfig(
+            "11155420", "Optimism Sepolia", "https://sepolia.optimism.io",
+            "https://sepolia-optimism.etherscan.io", 30_000_000L, 2.0, "ETH", true, ChainType.TESTNET
+    );
+
     /** Polygon POS (chainId 137). */
     public static final L2ChainConfig POLYGON = new L2ChainConfig(
             "137", "Polygon", "https://polygon-rpc.com",
             "https://polygonscan.com", 30_000_000L, 2.0, "MATIC", true, ChainType.SIDECHAIN
+    );
+
+    /** Polygon Amoy Testnet (chainId 80002). */
+    public static final L2ChainConfig POLYGON_AMOY = new L2ChainConfig(
+            "80002", "Polygon Amoy", "https://rpc-amoy.polygon.technology",
+            "https://amoy.polygonscan.com", 30_000_000L, 2.0, "MATIC", true, ChainType.TESTNET
+    );
+
+    // ── ZK rollups ───────────────────────────────────────────────────────
+
+    /** zkSync Era Mainnet (chainId 324). Uses a native fee model (no standard EIP-1559). */
+    public static final L2ChainConfig ZKSYNC_ERA = new L2ChainConfig(
+            "324", "zkSync Era", "https://mainnet.era.zksync.io",
+            "https://explorer.zksync.io", 30_000_000L, 1.0, "ETH", false, ChainType.L2_ZK
+    );
+
+    /** zkSync Sepolia Testnet (chainId 300). */
+    public static final L2ChainConfig ZKSYNC_SEPOLIA = new L2ChainConfig(
+            "300", "zkSync Sepolia", "https://sepolia.era.zksync.dev",
+            "https://sepolia.explorer.zksync.io", 30_000_000L, 1.0, "ETH", false, ChainType.TESTNET
+    );
+
+    /** Polygon zkEVM Mainnet (chainId 1101). */
+    public static final L2ChainConfig POLYGON_ZKEVM = new L2ChainConfig(
+            "1101", "Polygon zkEVM", "https://zkevm-rpc.com",
+            "https://zkevm.polygonscan.com", 30_000_000L, 2.0, "ETH", true, ChainType.L2_ZK
+    );
+
+    /** Polygon zkEVM Cardona Testnet (chainId 2442). */
+    public static final L2ChainConfig POLYGON_ZKEVM_CARDONA = new L2ChainConfig(
+            "2442", "Polygon zkEVM Cardona", "https://rpc.cardona.zkevm-rpc.com",
+            "https://cardona-zkevm.polygonscan.com", 30_000_000L, 2.0, "ETH", true, ChainType.TESTNET
+    );
+
+    /** Scroll Mainnet (chainId 534352). */
+    public static final L2ChainConfig SCROLL = new L2ChainConfig(
+            "534352", "Scroll", "https://rpc.scroll.io",
+            "https://scrollscan.com", 30_000_000L, 3.0, "ETH", true, ChainType.L2_ZK
+    );
+
+    /** Scroll Sepolia Testnet (chainId 534351). */
+    public static final L2ChainConfig SCROLL_SEPOLIA = new L2ChainConfig(
+            "534351", "Scroll Sepolia", "https://sepolia-rpc.scroll.io",
+            "https://sepolia.scrollscan.com", 30_000_000L, 3.0, "ETH", true, ChainType.TESTNET
+    );
+
+    /** Linea Mainnet (chainId 59144). */
+    public static final L2ChainConfig LINEA = new L2ChainConfig(
+            "59144", "Linea", "https://rpc.linea.build",
+            "https://lineascan.build", 30_000_000L, 2.0, "ETH", true, ChainType.L2_ZK
+    );
+
+    /** Linea Sepolia Testnet (chainId 59141). */
+    public static final L2ChainConfig LINEA_SEPOLIA = new L2ChainConfig(
+            "59141", "Linea Sepolia", "https://rpc.sepolia.linea.build",
+            "https://sepolia.lineascan.build", 30_000_000L, 2.0, "ETH", true, ChainType.TESTNET
+    );
+
+    // ── Additional optimistic rollups ────────────────────────────────────
+
+    /** Blast Mainnet (chainId 81457). */
+    public static final L2ChainConfig BLAST = new L2ChainConfig(
+            "81457", "Blast", "https://rpc.blast.io",
+            "https://blastscan.io", 30_000_000L, 2.0, "ETH", true, ChainType.L2_OPTIMISTIC
+    );
+
+    /** Blast Sepolia Testnet (chainId 168587773). */
+    public static final L2ChainConfig BLAST_SEPOLIA = new L2ChainConfig(
+            "168587773", "Blast Sepolia", "https://sepolia.blast.io",
+            "https://sepolia.blastscan.io", 30_000_000L, 2.0, "ETH", true, ChainType.TESTNET
     );
 
     /** Local Anvil / Hardhat (chainId 31337). */
@@ -102,7 +178,19 @@ public final class L2ChainConfig {
         register(BASE_MAINNET);
         register(BASE_SEPOLIA);
         register(OPTIMISM);
+        register(OPTIMISM_SEPOLIA);
         register(POLYGON);
+        register(POLYGON_AMOY);
+        register(ZKSYNC_ERA);
+        register(ZKSYNC_SEPOLIA);
+        register(POLYGON_ZKEVM);
+        register(POLYGON_ZKEVM_CARDONA);
+        register(SCROLL);
+        register(SCROLL_SEPOLIA);
+        register(LINEA);
+        register(LINEA_SEPOLIA);
+        register(BLAST);
+        register(BLAST_SEPOLIA);
         register(LOCAL_ANVIL);
     }
 

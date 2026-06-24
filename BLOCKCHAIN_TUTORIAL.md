@@ -478,10 +478,26 @@ java -jar DhrLang-3.0.0.jar contract networks
 | Ethereum Mainnet | 1 | L1 | `mainnet` |
 | Sepolia Testnet | 11155111 | Testnet | `sepolia` |
 | Arbitrum One | 42161 | L2 | `arbitrum` |
+| Arbitrum Sepolia | 421614 | Testnet | `arbitrum-sepolia` |
 | Base | 8453 | L2 | `base` |
+| Base Sepolia | 84532 | Testnet | `base-sepolia` |
 | Optimism | 10 | L2 | `optimism` |
+| Optimism Sepolia | 11155420 | Testnet | `op-sepolia` |
 | Polygon | 137 | Sidechain | `polygon` |
+| Polygon Amoy | 80002 | Testnet | `amoy` |
+| zkSync Era | 324 | ZK rollup | `zksync` / `era` |
+| zkSync Sepolia | 300 | Testnet | `zksync-sepolia` |
+| Polygon zkEVM | 1101 | ZK rollup | `zkevm` |
+| Polygon zkEVM Cardona | 2442 | Testnet | `cardona` |
+| Scroll | 534352 | ZK rollup | `scroll` |
+| Scroll Sepolia | 534351 | Testnet | `scroll-sepolia` |
+| Linea | 59144 | ZK rollup | `linea` |
+| Linea Sepolia | 59141 | Testnet | `linea-sepolia` |
+| Blast | 81457 | L2 | `blast` |
+| Blast Sepolia | 168587773 | Testnet | `blast-sepolia` |
 | Local (Anvil) | 31337 | Local | `local` |
+
+> You can also pass the raw numeric chain ID to `--network` (e.g. `--network=534352`).
 
 ---
 
