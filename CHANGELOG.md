@@ -6,6 +6,37 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-06-29
+
+### Added
+- **One-command verified deploy loop** for `dhrlang contract deploy`:
+  - Every deploy path now writes a **Foundry-compatible broadcast artifact**
+    (`broadcast/Deploy.s.sol/<chainId>/run-latest.json`, dry runs nested under
+    `dry-run/`) recording each CREATE transaction, the deployed/predicted address,
+    and - for live deploys - the receipt. Drops a DhrLang deployment straight into
+    Foundry-shaped tooling (verifiers, indexers, CI).
+  - `--verify` chains source verification after a successful live deploy, so a
+    contract is deployed **and** verified in a single command. Degrades gracefully
+    when no explorer API key is set (prints the manual follow-up).
+  - `--from=<0x..>` sets the deployer used to **predict** CREATE addresses in a
+    dry run. Dry runs now print each contract's deterministic predicted address
+    (`keccak256(rlp([sender, nonce]))[12:]`); local deploys default to Anvil
+    account #0, so `deploy --network=local --dry-run` predicts the canonical
+    `0x5fbd...0aa3` first-deploy address.
+- **`WalletManager.computeCreateAddress(sender, nonce)`** and a new
+  **`BroadcastArtifact`** builder back the above. Address prediction is validated
+  byte-for-byte against ethers.js v6 `getCreateAddress` vectors across the RLP
+  nonce boundaries (0, 1, 127, 128, 256).
+
+### Fixed
+- The generated Foundry deploy script declared `contract Deploy extends Script`
+  (invalid Solidity); it now correctly emits `contract Deploy is Script`.
+
+### Notes
+- Additive and non-breaking: contracts that don't pass `--verify`/`--from` deploy
+  exactly as before, plus the new broadcast artifact. A CI smoke test runs an
+  offline dry-run deploy and asserts the broadcast artifact and predicted address.
+
 ## [3.11.0] - 2026-06-28
 
 ### Added

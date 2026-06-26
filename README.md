@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.11.0** - see [What's New in v3.11.0](#whats-new-in-v3110) and
+> **Current release: v3.12.0** - see [What's New in v3.12.0](#whats-new-in-v3120) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,23 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.12.0
+
+A **one-command verified deploy loop** for `contract deploy`:
+- Every deploy writes a **Foundry-compatible broadcast artifact**
+  (`broadcast/Deploy.s.sol/<chainId>/run-latest.json`) recording each CREATE tx, the
+  deployed/predicted address, and the receipt for live deploys - so a DhrLang deploy
+  drops straight into Foundry-shaped tooling.
+- `--verify` chains source verification right after a successful live deploy (deploy
+  **and** verify in one command; degrades gracefully with no API key).
+- `--from=<0x..>` predicts CREATE addresses for dry runs. `deploy --network=local
+  --dry-run` now prints each contract's deterministic predicted address (validated
+  against ethers.js `getCreateAddress` vectors).
+
+Also fixes the generated Foundry deploy script (`contract Deploy is Script`, was the
+invalid `extends Script`). Additive and non-breaking. Details in
+[CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.11.0
 

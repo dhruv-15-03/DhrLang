@@ -393,6 +393,43 @@ public final class WalletManager {
     }
 
     /**
+     * Compute the contract address a CREATE deployment will produce.
+     *
+     * <p>For a legacy {@code CREATE} opcode (the path used by plain contract-creation
+     * transactions), the new contract's address is deterministic and depends only on
+     * the deployer (sender) and its transaction nonce - <b>not</b> on the bytecode:</p>
+     *
+     * <pre>address = keccak256(rlp([sender, nonce]))[12:]</pre>
+     *
+     * <p>This lets DhrLang predict the deployed address offline (e.g. for dry-run
+     * broadcast artifacts) before a single byte hits the wire. Matches
+     * {@code ethers.getCreateAddress} / Foundry's predicted address.</p>
+     *
+     * @param sender the deployer's 20-byte address (with or without {@code 0x})
+     * @param nonce  the deployer's transaction nonce for this deployment ({@code >= 0})
+     * @return the predicted contract address (lowercase, {@code 0x}-prefixed)
+     */
+    public static String computeCreateAddress(String sender, long nonce) {
+        if (sender == null) {
+            throw new WalletException("Sender address must not be null.");
+        }
+        if (nonce < 0) {
+            throw new WalletException("Nonce must be non-negative, got " + nonce + ".");
+        }
+        String hex = normalizeHex(sender);
+        if (hex.length() != 40 || !hex.matches("[0-9a-f]+")) {
+            throw new WalletException("Sender must be a 20-byte hex address, got '" + sender + "'.");
+        }
+        byte[] senderBytes = HexFormat.of().parseHex(hex);
+        byte[] nonceBytes = bigIntBytes(BigInteger.valueOf(nonce));
+        byte[] rlp = rlpEncodeList(senderBytes, nonceBytes);
+        byte[] hash = FunctionSelector.keccak256(rlp);
+        byte[] addressBytes = new byte[20];
+        System.arraycopy(hash, 12, addressBytes, 0, 20);
+        return "0x" + HexFormat.of().formatHex(addressBytes);
+    }
+
+    /**
      * Get the uncompressed public key for the loaded private key.
      * @return 65-byte uncompressed public key (0x04 ∥ x ∥ y)
      */

@@ -289,7 +289,7 @@ public final class DeploymentManager {
                 .append(" (chainId: ").append(targetChain.getChainId()).append(")\n\n");
         sb.append("pragma solidity ^0.8.20;\n\n");
         sb.append("import \"forge-std/Script.sol\";\n\n");
-        sb.append("contract Deploy extends Script {\n");
+        sb.append("contract Deploy is Script {\n");
         sb.append("    function run() external {\n");
         sb.append("        vm.startBroadcast();\n\n");
 

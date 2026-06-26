@@ -178,6 +178,25 @@ jobs:
           echo "═══ Compiled Artifacts ═══"
           ls -la build/evm/ 2>/dev/null || echo "No artifacts generated"
 
+      - name: Dry-run deploy smoke test (broadcast artifact)
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          OUT=build/deploy-smoke
+          java -jar "$JAR" contract deploy --network=local --dry-run \
+            --output="$OUT" input/contracts/ERC20Token.dhr
+          BC="$OUT/broadcast/Deploy.s.sol/31337/dry-run/run-latest.json"
+          echo ""
+          echo "═══ Broadcast Artifact ═══"
+          if [ ! -f "$BC" ]; then
+            echo "::error::Broadcast artifact not written to $BC"
+            exit 1
+          fi
+          cat "$BC"
+          # Foundry-shaped CREATE record + deterministic predicted address (Anvil acct0, nonce 0).
+          grep -q '"transactionType": "CREATE"' "$BC" || { echo "::error::no CREATE tx"; exit 1; }
+          grep -q '0x5fbdb2315678afecb367f032d93f642f64180aa3' "$BC" || { echo "::error::predicted CREATE address missing"; exit 1; }
+          echo "Broadcast artifact OK: predicted address verified."
+
       - name: Upload EVM artifacts
         if: always()
         uses: actions/upload-artifact@v4

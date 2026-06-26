@@ -366,6 +366,40 @@ cast publish --rpc-url https://sepolia.infura.io/v3/YOUR_KEY \
   "$(cat build/evm/MyToken.signed.tx)"
 ```
 
+### Broadcast artifacts + one-command verify
+
+Every `contract deploy` (live, offline, or `--dry-run`) writes a
+**Foundry-compatible broadcast artifact**:
+
+```
+build/evm/broadcast/Deploy.s.sol/<chainId>/run-latest.json        # live
+build/evm/broadcast/Deploy.s.sol/<chainId>/dry-run/run-latest.json # --dry-run
+```
+
+It records each CREATE transaction, the deployed (or, for dry runs, the
+**predicted**) contract address, and a populated `receipts[]` for live deploys -
+the same schema `forge script --broadcast` emits, so DhrLang deployments drop
+straight into Foundry-shaped tooling, indexers, and CI.
+
+Dry runs predict each address deterministically from `sender` + `nonce`
+(`keccak256(rlp([sender, nonce]))[12:]`). Use `--from=<0x..>` to choose the
+deployer; local deploys default to Anvil account #0, so a fresh local deploy is
+predicted at the canonical `0x5fbd...0aa3`:
+
+```bash
+java -jar DhrLang-3.0.0.jar contract deploy --network=local --dry-run MyToken.dhr
+#   MyToken -> 0x5fbdb2315678afecb367f032d93f642f64180aa3 (predicted, nonce 0)
+```
+
+Pass `--verify` to **deploy and verify in one command** - source verification runs
+automatically after a successful live deploy (and degrades gracefully, printing the
+manual follow-up, when no explorer API key is set):
+
+```bash
+export DHRLANG_ETHERSCAN_API_KEY=your_api_key
+java -jar DhrLang-3.0.0.jar contract deploy --network=sepolia --verify MyToken.dhr
+```
+
 ---
 
 ## Step 7: Verify on Etherscan
@@ -566,7 +600,9 @@ java -jar DhrLang-3.0.0.jar contract networks
 | `contract export [--format=<fmt>] [--output=<dir>] <file>` | Emit Hardhat / Foundry / viem artifacts |
 | `contract account entrypoint [--version=0.6\|0.7]` | Print the canonical ERC-4337 EntryPoint address |
 | `contract account userop --sender=0x.. [--network=<net>]` | Build a UserOperation + compute `userOpHash` (offline) |
-| `contract deploy --network=<net> <file>` | Build + sign + deploy |
+| `contract deploy --network=<net> <file>` | Build + sign + deploy (writes a Foundry broadcast artifact) |
+| `contract deploy --network=<net> --verify <file>` | Deploy **and** verify in one command |
+| `contract deploy --network=<net> --dry-run <file>` | Simulate + predict CREATE addresses (no tx sent) |
 | `contract verify --address=<addr> <file>` | Verify on block explorer |
 | `contract wallet create` | Create encrypted keystore |
 | `contract wallet show` | Show wallet address |

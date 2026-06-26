@@ -55,6 +55,8 @@ public final class BlockchainCLI {
         public boolean dryRun = false;
         public boolean json = false;
         public boolean verbose = false;
+        public boolean verify = false;   // --verify (auto-verify after a live deploy)
+        public String deployerFrom;      // --from=0x... (deployer address for dry-run prediction)
         // wallet sub-subcommand
         public String walletAction;      // create | show | import
         // fuzz options
@@ -385,10 +387,33 @@ public final class BlockchainCLI {
         }
 
         if (opts.dryRun) {
-            System.out.println("\n  [DRY RUN] — No transactions will be sent.");
+            System.out.println("\n  [DRY RUN] - No transactions will be sent.");
+
+            String dryFrom = resolveDeployerForDryRun(opts, chain);
+            System.out.println("  Deployer:   " + dryFrom + " (assumed; override with --from=0x..)");
+
+            // Predict the CREATE address of each contract (depends only on sender+nonce).
+            BroadcastArtifact broadcast = new BroadcastArtifact(Long.parseLong(chain.getChainId()));
+            long dryNonce = 0;
+            for (var artifact : artifacts) {
+                var breakdown = GasEstimator.estimateDeployGas(
+                        artifact.getCreationBytecode(),
+                        artifact.getRuntimeBytecode(),
+                        getStorageSlotCount(program, artifact.getContractName()));
+                String predicted = WalletManager.computeCreateAddress(dryFrom, dryNonce);
+                broadcast.addPlanned(artifact.getContractName(), dryFrom, dryNonce,
+                        breakdown.getTotalEstimate(), artifact.getCreationBytecodeHex(), predicted);
+                System.out.println("    " + artifact.getContractName()
+                        + " -> " + predicted + " (predicted, nonce " + dryNonce + ")");
+                dryNonce++;
+            }
+            if (opts.verify) {
+                System.out.println("  --verify: contracts would be source-verified on "
+                        + chain.getName() + " after broadcast.");
+            }
             System.out.println("╚══════════════════════════════════════════════════════════════╝");
 
-            // Write artifacts + deploy script
+            // Write artifacts + deploy script + Foundry-style broadcast artifact
             try {
                 Path outPath = Path.of(opts.outputDir);
                 Files.createDirectories(outPath);
@@ -402,7 +427,10 @@ public final class BlockchainCLI {
                         : deployer.generateFoundryScript(artifacts);
                 String ext = "ethers".equals(opts.deployFormat) ? ".deploy.js" : ".deploy.sol";
                 Files.writeString(outPath.resolve("Deploy" + ext), script);
+
+                Path bcPath = writeBroadcast(broadcast, outPath, true);
                 System.out.println("\nArtifacts and deploy script written to: " + outPath.toAbsolutePath());
+                System.out.println("Broadcast artifact (Foundry-compatible): " + bcPath);
             } catch (IOException e) {
                 System.err.println("Failed to write artifacts: " + e.getMessage());
             }
@@ -460,12 +488,18 @@ public final class BlockchainCLI {
 
         System.out.println("╠══════════════════════════════════════════════════════════════╣");
 
+        BroadcastArtifact broadcast = new BroadcastArtifact(Long.parseLong(chain.getChainId()));
+        int verifiedCount = 0;
+
         for (var artifact : artifacts) {
             var tx = deployer.buildDeployTx(artifact);
             System.out.println("  Building tx for " + artifact.getContractName() + "...");
 
             String signedTx = wallet.signDeployTx(tx);
             System.out.println("  Signed: " + signedTx.substring(0, Math.min(20, signedTx.length())) + "...");
+
+            String predicted = WalletManager.computeCreateAddress(wallet.getAddress(), tx.getNonce());
+            boolean recorded = false;
 
             // If we have an RPC client, broadcast live
             if (rpcClient != null) {
@@ -485,13 +519,32 @@ public final class BlockchainCLI {
                     deployer.recordDeployment(artifact.getContractName(),
                             result.contractAddress, result.txHash,
                             result.blockNumber, result.gasUsed);
+                    broadcast.addBroadcast(artifact.getContractName(), wallet.getAddress(),
+                            tx.getNonce(), tx.getGasLimit(), tx.getCreationBytecodeHex(),
+                            result.contractAddress, result.txHash, result.gasUsed, result.blockNumber);
+                    recorded = true;
+
+                    // Auto-verify: the one-command verified-deploy loop.
+                    if (opts.verify) {
+                        if (runVerification(artifact, result.contractAddress, chain, opts, sourceCode)) {
+                            deployer.markVerified(artifact.getContractName());
+                            verifiedCount++;
+                        }
+                    }
                 } catch (EthJsonRpcClient.RpcException e) {
                     System.err.println("  ✗ Deployment failed: " + e.getMessage());
                     System.err.println("    Signed tx saved to disk for manual broadcast.");
                 }
             } else {
+                System.out.println("  Predicted address: " + predicted + " (nonce " + tx.getNonce() + ")");
                 System.out.println("  Raw signed tx written to " + opts.outputDir + "/"
                         + artifact.getContractName() + ".signed.tx");
+            }
+
+            // Offline / failed broadcasts still get a planned entry (predicted address, no hash).
+            if (!recorded) {
+                broadcast.addPlanned(artifact.getContractName(), wallet.getAddress(),
+                        tx.getNonce(), tx.getGasLimit(), tx.getCreationBytecodeHex(), predicted);
             }
 
             try {
@@ -504,12 +557,33 @@ public final class BlockchainCLI {
             }
         }
 
+        // Write the Foundry-compatible broadcast artifact (run-latest.json).
+        String bcDisplay = null;
+        try {
+            Path outPath = Path.of(opts.outputDir);
+            Files.createDirectories(outPath);
+            bcDisplay = writeBroadcast(broadcast, outPath, false).toString();
+        } catch (IOException e) {
+            System.err.println("Failed to write broadcast artifact: " + e.getMessage());
+        }
+
         wallet.clear();
 
         System.out.println("╠══════════════════════════════════════════════════════════════╣");
+        if (bcDisplay != null) {
+            System.out.println("  Broadcast artifact: " + bcDisplay);
+        }
+        if (opts.verify && rpcClient != null) {
+            System.out.println("  Verified: " + verifiedCount + "/" + artifacts.size() + " contract(s)");
+        }
         System.out.println("  Next steps:");
-        System.out.println("    1. Broadcast: cast send --raw <signed.tx> --rpc-url " + chain.getRpcUrlTemplate());
-        System.out.println("    2. Verify:    dhrlang contract verify --address=<deployed> --network=" + opts.network + " contract.dhr");
+        if (rpcClient == null) {
+            System.out.println("    1. Broadcast: cast send --raw <signed.tx> --rpc-url " + chain.getRpcUrlTemplate());
+            System.out.println("    2. Verify:    dhrlang contract deploy --verify --network=" + opts.network + " contract.dhr");
+        } else if (!opts.verify) {
+            System.out.println("    1. Verify:    dhrlang contract verify --address=<deployed> --network=" + opts.network + " contract.dhr");
+            System.out.println("       (tip: pass --verify to deploy and verify in one command)");
+        }
         System.out.println("╚══════════════════════════════════════════════════════════════╝");
     }
 
@@ -980,6 +1054,8 @@ public final class BlockchainCLI {
         System.out.println("  --sender=<0x...>        Smart-account sender address (account userop)");
         System.out.println("  --nonce=<n>             UserOperation nonce (account userop; default: 0)");
         System.out.println("  --call-data=<0x...>     UserOperation callData (account userop; default: 0x)");
+        System.out.println("  --verify                Auto-verify each contract after a live deploy");
+        System.out.println("  --from=<0x...>          Deployer address for dry-run address prediction");
         System.out.println("  --dry-run               Simulate without sending transactions");
         System.out.println("  --json                  Output in JSON format");
         System.out.println("  --verbose               Show detailed output");
@@ -997,6 +1073,7 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract account userop --sender=0xabc... --nonce=1 --network=base");
         System.out.println("  dhrlang contract deploy --network=sepolia --dry-run token.dhr");
         System.out.println("  dhrlang contract deploy --network=local token.dhr");
+        System.out.println("  dhrlang contract deploy --network=sepolia --verify token.dhr");
         System.out.println("  dhrlang contract verify --address=0x... --network=sepolia token.dhr");
         System.out.println("  dhrlang contract wallet create");
         System.out.println("  dhrlang contract networks");
@@ -1016,6 +1093,68 @@ public final class BlockchainCLI {
             Files.write(outPath.resolve(name + ".runtime.bin"), runtime);
         if (abi != null && !abi.isEmpty())
             Files.writeString(outPath.resolve(name + ".abi.json"), abi);
+    }
+
+    /** The canonical first Anvil/Hardhat dev account (deterministic mnemonic, index 0). */
+    private static final String ANVIL_ACCOUNT_0 = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+
+    /**
+     * Resolve the deployer address used to predict CREATE addresses in a dry run.
+     * Priority: {@code --from} -> {@code DHRLANG_DEPLOYER} env -> Anvil account #0 for
+     * local chains -> the zero address.
+     */
+    private static String resolveDeployerForDryRun(BlockchainOptions opts, L2ChainConfig chain) {
+        if (opts.deployerFrom != null && !opts.deployerFrom.isBlank()) {
+            return opts.deployerFrom.trim();
+        }
+        String env = System.getenv("DHRLANG_DEPLOYER");
+        if (env != null && !env.isBlank()) {
+            return env.trim();
+        }
+        if (isLocalChain(chain)) {
+            return ANVIL_ACCOUNT_0;
+        }
+        return "0x0000000000000000000000000000000000000000";
+    }
+
+    /**
+     * Write a Foundry-compatible broadcast artifact under {@code outPath} and return the
+     * file that was written (e.g. {@code <out>/broadcast/Deploy.s.sol/31337/run-latest.json}).
+     */
+    private static Path writeBroadcast(BroadcastArtifact broadcast, Path outPath, boolean dryRun)
+            throws IOException {
+        Path bcPath = outPath.resolve(broadcast.relativePath(dryRun));
+        Files.createDirectories(bcPath.getParent());
+        Files.writeString(bcPath, broadcast.toJson());
+        return bcPath;
+    }
+
+    /**
+     * Run source verification for a single deployed contract, printing the outcome.
+     *
+     * @return {@code true} if verification succeeded (or was a successful dry run)
+     */
+    private static boolean runVerification(ContractArtifact artifact, String address,
+                                           L2ChainConfig chain, BlockchainOptions opts,
+                                           String sourceCode) {
+        var verifier = new ContractVerifier()
+                .setChain(chain)
+                .setDryRun(opts.dryRun);
+        if (opts.etherscanKey != null) {
+            verifier.setApiKey(opts.etherscanKey);
+        }
+        System.out.println("  Verifying " + artifact.getContractName() + " at " + address
+                + " on " + chain.getName() + "...");
+        var result = verifier.verify(artifact, address, sourceCode);
+        if (result.isSuccess()) {
+            System.out.println("    verified: " + result.getMessage());
+            if (result.getExplorerUrl() != null) {
+                System.out.println("    view: " + result.getExplorerUrl());
+            }
+            return true;
+        }
+        System.err.println("    not verified: " + result.getMessage());
+        return false;
     }
 
     private static int bytecodeLen(byte[] bc) {
@@ -1131,6 +1270,8 @@ public final class BlockchainCLI {
                 opts.etherscanKey = a.substring("--etherscan-key=".length());
             } else if (a.startsWith("--keystore=")) {
                 opts.keystorePath = a.substring("--keystore=".length());
+            } else if (a.startsWith("--from=")) {
+                opts.deployerFrom = a.substring("--from=".length()).trim();
             } else if (a.startsWith("--runs=")) {
                 try {
                     opts.fuzzRuns = Integer.parseInt(a.substring("--runs=".length()).trim());
@@ -1169,6 +1310,8 @@ public final class BlockchainCLI {
                 opts.accountMaxFee = a.substring("--max-fee=".length()).trim();
             } else if ("--dry-run".equals(a)) {
                 opts.dryRun = true;
+            } else if ("--verify".equals(a)) {
+                opts.verify = true;
             } else if ("--json".equals(a)) {
                 opts.json = true;
             } else if ("--verbose".equals(a) || "-v".equals(a)) {
