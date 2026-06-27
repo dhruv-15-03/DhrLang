@@ -6,6 +6,7 @@ import dhrlang.evm.EvmContractCompiler;
 import dhrlang.evm.EvmContractCompiler.ContractArtifact;
 import dhrlang.interop.InteropExporter;
 import dhrlang.production.AuditReportGenerator;
+import dhrlang.proving.SpecProver;
 import dhrlang.stdlib.ContractStdlib;
 import dhrlang.validation.StorageLayouter;
 
@@ -25,6 +26,7 @@ import java.util.*;
  *   <li>{@code verify}   — verify contract source on block explorer</li>
  *   <li>{@code gas}      — estimate deployment and call gas costs</li>
  *   <li>{@code fuzz}     — property-fuzz @ensures/@invariant specs for counterexamples</li>
+ *   <li>{@code prove}    — statically prove @ensures/@invariant for all inputs (L2b, experimental)</li>
  *   <li>{@code safety}   — unified safety report (audit + fuzzing) with a CI gate</li>
  *   <li>{@code export}   — emit Hardhat/Foundry artifacts + viem/wagmi TS typings</li>
  *   <li>{@code wallet}   — manage keys (create keystore, show address)</li>
@@ -62,6 +64,8 @@ public final class BlockchainCLI {
         // fuzz options
         public int fuzzRuns = 256;       // --runs=<n>
         public long fuzzSeed = -1;       // --seed=<n>  (-1 = random)
+        // prove options (L2b static prover)
+        public int proveBound = 8;       // --bound=<n> (refutation search radius)
         // safety gate options
         public String failOn = "high";   // --fail-on=critical|high|medium|low|none
         public String sourceFile;        // resolved .dhr path (for report locations)
@@ -109,6 +113,7 @@ public final class BlockchainCLI {
             case "verify"  -> handleVerify(program, sourceCode, opts, errorReporter);
             case "gas"     -> handleGas(program, opts, errorReporter);
             case "fuzz"    -> handleFuzz(program, opts);
+            case "prove"   -> handleProve(program, opts);
             case "safety"  -> handleSafety(program, opts);
             case "export"  -> handleExport(program, opts, errorReporter);
             case "stdlib"  -> handleStdlib(opts);
@@ -715,6 +720,44 @@ public final class BlockchainCLI {
         }
     }
 
+    // ── prove ────────────────────────────────────────────────────────────
+
+    /**
+     * Statically prove design-by-contract specifications for <em>all</em> inputs
+     * (provable-safety level L2b, experimental).
+     *
+     * <p>Where {@code fuzz} samples inputs hunting for a counterexample, this
+     * attempts a universal proof of each {@code @ensures} postcondition and
+     * {@code @invariant} via symbolic execution plus a hand-rolled
+     * Fourier–Motzkin decision procedure for linear integer arithmetic. Every
+     * obligation is reported as {@code PROVED}, {@code REFUTED} (with a concrete
+     * counterexample cross-checked by the L3 {@link dhrlang.testing.SpecFuzzEngine}),
+     * or {@code UNKNOWN} (with a reason). Proving is sound only under checked
+     * arithmetic, so it is enabled for {@code @checked} functions; otherwise the
+     * obligation is {@code UNKNOWN} (refutation still runs). Exits non-zero when
+     * any obligation is refuted, so it doubles as a CI gate.
+     */
+    private static void handleProve(Program program, BlockchainOptions opts) {
+        if (program == null) {
+            System.err.println("No program to prove. Provide a .dhr source file.");
+            System.exit(2);
+            return;
+        }
+
+        var prover = new SpecProver(program).setBound(opts.proveBound);
+        prover.proveAll();
+
+        if (opts.json) {
+            System.out.println(prover.formatJson());
+        } else {
+            System.out.println(prover.formatReport());
+        }
+
+        if (prover.hasRefutations()) {
+            System.exit(1);
+        }
+    }
+
     // ── safety ───────────────────────────────────────────────────────────
 
     /**
@@ -1029,6 +1072,7 @@ public final class BlockchainCLI {
         System.out.println("  verify     Verify contract source on block explorer (Etherscan)");
         System.out.println("  gas        Estimate deployment and function call gas costs");
         System.out.println("  fuzz       Property-fuzz @ensures/@invariant specs for counterexamples");
+        System.out.println("  prove      Statically prove @ensures/@invariant for all inputs (L2b, experimental)");
         System.out.println("  safety     Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  export     Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
         System.out.println("  stdlib     Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
@@ -1047,6 +1091,7 @@ public final class BlockchainCLI {
         System.out.println("  --keystore=<path>       Path to encrypted keystore file");
         System.out.println("  --runs=<n>              Fuzz iterations per function (default: 256)");
         System.out.println("  --seed=<n>              Fuzz RNG seed for reproducible runs");
+        System.out.println("  --bound=<n>             Prove refutation search radius per param (default: 8)");
         System.out.println("  --fail-on=<severity>    Safety gate threshold: critical|high|medium|low|none (default: high)");
         System.out.println("  --format=<fmt>          Export format: all|hardhat|foundry|ts (default: all)");
         System.out.println("  --name=<Custom>         Rename a scaffolded stdlib contract (stdlib new)");
@@ -1064,6 +1109,7 @@ public final class BlockchainCLI {
         System.out.println("  dhrlang contract compile token.dhr");
         System.out.println("  dhrlang contract gas token.dhr");
         System.out.println("  dhrlang contract fuzz --runs=512 --seed=42 token.dhr");
+        System.out.println("  dhrlang contract prove --bound=8 token.dhr");
         System.out.println("  dhrlang contract safety --fail-on=high token.dhr");
         System.out.println("  dhrlang contract export --format=all token.dhr");
         System.out.println("  dhrlang contract stdlib list");
@@ -1279,6 +1325,10 @@ public final class BlockchainCLI {
             } else if (a.startsWith("--seed=")) {
                 try {
                     opts.fuzzSeed = Long.parseLong(a.substring("--seed=".length()).trim());
+                } catch (NumberFormatException ignored) { /* keep default */ }
+            } else if (a.startsWith("--bound=")) {
+                try {
+                    opts.proveBound = Integer.parseInt(a.substring("--bound=".length()).trim());
                 } catch (NumberFormatException ignored) { /* keep default */ }
             } else if (a.startsWith("--fail-on=")) {
                 opts.failOn = a.substring("--fail-on=".length()).trim();

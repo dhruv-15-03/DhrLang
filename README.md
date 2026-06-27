@@ -14,7 +14,7 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.12.0** - see [What's New in v3.12.0](#whats-new-in-v3120) and
+> **Current release: v3.13.0** - see [What's New in v3.13.0](#whats-new-in-v3130) and
 > [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links
@@ -56,6 +56,30 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v3.13.0
+
+**`contract prove`** - experimental **static proving** (provable-safety level **L2b**).
+Where [`contract fuzz`](#) *samples* inputs hunting for a counterexample, `prove`
+attempts a **universal proof** of each `@ensures`/`@invariant` over *all* inputs:
+- **Symbolic execution** forks on `if`/`@requires` and normalizes integer expressions
+  into a linear-arithmetic IR, then a hand-rolled **Fourier-Motzkin** decision procedure
+  discharges each obligation as `PROVED`, `REFUTED`, or `UNKNOWN`.
+- Every `REFUTED` obligation ships a **concrete counterexample**, cross-checked by the L3
+  `SpecFuzzEngine` so a refutation is never a false alarm
+  (`@ensures(result > a)` on `add` -> `REFUTED a=0, b=0`).
+- **Sound by construction**: proving runs under checked arithmetic, so it is enabled for
+  `@checked` functions; loops, mappings, and external calls report `UNKNOWN` rather than
+  guess. `--bound=<n>` tunes refutation search; `--json` for CI; non-zero exit on any
+  refutation, so it gates a pipeline alongside `fuzz`/`safety`.
+
+```bash
+dhrlang contract prove --bound=8 token.dhr      # PROVED / REFUTED / UNKNOWN per spec
+```
+
+Additive and non-breaking (new `proving` package + CLI subcommand). Marked
+**experimental**. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
 
 ## What's New in v3.12.0
 

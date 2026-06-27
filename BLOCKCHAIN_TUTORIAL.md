@@ -189,6 +189,40 @@ anything it cannot model faithfully (e.g. a call into another function) is skipp
 than reported as a false positive. The command exits non-zero when a counterexample is
 found, so `contract fuzz` works as a CI gate.
 
+### Prove your specs (`contract prove`, experimental)
+
+Fuzzing *samples* inputs; **proving** tries to settle a spec for **every** input. The
+`contract prove` command (provable-safety level **L2b**, experimental) symbolically
+executes each function - forking on `if`/`@requires` and normalizing integer expressions
+into a linear-arithmetic form - then runs a **Fourier-Motzkin** decision procedure to
+discharge each `@ensures`/`@invariant` as `PROVED`, `REFUTED`, or `UNKNOWN`:
+
+```bash
+java -jar DhrLang-3.13.0.jar contract prove MyToken.dhr
+# widen the counterexample search radius (default 8); JSON for CI:
+java -jar DhrLang-3.13.0.jar contract prove --bound=12 --json MyToken.dhr
+```
+
+```
+Contract Math
+  add(num a, num b)
+    @ensures((result >= a)) ............................ PROVED
+  addBug(num a, num b)
+    @ensures((result > a)) ............................. REFUTED  a=0, b=0 -> postcondition violated: @ensures((result > a))
+  sub(num a, num b)
+    @ensures((result == (a - b))) ...................... PROVED
+
+Summary: 2 proved, 1 refuted, 0 unknown across 3 function(s).
+```
+
+Proving is **sound only under checked arithmetic** (overflow reverts), so it is enabled
+for `@checked` functions; an unchecked function's obligations are reported `UNKNOWN`
+(refutation still runs). A `REFUTED` result always carries a **concrete counterexample**,
+cross-checked by the same engine that backs `contract fuzz`, so a refutation is never a
+false alarm. Anything the linear model can't capture - loops, mapping aliasing, external
+calls - is `UNKNOWN` rather than a guess. Like `fuzz`, it exits non-zero on any refutation,
+so it slots into CI next to `fuzz`/`safety`.
+
 ---
 
 ## Start From a Standard-Library Template
@@ -596,6 +630,7 @@ java -jar DhrLang-3.0.0.jar contract networks
 | `contract stdlib <list\|show\|new> [Name]` | Browse & scaffold standard base contracts |
 | `contract gas <file>` | Gas cost estimation report |
 | `contract fuzz [--runs=N] [--seed=N] <file>` | Property-fuzz `@ensures`/`@invariant` specs |
+| `contract prove [--bound=N] [--json] <file>` | Statically prove `@ensures`/`@invariant` for all inputs (L2b, experimental) |
 | `contract safety [--fail-on=<sev>] <file>` | Audit + fuzz -> safety score, grade, SARIF; CI gate |
 | `contract export [--format=<fmt>] [--output=<dir>] <file>` | Emit Hardhat / Foundry / viem artifacts |
 | `contract account entrypoint [--version=0.6\|0.7]` | Print the canonical ERC-4337 EntryPoint address |

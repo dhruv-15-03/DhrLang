@@ -561,6 +561,17 @@ public final class SpecFuzzEngine {
 
     // ── Minimal expression pretty-printer (for counterexample messages) ──
 
+    /**
+     * Render a spec expression the same way this engine labels its
+     * {@link Outcome#VIOLATION} details, so a static prover (the L2b
+     * {@code SpecProver}) can match its proof obligations against the concrete
+     * counterexamples this engine reports. Returns the canonical unparse used
+     * inside {@code @ensures(...)} / {@code @invariant(...)} violation messages.
+     */
+    public static String describe(Expression e) {
+        return Unparser.of(e);
+    }
+
     private static final class Unparser {
         static String of(Expression e) {
             if (e == null) return "?";

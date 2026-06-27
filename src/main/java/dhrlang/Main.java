@@ -156,6 +156,7 @@ public class Main {
         System.out.println("  contract verify      Verify contract source on block explorer");
         System.out.println("  contract gas         Estimate deployment gas costs + ETH cost");
         System.out.println("  contract fuzz        Property-fuzz @ensures/@invariant specs for counterexamples");
+        System.out.println("  contract prove       Statically prove @ensures/@invariant for all inputs (L2b)");
         System.out.println("  contract safety      Unified safety report (audit + fuzzing) with a CI gate");
         System.out.println("  contract export      Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
         System.out.println("  contract stdlib      Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
@@ -173,6 +174,7 @@ public class Main {
         System.out.println("  java -jar DhrLang.jar contract deploy --network=sepolia token.dhr");
         System.out.println("  java -jar DhrLang.jar contract gas token.dhr");
         System.out.println("  java -jar DhrLang.jar contract fuzz --runs=512 --seed=42 token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract prove --bound=8 token.dhr");
         System.out.println("  java -jar DhrLang.jar contract safety --fail-on=high token.dhr");
         System.out.println("  java -jar DhrLang.jar contract export --format=all token.dhr");
         System.out.println("  java -jar DhrLang.jar contract stdlib new Ownable --name=MyToken");

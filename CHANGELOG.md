@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-06-30
+
+### Added
+- **`dhrlang contract prove`** — experimental static proving (provable-safety
+  level **L2b**). Where `contract fuzz` *samples* inputs hunting for a
+  counterexample, `prove` attempts a **universal proof** of each `@ensures`
+  postcondition and `@invariant` over *all* inputs:
+  - Symbolic execution with path forking on `if`/`@requires`, normalizing
+    integer expressions into a linear-arithmetic IR (`LinearForm`).
+  - A hand-rolled **Fourier–Motzkin** elimination decision procedure discharges
+    each obligation, reporting `PROVED`, `REFUTED`, or `UNKNOWN`.
+  - Every `REFUTED` obligation carries a **concrete counterexample**,
+    cross-checked by the L3 `SpecFuzzEngine` so a refutation is never a false
+    alarm (e.g. `@ensures(result > a)` on `add` ⇒ `REFUTED a=0, b=0`).
+  - Proving is **sound only under checked arithmetic**, so it is enabled for
+    `@checked` functions; otherwise the obligation degrades to `UNKNOWN`
+    (refutation still runs). Loops, mappings, and external calls are reported
+    `UNKNOWN` rather than guessed.
+  - `--bound=<n>` tunes the refutation search radius (default 8). `--json`
+    emits a machine-readable report. Exits non-zero when any obligation is
+    refuted, so it doubles as a **CI gate** alongside `fuzz`/`safety`.
+
+### Notes
+- Additive and non-breaking: a new `proving` package (`SpecProver`,
+  `LinearForm`) and a new CLI subcommand; nothing in existing behavior changes.
+- Marked **experimental**: the prover is intentionally conservative — it only
+  reports `PROVED` when a linear-arithmetic proof goes through, and never
+  reports `REFUTED` without a witnessing concrete execution.
+
 ## [3.12.0] - 2026-06-29
 
 ### Added
