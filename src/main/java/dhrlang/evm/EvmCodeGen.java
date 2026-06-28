@@ -92,13 +92,13 @@ public final class EvmCodeGen {
 
     /**
      * Compiler-wide default for {@code num}/{@code duo} arithmetic.
-     * {@code false} = wrapping (modulo 2^256) by default; {@code true} =
-     * checked (revert on overflow/underflow) by default. v4.0.0-alpha ships
-     * wrapping-by-default; flip this single constant to make checked the
-     * default in a later phase. Per-method {@code @checked}/{@code @unchecked}
-     * always override this.
+     * {@code true} = checked (revert on overflow/underflow) by default;
+     * {@code false} = wrapping (modulo 2^256). As of v4.0.0 DhrLang is
+     * checked-by-default, matching Solidity 0.8+. Opt back into wrapping per
+     * method with {@code @unchecked}; per-method {@code @checked}/{@code @unchecked}
+     * always override this default.
      */
-    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = false;
+    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = true;
 
     // True while emitting a function body whose num/duo +,-,* must revert on
     // overflow/underflow. Resolved per function from annotations + the default.

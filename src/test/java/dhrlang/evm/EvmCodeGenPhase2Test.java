@@ -563,8 +563,8 @@ class EvmCodeGenPhase2Test {
         }
 
         @Test
-        @DisplayName("Default add wraps (no overflow guard)")
-        void defaultAddIsWrapping() {
+        @DisplayName("Default add is checked (emits an overflow guard)")
+        void defaultAddIsChecked() {
             var artifact = compileOne("""
                 @contract
                 class Calc {
@@ -575,8 +575,8 @@ class EvmCodeGenPhase2Test {
                 }
                 """);
             String code = artifact.getRuntimeBytecodeHex().toLowerCase();
-            assertFalse(code.contains(strHex("arithmetic overflow")),
-                    "Default (alpha) add should wrap, not emit an overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "Default add is checked as of v4.0.0 and should emit an overflow guard");
         }
 
         @Test
@@ -636,8 +636,8 @@ class EvmCodeGenPhase2Test {
         }
 
         @Test
-        @DisplayName("Default multiply wraps (no overflow guard)")
-        void defaultMulIsWrapping() {
+        @DisplayName("Default multiply is checked (emits an overflow guard)")
+        void defaultMulIsChecked() {
             var artifact = compileOne("""
                 @contract
                 class Calc {
@@ -648,8 +648,8 @@ class EvmCodeGenPhase2Test {
                 }
                 """);
             String code = artifact.getRuntimeBytecodeHex().toLowerCase();
-            assertFalse(code.contains(strHex("arithmetic overflow")),
-                    "Default (alpha) multiply should wrap, not emit an overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "Default multiply is checked as of v4.0.0 and should emit an overflow guard");
         }
     }
 

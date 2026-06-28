@@ -54,8 +54,8 @@ public final class SpecProver {
     /** Status of a single proof obligation. */
     public enum Status { PROVED, REFUTED, UNKNOWN }
 
-    /** Mirrors {@code EvmCodeGen.CHECKED_ARITHMETIC_BY_DEFAULT} / the L3 engine. */
-    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = false;
+    /** Mirrors {@code EvmCodeGen.CHECKED_ARITHMETIC_BY_DEFAULT} / the L3 engine (checked-by-default as of v4.0.0). */
+    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = true;
 
     private static final BigInteger TWO_128 = BigInteger.ONE.shiftLeft(128);
     private static final BigInteger MAX_256 = BigInteger.ONE.shiftLeft(256).subtract(BigInteger.ONE);

@@ -6,6 +6,35 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-07-01
+
+### Changed (BREAKING)
+- **Checked arithmetic is now the default.** `num`/`duo` `+`, `-`, `*` on the EVM
+  backend now **revert on overflow/underflow** by default (`"arithmetic overflow"` /
+  `"arithmetic underflow"`), matching the **Solidity 0.8+** model. Previously the
+  alpha default was silent two's-complement **wrapping** modulo 2^256.
+  - This is the single breaking change that tags **v4.0.0**. Bytecode for any
+    contract with unannotated arithmetic changes (overflow guards are now emitted),
+    so gas costs rise slightly and math that previously wrapped now reverts.
+  - The static prover (`contract prove`) and spec fuzzer (`contract fuzz`) mirror the
+    new default, so they now reflect checked semantics for unannotated code — `prove`
+    discharges `@ensures`/`@invariant` for unannotated functions without `@checked`.
+
+  **Migration** — to preserve the old wrapping behaviour, annotate the method with
+  `@unchecked`:
+
+  ```dhrlang
+  // v3.x behaviour (wrap modulo 2^256) — opt back in explicitly:
+  @unchecked
+  kaam wrappingAdd(num a, num b) {
+      total = a + b;
+  }
+  ```
+
+  Methods already annotated `@checked` or `@unchecked` are **unaffected**: the
+  per-method annotation always overrides the default. Most contracts want the new
+  checked default and need no change.
+
 ## [3.13.0] - 2026-06-30
 
 ### Added

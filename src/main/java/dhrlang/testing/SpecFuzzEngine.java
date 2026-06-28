@@ -59,11 +59,11 @@ public final class SpecFuzzEngine {
     private static final BigInteger MASK_256 = TWO_256.subtract(BigInteger.ONE);
 
     /**
-     * Mirrors {@code EvmCodeGen.CHECKED_ARITHMETIC_BY_DEFAULT}. While the EVM
-     * backend defaults to wrapping arithmetic (flipped to checked for v4.0.0),
-     * the engine matches that default so fuzzing reflects emitted bytecode.
+     * Mirrors {@code EvmCodeGen.CHECKED_ARITHMETIC_BY_DEFAULT}. The EVM backend
+     * is checked-by-default as of v4.0.0 (Solidity 0.8+ model), so the engine
+     * matches that default so fuzzing reflects the emitted bytecode.
      */
-    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = false;
+    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = true;
 
     private static final int MAX_LOOP_ITERATIONS = 100_000;
 

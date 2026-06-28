@@ -78,8 +78,9 @@ Key annotations:
 - `@error` — declares a gas-efficient custom error; raise it with `revert(ErrName(args))`
   or `require(cond, ErrName(args))`
 - `@checked` / `@unchecked` — select overflow behaviour for `+`, `-`, `*` on `num` in a method.
-  `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2²⁵⁶. (Alpha default is
-  wrapping; this becomes checked-by-default in the v4.0.0 beta.)
+  `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2²⁵⁶. **As of v4.0.0
+  arithmetic is checked by default** (Solidity 0.8+ model); add `@unchecked` to opt back into
+  wrapping where it is intentional.
 - `@requires(expr)` / `@ensures(expr)` — design-by-contract pre/postconditions on a method.
   `@requires` is checked at entry (reverts `precondition failed`); `@ensures` is checked at
   every return (reverts `postcondition failed`) and may reference `result`, the return value.
@@ -106,18 +107,22 @@ or using bare `msg.data`, is a type error. These are transaction-context reads, 
 
 ### Arithmetic safety example
 
+As of **v4.0.0**, `num` arithmetic (`+`, `-`, `*`) **reverts on overflow/underflow by
+default** — you no longer need `@checked` for safe math. Use `@unchecked` to opt back
+into wrapping where it is intentional:
+
 ```dhrlang
 @contract
 class Vault {
     @storage num balance;
 
-    // Reverts with "arithmetic overflow" / "arithmetic underflow" instead of wrapping.
-    @checked
+    // Checked by default in v4.0.0: reverts with "arithmetic overflow" /
+    // "arithmetic underflow". (@checked is now redundant but still allowed.)
     kaam deposit(num amount) {
         balance = balance + amount;
     }
 
-    // Opt out for hot paths where wrapping is intentional.
+    // Opt out for hot paths where wrapping modulo 2²⁵⁶ is intentional.
     @unchecked
     kaam wrappingAdd(num a, num b) {
         balance = a + b;

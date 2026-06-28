@@ -14,8 +14,9 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v3.13.0** - see [What's New in v3.13.0](#whats-new-in-v3130) and
-> [CHANGELOG.md](CHANGELOG.md).
+> **Current release: v4.0.0** - see [What's New in v4.0.0](#whats-new-in-v400) and
+> [CHANGELOG.md](CHANGELOG.md). **v4.0.0 is a breaking release** (checked arithmetic by
+> default); see the migration note in the changelog.
 
 ## Quick Links
 
@@ -56,6 +57,38 @@ and an experimental EVM (smart-contract) compiler target.
 Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
 implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
 [design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
+
+## What's New in v4.0.0
+
+> **Breaking change.** This major release flips one default; see
+> [CHANGELOG.md](CHANGELOG.md) for the full migration note.
+
+**Checked arithmetic by default.** `num`/`duo` `+`, `-`, `*` now **revert on
+overflow/underflow** by default on the EVM backend (`"arithmetic overflow"` /
+`"arithmetic underflow"`), matching **Solidity 0.8+**. The alpha default was silent
+wrapping modulo 2^256 - that footgun is gone.
+
+- **Opt back into wrapping** per method with `@unchecked` (for hot paths where modular
+  arithmetic is intentional). `@checked`/`@unchecked` always override the default, so
+  methods already carrying either annotation are unchanged.
+- The static prover (`contract prove`) is **sound under checked arithmetic**, so it now
+  proves `@ensures`/`@invariant` obligations for unannotated functions out of the box -
+  no `@checked` needed. The L3 fuzzer mirrors the same default.
+
+```dhrlang
+@contract
+class Vault {
+    @storage num balance;
+
+    // No annotation needed - reverts on overflow by default in v4.0.0.
+    kaam deposit(num amount) {
+        balance = balance + amount;
+    }
+}
+```
+
+Everything else from the 3.x line (smart-contract backend, provable-safety L0-L4 + L2b,
+deploy loop, interop export, ERC-4337, 21 chains) carries forward unchanged.
 
 ## What's New in v3.13.0
 
@@ -250,7 +283,8 @@ Full details in [CHANGELOG.md](CHANGELOG.md).
 EVM (smart-contract) backend:
 - **Checked / wrapping arithmetic modes**: opt into overflow-safe math per function with
   `@checked` (reverts with `"arithmetic overflow"` / `"arithmetic underflow"`) or `@unchecked`
-  (wraps mod 2²⁵⁶). Default stays wrapping in this release.
+  (wraps mod 2²⁵⁶). Default stays wrapping in this release (changed to checked-by-default
+  in v4.0.0).
 - **Custom errors + `revert`**: declare gas-efficient typed errors
   (`@error kaam InsufficientBalance(num available, num required) {}`) and raise them with
   `revert(...)` / `require(cond, ...)`; emitted as `"type":"error"` in the ABI.
