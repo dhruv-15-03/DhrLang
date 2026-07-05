@@ -62,7 +62,13 @@ bytecode), the EVM smart-contract path, tooling, and distribution are all shippe
 
 ### 3. Distribution & reach
 
-- Package-manager distribution (Homebrew tap, Chocolatey, Docker image, Snap).
+- **Homebrew tap — done.** [`dhruv-15-03/homebrew-dhrlang`](https://github.com/dhruv-15-03/homebrew-dhrlang)
+  is live with a formula for the latest release (`brew tap dhruv-15-03/dhrlang && brew
+  install dhrlang`). Bump `Formula/dhrlang.rb`'s `version`/`sha256` on every release.
+- Chocolatey, Docker Hub, Snap Store — package configs exist in
+  `.github/workflows/distribution.yml` but still need real publishing credentials
+  (`DOCKER_USERNAME`/`DOCKER_PASSWORD` secrets, a Chocolatey API key, a Snap Store login)
+  before they reach their respective stores.
 - Online playground / REPL for zero-install trials.
 - A documentation website built from the existing Markdown guides.
 
