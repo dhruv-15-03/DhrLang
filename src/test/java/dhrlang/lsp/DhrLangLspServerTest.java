@@ -106,6 +106,46 @@ class DhrLangLspServerTest {
     }
 
     @Test
+    @DisplayName("Initialize advertises documentSymbolProvider")
+    void initializeAdvertisesDocumentSymbols() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+
+        assertTrue(result.contains("\"documentSymbolProvider\": true"),
+                "Should advertise documentSymbolProvider capability");
+    }
+
+    @Test
+    @DisplayName("DocumentSymbol returns class, fields and methods")
+    void documentSymbolReturnsOutline() throws Exception {
+        String source = "class Counter { num total; kaam Counter() { total = 0; } "
+                + "kaam add(num n) { total = total + n; } }";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"}}}");
+
+        assertTrue(result.contains("\"name\":\"Counter\""), "Should include the class symbol");
+        assertTrue(result.contains("\"name\":\"total\""), "Should include the field symbol");
+        assertTrue(result.contains("\"name\":\"add\""), "Should include the method symbol");
+        assertTrue(result.contains("\"kind\":5"), "Class should use SymbolKind.Class (5)");
+    }
+
+    @Test
+    @DisplayName("DocumentSymbol returns empty array for unopened document")
+    void documentSymbolEmptyForUnopenedDocument() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/documentSymbol\",\"params\":{\"textDocument\":{\"uri\":\"file:///missing.dhr\"}}}");
+
+        assertTrue(result.contains("\"id\":2"), "Should respond to the request");
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(result.substring(idx).contains("\"result\":[]"),
+                "Should return an empty array for an unopened document");
+    }
+
+    @Test
     @DisplayName("DidClose clears diagnostics")
     void didCloseClearsDiagnostics() throws Exception {
         String result = sendAndReceive(

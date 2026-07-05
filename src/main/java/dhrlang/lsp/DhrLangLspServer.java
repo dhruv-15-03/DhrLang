@@ -1,6 +1,10 @@
 package dhrlang.lsp;
 
+import dhrlang.ast.ClassDecl;
+import dhrlang.ast.FunctionDecl;
+import dhrlang.ast.InterfaceDecl;
 import dhrlang.ast.Program;
+import dhrlang.ast.VarDecl;
 import dhrlang.error.ErrorReporter;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.Lexer;
@@ -22,6 +26,7 @@ import java.util.*;
  *   <li>textDocument/didOpen, didChange, didSave, didClose</li>
  *   <li>textDocument/completion</li>
  *   <li>textDocument/hover</li>
+ *   <li>textDocument/documentSymbol (outline / breadcrumbs)</li>
  *   <li>textDocument/publishDiagnostics (push notifications)</li>
  * </ul>
  *
@@ -120,6 +125,7 @@ public final class DhrLangLspServer {
             case "textDocument/didClose" -> handleDidClose(json);
             case "textDocument/completion" -> handleCompletion(id, json);
             case "textDocument/hover" -> handleHover(id, json);
+            case "textDocument/documentSymbol" -> handleDocumentSymbol(id, json);
             default -> {
                 // Unknown method — send null response if it has an id
                 if (id != null) {
@@ -140,9 +146,10 @@ public final class DhrLangLspServer {
                     "completionProvider": {
                         "triggerCharacters": [".", "@"]
                     },
-                    "hoverProvider": true
-                }
-            }""";
+                        "hoverProvider": true,
+                        "documentSymbolProvider": true
+                    }
+                }""";
         sendResponse(id, capabilities);
     }
 
@@ -246,6 +253,117 @@ public final class DhrLangLspServer {
 
         String md = hover.toMarkdown();
         sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(md) + "\"}}");
+    }
+
+    // ── Document symbols (outline / breadcrumbs) ─────────────────────────
+
+    /** LSP {@code SymbolKind} values used below. */
+    private static final int SYMBOL_KIND_CLASS = 5;
+    private static final int SYMBOL_KIND_METHOD = 6;
+    private static final int SYMBOL_KIND_FIELD = 8;
+    private static final int SYMBOL_KIND_CONSTRUCTOR = 9;
+    private static final int SYMBOL_KIND_INTERFACE = 11;
+
+    private void handleDocumentSymbol(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        Program program;
+        try {
+            ErrorReporter reporter = new ErrorReporter("lsp", source);
+            Lexer lexer = new Lexer(source, reporter);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, reporter);
+            program = parser.parse();
+        } catch (Exception e) {
+            program = null;
+        }
+
+        if (program == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(classSymbolJson(classDecl));
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(interfaceSymbolJson(interfaceDecl));
+        }
+        sb.append(']');
+        sendResponse(id, sb.toString());
+    }
+
+    private String classSymbolJson(ClassDecl classDecl) {
+        StringBuilder children = new StringBuilder("[");
+        boolean first = true;
+        for (VarDecl field : classDecl.getVariables()) {
+            if (!first) children.append(',');
+            first = false;
+            children.append(symbolJson(field.getName(), SYMBOL_KIND_FIELD, field.getSourceLocation(), null));
+        }
+        for (FunctionDecl method : classDecl.getFunctions()) {
+            if (!first) children.append(',');
+            first = false;
+            int kind = method.getName().equals(classDecl.getName()) ? SYMBOL_KIND_CONSTRUCTOR : SYMBOL_KIND_METHOD;
+            children.append(symbolJson(method.getName(), kind, method.getSourceLocation(), signatureDetail(method)));
+        }
+        children.append(']');
+        return symbolJsonWithChildren(classDecl.getName(), SYMBOL_KIND_CLASS, classDecl.getSourceLocation(), null, children.toString());
+    }
+
+    private String interfaceSymbolJson(InterfaceDecl interfaceDecl) {
+        StringBuilder children = new StringBuilder("[");
+        boolean first = true;
+        for (FunctionDecl method : interfaceDecl.getMethods()) {
+            if (!first) children.append(',');
+            first = false;
+            children.append(symbolJson(method.getName(), SYMBOL_KIND_METHOD, method.getSourceLocation(), signatureDetail(method)));
+        }
+        children.append(']');
+        return symbolJsonWithChildren(interfaceDecl.getName(), SYMBOL_KIND_INTERFACE, interfaceDecl.getSourceLocation(), null, children.toString());
+    }
+
+    private String signatureDetail(FunctionDecl method) {
+        StringBuilder params = new StringBuilder();
+        for (int i = 0; i < method.getParameters().size(); i++) {
+            if (i > 0) params.append(", ");
+            params.append(method.getParameters().get(i).getType());
+        }
+        return method.getReturnType() + "(" + params + ")";
+    }
+
+    private String symbolJson(String name, int kind, SourceLocation loc, String detail) {
+        return symbolJsonWithChildren(name, kind, loc, detail, "[]");
+    }
+
+    private String symbolJsonWithChildren(String name, int kind, SourceLocation loc, String detail, String childrenJson) {
+        int line = loc != null ? Math.max(0, loc.getLine() - 1) : 0;
+        int startChar = loc != null ? Math.max(0, loc.getColumn() - 1) : 0;
+        int endChar = startChar + Math.max(1, name.length());
+        String range = "{\"start\":{\"line\":" + line + ",\"character\":" + startChar
+                + "},\"end\":{\"line\":" + line + ",\"character\":" + endChar + "}}";
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"").append(escapeJson(name)).append('"');
+        if (detail != null) {
+            sb.append(",\"detail\":\"").append(escapeJson(detail)).append('"');
+        }
+        sb.append(",\"kind\":").append(kind);
+        sb.append(",\"range\":").append(range);
+        sb.append(",\"selectionRange\":").append(range);
+        sb.append(",\"children\":").append(childrenJson);
+        sb.append('}');
+        return sb.toString();
     }
 
     // ── Diagnostics ─────────────────────────────────────────────────────
