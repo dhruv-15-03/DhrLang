@@ -27,6 +27,7 @@ import java.util.*;
  *   <li>textDocument/completion</li>
  *   <li>textDocument/hover</li>
  *   <li>textDocument/documentSymbol (outline / breadcrumbs)</li>
+ *   <li>textDocument/definition (go-to-definition)</li>
  *   <li>textDocument/publishDiagnostics (push notifications)</li>
  * </ul>
  *
@@ -126,6 +127,7 @@ public final class DhrLangLspServer {
             case "textDocument/completion" -> handleCompletion(id, json);
             case "textDocument/hover" -> handleHover(id, json);
             case "textDocument/documentSymbol" -> handleDocumentSymbol(id, json);
+            case "textDocument/definition" -> handleDefinition(id, json);
             default -> {
                 // Unknown method — send null response if it has an id
                 if (id != null) {
@@ -147,7 +149,8 @@ public final class DhrLangLspServer {
                         "triggerCharacters": [".", "@"]
                     },
                         "hoverProvider": true,
-                        "documentSymbolProvider": true
+                        "documentSymbolProvider": true,
+                        "definitionProvider": true
                     }
                 }""";
         sendResponse(id, capabilities);
@@ -272,17 +275,7 @@ public final class DhrLangLspServer {
             return;
         }
 
-        Program program;
-        try {
-            ErrorReporter reporter = new ErrorReporter("lsp", source);
-            Lexer lexer = new Lexer(source, reporter);
-            List<Token> tokens = lexer.scanTokens();
-            Parser parser = new Parser(tokens, reporter);
-            program = parser.parse();
-        } catch (Exception e) {
-            program = null;
-        }
-
+        Program program = parseProgram(source);
         if (program == null) {
             sendResponse(id, "[]");
             return;
@@ -364,6 +357,91 @@ public final class DhrLangLspServer {
         sb.append(",\"children\":").append(childrenJson);
         sb.append('}');
         return sb.toString();
+    }
+
+    // ── Go-to-definition ─────────────────────────────────────────────────
+
+    private void handleDefinition(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        Program program = parseProgram(source);
+        if (program == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        SourceLocation target = findDefinition(program, word);
+        if (target == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        sendResponse(id, locationJson(uri, target, word));
+    }
+
+    /**
+     * Resolves a bare identifier to the source location of its declaration, searching
+     * (in order) top-level classes, top-level interfaces, then class members and
+     * interface methods. This is a whole-file symbol lookup rather than a scope-aware
+     * resolution — sufficient for jumping to class/method/field declarations by name,
+     * matching the granularity {@link #handleDocumentSymbol} already exposes.
+     */
+    private SourceLocation findDefinition(Program program, String name) {
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl.getName().equals(name)) return classDecl.getSourceLocation();
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceDecl.getName().equals(name)) return interfaceDecl.getSourceLocation();
+        }
+        for (ClassDecl classDecl : program.getClasses()) {
+            for (FunctionDecl method : classDecl.getFunctions()) {
+                if (method.getName().equals(name)) return method.getSourceLocation();
+            }
+            for (VarDecl field : classDecl.getVariables()) {
+                if (field.getName().equals(name)) return field.getSourceLocation();
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            for (FunctionDecl method : interfaceDecl.getMethods()) {
+                if (method.getName().equals(name)) return method.getSourceLocation();
+            }
+        }
+        return null;
+    }
+
+    private String locationJson(String uri, SourceLocation loc, String name) {
+        int line = Math.max(0, loc.getLine() - 1);
+        int startChar = Math.max(0, loc.getColumn() - 1);
+        int endChar = startChar + Math.max(1, name.length());
+        return "{\"uri\":\"" + escapeJson(uri) + "\",\"range\":{\"start\":{\"line\":" + line
+                + ",\"character\":" + startChar + "},\"end\":{\"line\":" + line
+                + ",\"character\":" + endChar + "}}}";
+    }
+
+    private Program parseProgram(String source) {
+        try {
+            ErrorReporter reporter = new ErrorReporter("lsp", source);
+            Lexer lexer = new Lexer(source, reporter);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, reporter);
+            return parser.parse();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ── Diagnostics ─────────────────────────────────────────────────────

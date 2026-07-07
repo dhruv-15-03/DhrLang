@@ -160,4 +160,75 @@ class DhrLangLspServerTest {
         assertTrue(afterLastDiag.contains("\"diagnostics\":[]"),
                 "Should clear diagnostics on close");
     }
+
+    @Test
+    @DisplayName("Initialize advertises definitionProvider")
+    void initializeAdvertisesDefinition() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+
+        assertTrue(result.contains("\"definitionProvider\": true"),
+                "Should advertise definitionProvider capability");
+    }
+
+    @Test
+    @DisplayName("Definition jumps from a method call to the method declaration")
+    void definitionJumpsToMethodDeclaration() throws Exception {
+        String source = "class Counter { num total; kaam Counter() { total = 0; } "
+                + "kaam add(num n) { total = total + n; } "
+                + "kaam run() { add(1); } }";
+        int callSite = source.indexOf("add(1)");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + callSite + "}}}");
+
+        assertTrue(result.contains("\"uri\":\"file:///counter.dhr\""), "Should return a location in the same file");
+        assertTrue(result.contains("\"range\""), "Should include a range");
+    }
+
+    @Test
+    @DisplayName("Definition jumps from a type reference to the class declaration")
+    void definitionJumpsToClassDeclaration() throws Exception {
+        String source = "class Point { num x; } class Main { static kaam main() { Point p; } }";
+        int usageSite = source.indexOf("Point", source.indexOf("Point") + 1);
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///point.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"file:///point.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + usageSite + "}}}");
+
+        assertTrue(result.contains("\"uri\":\"file:///point.dhr\""), "Should return a location in the same file");
+        assertTrue(result.contains("\"range\""), "Should include a range for the class declaration");
+    }
+
+    @Test
+    @DisplayName("Definition returns null for an unknown identifier")
+    void definitionNullForUnknownIdentifier() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\",\"text\":\"class Main { static kaam main() { printLine(1); } }\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\"},\"position\":{\"line\":0,\"character\":35}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":null"),
+                "Should return null for an identifier not declared in the file (e.g. builtin printLine)");
+    }
+
+    @Test
+    @DisplayName("Definition returns null for an unopened document")
+    void definitionNullForUnopenedDocument() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/definition\",\"params\":{\"textDocument\":{\"uri\":\"file:///missing.dhr\"},\"position\":{\"line\":0,\"character\":0}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":null"),
+                "Should return null for an unopened document");
+    }
 }
