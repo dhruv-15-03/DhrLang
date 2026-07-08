@@ -284,4 +284,79 @@ class DhrLangLspServerTest {
         assertTrue(result.substring(idx).contains("\"result\":null"),
                 "Should return null for an identifier that's neither a builtin nor user-declared symbol");
     }
+
+    @Test
+    @DisplayName("References finds all call sites of a method, including its declaration")
+    void referencesFindsAllCallSitesIncludingDeclaration() throws Exception {
+        String source = "class Counter { num total; kaam add(num n) { total = total + n; } "
+                + "kaam run() { add(1); add(2); } }";
+        int declSite = source.indexOf("add");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + declSite + "},\"context\":{\"includeDeclaration\":true}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        long uriCount = tail.split("\"uri\":\"file:///counter.dhr\"", -1).length - 1;
+        assertEquals(3, uriCount, "Should find the declaration plus both call sites: " + tail);
+    }
+
+    @Test
+    @DisplayName("References excludes the declaration site when includeDeclaration is false")
+    void referencesExcludesDeclarationWhenRequested() throws Exception {
+        String source = "class Counter { num total; kaam add(num n) { total = total + n; } "
+                + "kaam run() { add(1); add(2); } }";
+        int declSite = source.indexOf("add");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + declSite + "},\"context\":{\"includeDeclaration\":false}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        long uriCount = tail.split("\"uri\":\"file:///counter.dhr\"", -1).length - 1;
+        assertEquals(2, uriCount, "Should find only the two call sites, excluding the declaration: " + tail);
+    }
+
+    @Test
+    @DisplayName("References returns an empty array for an unknown identifier")
+    void referencesEmptyForUnknownIdentifier() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\",\"text\":\"class Main { static kaam main() { printLine(1); } }\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\"},\"position\":{\"line\":0,\"character\":0},\"context\":{\"includeDeclaration\":true}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":[]"),
+                "Should return an empty array when the cursor is not on an identifier");
+    }
+
+    @Test
+    @DisplayName("References returns an empty array for an unopened document")
+    void referencesEmptyForUnopenedDocument() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/references\",\"params\":{\"textDocument\":{\"uri\":\"file:///missing.dhr\"},\"position\":{\"line\":0,\"character\":0},\"context\":{\"includeDeclaration\":true}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":[]"),
+                "Should return an empty array for an unopened document");
+    }
+
+    @Test
+    @DisplayName("Capabilities advertise referencesProvider")
+    void capabilitiesAdvertiseReferencesProvider() throws Exception {
+        String result = sendAndReceive("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+        assertTrue(result.contains("\"referencesProvider\": true"),
+                "Should advertise referencesProvider capability");
+    }
 }

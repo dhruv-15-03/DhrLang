@@ -9,6 +9,7 @@ import dhrlang.error.ErrorReporter;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.Lexer;
 import dhrlang.lexer.Token;
+import dhrlang.lexer.TokenType;
 import dhrlang.parser.Parser;
 import dhrlang.production.VscodeLanguageSupport;
 import dhrlang.typechecker.TypeChecker;
@@ -28,6 +29,7 @@ import java.util.*;
  *   <li>textDocument/hover</li>
  *   <li>textDocument/documentSymbol (outline / breadcrumbs)</li>
  *   <li>textDocument/definition (go-to-definition)</li>
+ *   <li>textDocument/references (find-all-references)</li>
  *   <li>textDocument/publishDiagnostics (push notifications)</li>
  * </ul>
  *
@@ -128,6 +130,7 @@ public final class DhrLangLspServer {
             case "textDocument/hover" -> handleHover(id, json);
             case "textDocument/documentSymbol" -> handleDocumentSymbol(id, json);
             case "textDocument/definition" -> handleDefinition(id, json);
+            case "textDocument/references" -> handleReferences(id, json);
             default -> {
                 // Unknown method — send null response if it has an id
                 if (id != null) {
@@ -150,7 +153,8 @@ public final class DhrLangLspServer {
                     },
                         "hoverProvider": true,
                         "documentSymbolProvider": true,
-                        "definitionProvider": true
+                        "definitionProvider": true,
+                        "referencesProvider": true
                     }
                 }""";
         sendResponse(id, capabilities);
@@ -446,6 +450,81 @@ public final class DhrLangLspServer {
         sendResponse(id, locationJson(uri, target, word));
     }
 
+    // ── Find-all-references ─────────────────────────────────────────────
+
+    private void handleReferences(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+        boolean includeDeclaration = extractNestedBoolean(json, "context", "includeDeclaration", true);
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        Program program = parseProgram(source);
+        SourceLocation declLoc = program != null ? findDefinition(program, word) : null;
+
+        List<SourceLocation> occurrences = findAllOccurrences(source, word);
+        int declIndex = -1;
+        if (declLoc != null) {
+            // The AST declaration location doesn't always land exactly on the identifier
+            // token (e.g. a method's recorded location is its return-type token, not its
+            // name), so treat the first token on the same line at or after that column as
+            // the declaration occurrence rather than requiring an exact column match.
+            for (int i = 0; i < occurrences.size(); i++) {
+                SourceLocation loc = occurrences.get(i);
+                if (loc.getLine() == declLoc.getLine() && loc.getColumn() >= declLoc.getColumn()) {
+                    declIndex = i;
+                    break;
+                }
+            }
+        }
+
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (int i = 0; i < occurrences.size(); i++) {
+            if (i == declIndex && !includeDeclaration) continue;
+            SourceLocation loc = occurrences.get(i);
+            if (!first) sb.append(',');
+            sb.append(locationJson(uri, loc, word));
+            first = false;
+        }
+        sb.append(']');
+        sendResponse(id, sb.toString());
+    }
+
+    /**
+     * Finds every lexical occurrence of an identifier in the source, by re-tokenizing and
+     * collecting every {@code IDENTIFIER} token whose lexeme matches. This is a textual
+     * whole-file scan (not scope-aware), so it will also match same-named identifiers in
+     * unrelated scopes — an acceptable trade-off for a single-file LSP without full semantic
+     * resolution, matching the granularity of {@link #findDefinition}.
+     */
+    private List<SourceLocation> findAllOccurrences(String source, String name) {
+        List<SourceLocation> locations = new ArrayList<>();
+        try {
+            ErrorReporter reporter = new ErrorReporter("lsp", source);
+            Lexer lexer = new Lexer(source, reporter);
+            for (Token token : lexer.scanTokens()) {
+                if (token.getType() == TokenType.IDENTIFIER && token.getLexeme().equals(name)) {
+                    locations.add(token.getLocation());
+                }
+            }
+        } catch (Exception e) {
+            // Best-effort: return whatever was collected before the failure.
+        }
+        return locations;
+    }
+
     /**
      * Resolves a bare identifier to the source location of its declaration, searching
      * (in order) top-level classes, top-level interfaces, then class members and
@@ -613,6 +692,25 @@ public final class DhrLangLspServer {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    private static boolean extractNestedBoolean(String json, String outerKey, String innerKey, boolean defaultValue) {
+        String pattern = "\"" + outerKey + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx < 0) return defaultValue;
+        int braceStart = json.indexOf('{', idx + pattern.length());
+        if (braceStart < 0) return defaultValue;
+        String sub = json.substring(braceStart);
+        String inner = "\"" + innerKey + "\"";
+        int iIdx = sub.indexOf(inner);
+        if (iIdx < 0) return defaultValue;
+        iIdx = sub.indexOf(':', iIdx + inner.length());
+        if (iIdx < 0) return defaultValue;
+        iIdx++;
+        while (iIdx < sub.length() && Character.isWhitespace(sub.charAt(iIdx))) iIdx++;
+        if (sub.regionMatches(iIdx, "true", 0, 4)) return true;
+        if (sub.regionMatches(iIdx, "false", 0, 5)) return false;
+        return defaultValue;
     }
 
     private static String extractContentChange(String json) {
