@@ -249,13 +249,66 @@ public final class DhrLangLspServer {
         }
 
         VscodeLanguageSupport.HoverInfo hover = VscodeLanguageSupport.getHover(word);
-        if (hover == null) {
+        if (hover != null) {
+            String md = hover.toMarkdown();
+            sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(md) + "\"}}");
+            return;
+        }
+
+        // Fall back to user-defined symbols (classes/interfaces/methods/fields) resolved
+        // from the document's own AST, so hover isn't limited to builtin keywords/annotations.
+        String userMd = hoverMarkdownForUserSymbol(doc, word);
+        if (userMd == null) {
             sendResponse(id, "null");
             return;
         }
 
-        String md = hover.toMarkdown();
-        sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(md) + "\"}}");
+        sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(userMd) + "\"}}");
+    }
+
+    /**
+     * Builds Markdown hover content for a user-defined class, interface, method, or field by
+     * re-parsing the document and searching the same declaration set {@link #findDefinition}
+     * uses. Returns {@code null} when the identifier isn't declared anywhere in the file.
+     */
+    private String hoverMarkdownForUserSymbol(String source, String name) {
+        Program program = parseProgram(source);
+        if (program == null) return null;
+
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl.getName().equals(name)) {
+                return "**" + name + "** — `class`\n\n";
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceDecl.getName().equals(name)) {
+                return "**" + name + "** — `interface`\n\n";
+            }
+        }
+        for (ClassDecl classDecl : program.getClasses()) {
+            for (FunctionDecl method : classDecl.getFunctions()) {
+                if (method.getName().equals(name)) {
+                    String kind = method.getName().equals(classDecl.getName()) ? "constructor" : "method";
+                    return "**" + name + "** — `" + signatureDetail(method) + "`\n\n"
+                            + kind + " of `" + classDecl.getName() + "`\n\n";
+                }
+            }
+            for (VarDecl field : classDecl.getVariables()) {
+                if (field.getName().equals(name)) {
+                    return "**" + name + "** — `" + field.getType() + "`\n\n"
+                            + "field of `" + classDecl.getName() + "`\n\n";
+                }
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            for (FunctionDecl method : interfaceDecl.getMethods()) {
+                if (method.getName().equals(name)) {
+                    return "**" + name + "** — `" + signatureDetail(method) + "`\n\n"
+                            + "method of `" + interfaceDecl.getName() + "`\n\n";
+                }
+            }
+        }
+        return null;
     }
 
     // ── Document symbols (outline / breadcrumbs) ─────────────────────────

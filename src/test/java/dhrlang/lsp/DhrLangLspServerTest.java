@@ -231,4 +231,57 @@ class DhrLangLspServerTest {
         assertTrue(result.substring(idx).contains("\"result\":null"),
                 "Should return null for an unopened document");
     }
+
+    @Test
+    @DisplayName("Hover on a user-defined class name shows its kind")
+    void hoverShowsUserDefinedClass() throws Exception {
+        String source = "class Point { num x; }";
+        int usageSite = source.indexOf("Point");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///point.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/hover\",\"params\":{\"textDocument\":{\"uri\":\"file:///point.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + usageSite + "}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        assertTrue(tail.contains("Point"), "Should mention the class name");
+        assertTrue(tail.contains("class"), "Should identify it as a class");
+    }
+
+    @Test
+    @DisplayName("Hover on a user-defined method shows its signature")
+    void hoverShowsUserDefinedMethodSignature() throws Exception {
+        String source = "class Counter { num total; kaam add(num n) { total = total + n; } "
+                + "kaam run() { add(1); } }";
+        int callSite = source.indexOf("add(1)");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/hover\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + callSite + "}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        assertTrue(tail.contains("add"), "Should mention the method name");
+        assertTrue(tail.contains("Counter"), "Should mention the owning class");
+    }
+
+    @Test
+    @DisplayName("Hover returns null for an identifier not declared anywhere")
+    void hoverNullForUnknownIdentifier() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\",\"text\":\"class Main { static kaam main() { printLine(1); } }\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/hover\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\"},\"position\":{\"line\":0,\"character\":35}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":null"),
+                "Should return null for an identifier that's neither a builtin nor user-declared symbol");
+    }
 }
