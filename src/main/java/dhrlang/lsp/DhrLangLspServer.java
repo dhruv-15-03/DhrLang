@@ -1,10 +1,15 @@
 package dhrlang.lsp;
 
+import dhrlang.ast.ClassDecl;
+import dhrlang.ast.FunctionDecl;
+import dhrlang.ast.InterfaceDecl;
 import dhrlang.ast.Program;
+import dhrlang.ast.VarDecl;
 import dhrlang.error.ErrorReporter;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.Lexer;
 import dhrlang.lexer.Token;
+import dhrlang.lexer.TokenType;
 import dhrlang.parser.Parser;
 import dhrlang.production.VscodeLanguageSupport;
 import dhrlang.typechecker.TypeChecker;
@@ -22,6 +27,9 @@ import java.util.*;
  *   <li>textDocument/didOpen, didChange, didSave, didClose</li>
  *   <li>textDocument/completion</li>
  *   <li>textDocument/hover</li>
+ *   <li>textDocument/documentSymbol (outline / breadcrumbs)</li>
+ *   <li>textDocument/definition (go-to-definition)</li>
+ *   <li>textDocument/references (find-all-references)</li>
  *   <li>textDocument/publishDiagnostics (push notifications)</li>
  * </ul>
  *
@@ -120,6 +128,9 @@ public final class DhrLangLspServer {
             case "textDocument/didClose" -> handleDidClose(json);
             case "textDocument/completion" -> handleCompletion(id, json);
             case "textDocument/hover" -> handleHover(id, json);
+            case "textDocument/documentSymbol" -> handleDocumentSymbol(id, json);
+            case "textDocument/definition" -> handleDefinition(id, json);
+            case "textDocument/references" -> handleReferences(id, json);
             default -> {
                 // Unknown method — send null response if it has an id
                 if (id != null) {
@@ -140,9 +151,12 @@ public final class DhrLangLspServer {
                     "completionProvider": {
                         "triggerCharacters": [".", "@"]
                     },
-                    "hoverProvider": true
-                }
-            }""";
+                        "hoverProvider": true,
+                        "documentSymbolProvider": true,
+                        "definitionProvider": true,
+                        "referencesProvider": true
+                    }
+                }""";
         sendResponse(id, capabilities);
     }
 
@@ -239,13 +253,327 @@ public final class DhrLangLspServer {
         }
 
         VscodeLanguageSupport.HoverInfo hover = VscodeLanguageSupport.getHover(word);
-        if (hover == null) {
+        if (hover != null) {
+            String md = hover.toMarkdown();
+            sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(md) + "\"}}");
+            return;
+        }
+
+        // Fall back to user-defined symbols (classes/interfaces/methods/fields) resolved
+        // from the document's own AST, so hover isn't limited to builtin keywords/annotations.
+        String userMd = hoverMarkdownForUserSymbol(doc, word);
+        if (userMd == null) {
             sendResponse(id, "null");
             return;
         }
 
-        String md = hover.toMarkdown();
-        sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(md) + "\"}}");
+        sendResponse(id, "{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + escapeJson(userMd) + "\"}}");
+    }
+
+    /**
+     * Builds Markdown hover content for a user-defined class, interface, method, or field by
+     * re-parsing the document and searching the same declaration set {@link #findDefinition}
+     * uses. Returns {@code null} when the identifier isn't declared anywhere in the file.
+     */
+    private String hoverMarkdownForUserSymbol(String source, String name) {
+        Program program = parseProgram(source);
+        if (program == null) return null;
+
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl.getName().equals(name)) {
+                return "**" + name + "** — `class`\n\n";
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceDecl.getName().equals(name)) {
+                return "**" + name + "** — `interface`\n\n";
+            }
+        }
+        for (ClassDecl classDecl : program.getClasses()) {
+            for (FunctionDecl method : classDecl.getFunctions()) {
+                if (method.getName().equals(name)) {
+                    String kind = method.getName().equals(classDecl.getName()) ? "constructor" : "method";
+                    return "**" + name + "** — `" + signatureDetail(method) + "`\n\n"
+                            + kind + " of `" + classDecl.getName() + "`\n\n";
+                }
+            }
+            for (VarDecl field : classDecl.getVariables()) {
+                if (field.getName().equals(name)) {
+                    return "**" + name + "** — `" + field.getType() + "`\n\n"
+                            + "field of `" + classDecl.getName() + "`\n\n";
+                }
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            for (FunctionDecl method : interfaceDecl.getMethods()) {
+                if (method.getName().equals(name)) {
+                    return "**" + name + "** — `" + signatureDetail(method) + "`\n\n"
+                            + "method of `" + interfaceDecl.getName() + "`\n\n";
+                }
+            }
+        }
+        return null;
+    }
+
+    // ── Document symbols (outline / breadcrumbs) ─────────────────────────
+
+    /** LSP {@code SymbolKind} values used below. */
+    private static final int SYMBOL_KIND_CLASS = 5;
+    private static final int SYMBOL_KIND_METHOD = 6;
+    private static final int SYMBOL_KIND_FIELD = 8;
+    private static final int SYMBOL_KIND_CONSTRUCTOR = 9;
+    private static final int SYMBOL_KIND_INTERFACE = 11;
+
+    private void handleDocumentSymbol(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        Program program = parseProgram(source);
+        if (program == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(classSymbolJson(classDecl));
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(interfaceSymbolJson(interfaceDecl));
+        }
+        sb.append(']');
+        sendResponse(id, sb.toString());
+    }
+
+    private String classSymbolJson(ClassDecl classDecl) {
+        StringBuilder children = new StringBuilder("[");
+        boolean first = true;
+        for (VarDecl field : classDecl.getVariables()) {
+            if (!first) children.append(',');
+            first = false;
+            children.append(symbolJson(field.getName(), SYMBOL_KIND_FIELD, field.getSourceLocation(), null));
+        }
+        for (FunctionDecl method : classDecl.getFunctions()) {
+            if (!first) children.append(',');
+            first = false;
+            int kind = method.getName().equals(classDecl.getName()) ? SYMBOL_KIND_CONSTRUCTOR : SYMBOL_KIND_METHOD;
+            children.append(symbolJson(method.getName(), kind, method.getSourceLocation(), signatureDetail(method)));
+        }
+        children.append(']');
+        return symbolJsonWithChildren(classDecl.getName(), SYMBOL_KIND_CLASS, classDecl.getSourceLocation(), null, children.toString());
+    }
+
+    private String interfaceSymbolJson(InterfaceDecl interfaceDecl) {
+        StringBuilder children = new StringBuilder("[");
+        boolean first = true;
+        for (FunctionDecl method : interfaceDecl.getMethods()) {
+            if (!first) children.append(',');
+            first = false;
+            children.append(symbolJson(method.getName(), SYMBOL_KIND_METHOD, method.getSourceLocation(), signatureDetail(method)));
+        }
+        children.append(']');
+        return symbolJsonWithChildren(interfaceDecl.getName(), SYMBOL_KIND_INTERFACE, interfaceDecl.getSourceLocation(), null, children.toString());
+    }
+
+    private String signatureDetail(FunctionDecl method) {
+        StringBuilder params = new StringBuilder();
+        for (int i = 0; i < method.getParameters().size(); i++) {
+            if (i > 0) params.append(", ");
+            params.append(method.getParameters().get(i).getType());
+        }
+        return method.getReturnType() + "(" + params + ")";
+    }
+
+    private String symbolJson(String name, int kind, SourceLocation loc, String detail) {
+        return symbolJsonWithChildren(name, kind, loc, detail, "[]");
+    }
+
+    private String symbolJsonWithChildren(String name, int kind, SourceLocation loc, String detail, String childrenJson) {
+        int line = loc != null ? Math.max(0, loc.getLine() - 1) : 0;
+        int startChar = loc != null ? Math.max(0, loc.getColumn() - 1) : 0;
+        int endChar = startChar + Math.max(1, name.length());
+        String range = "{\"start\":{\"line\":" + line + ",\"character\":" + startChar
+                + "},\"end\":{\"line\":" + line + ",\"character\":" + endChar + "}}";
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"").append(escapeJson(name)).append('"');
+        if (detail != null) {
+            sb.append(",\"detail\":\"").append(escapeJson(detail)).append('"');
+        }
+        sb.append(",\"kind\":").append(kind);
+        sb.append(",\"range\":").append(range);
+        sb.append(",\"selectionRange\":").append(range);
+        sb.append(",\"children\":").append(childrenJson);
+        sb.append('}');
+        return sb.toString();
+    }
+
+    // ── Go-to-definition ─────────────────────────────────────────────────
+
+    private void handleDefinition(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        Program program = parseProgram(source);
+        if (program == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        SourceLocation target = findDefinition(program, word);
+        if (target == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        sendResponse(id, locationJson(uri, target, word));
+    }
+
+    // ── Find-all-references ─────────────────────────────────────────────
+
+    private void handleReferences(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+        boolean includeDeclaration = extractNestedBoolean(json, "context", "includeDeclaration", true);
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "[]");
+            return;
+        }
+
+        Program program = parseProgram(source);
+        SourceLocation declLoc = program != null ? findDefinition(program, word) : null;
+
+        List<SourceLocation> occurrences = findAllOccurrences(source, word);
+        int declIndex = -1;
+        if (declLoc != null) {
+            // The AST declaration location doesn't always land exactly on the identifier
+            // token (e.g. a method's recorded location is its return-type token, not its
+            // name), so treat the first token on the same line at or after that column as
+            // the declaration occurrence rather than requiring an exact column match.
+            for (int i = 0; i < occurrences.size(); i++) {
+                SourceLocation loc = occurrences.get(i);
+                if (loc.getLine() == declLoc.getLine() && loc.getColumn() >= declLoc.getColumn()) {
+                    declIndex = i;
+                    break;
+                }
+            }
+        }
+
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (int i = 0; i < occurrences.size(); i++) {
+            if (i == declIndex && !includeDeclaration) continue;
+            SourceLocation loc = occurrences.get(i);
+            if (!first) sb.append(',');
+            sb.append(locationJson(uri, loc, word));
+            first = false;
+        }
+        sb.append(']');
+        sendResponse(id, sb.toString());
+    }
+
+    /**
+     * Finds every lexical occurrence of an identifier in the source, by re-tokenizing and
+     * collecting every {@code IDENTIFIER} token whose lexeme matches. This is a textual
+     * whole-file scan (not scope-aware), so it will also match same-named identifiers in
+     * unrelated scopes — an acceptable trade-off for a single-file LSP without full semantic
+     * resolution, matching the granularity of {@link #findDefinition}.
+     */
+    private List<SourceLocation> findAllOccurrences(String source, String name) {
+        List<SourceLocation> locations = new ArrayList<>();
+        try {
+            ErrorReporter reporter = new ErrorReporter("lsp", source);
+            Lexer lexer = new Lexer(source, reporter);
+            for (Token token : lexer.scanTokens()) {
+                if (token.getType() == TokenType.IDENTIFIER && token.getLexeme().equals(name)) {
+                    locations.add(token.getLocation());
+                }
+            }
+        } catch (Exception e) {
+            // Best-effort: return whatever was collected before the failure.
+        }
+        return locations;
+    }
+
+    /**
+     * Resolves a bare identifier to the source location of its declaration, searching
+     * (in order) top-level classes, top-level interfaces, then class members and
+     * interface methods. This is a whole-file symbol lookup rather than a scope-aware
+     * resolution — sufficient for jumping to class/method/field declarations by name,
+     * matching the granularity {@link #handleDocumentSymbol} already exposes.
+     */
+    private SourceLocation findDefinition(Program program, String name) {
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl.getName().equals(name)) return classDecl.getSourceLocation();
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            if (interfaceDecl.getName().equals(name)) return interfaceDecl.getSourceLocation();
+        }
+        for (ClassDecl classDecl : program.getClasses()) {
+            for (FunctionDecl method : classDecl.getFunctions()) {
+                if (method.getName().equals(name)) return method.getSourceLocation();
+            }
+            for (VarDecl field : classDecl.getVariables()) {
+                if (field.getName().equals(name)) return field.getSourceLocation();
+            }
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            for (FunctionDecl method : interfaceDecl.getMethods()) {
+                if (method.getName().equals(name)) return method.getSourceLocation();
+            }
+        }
+        return null;
+    }
+
+    private String locationJson(String uri, SourceLocation loc, String name) {
+        int line = Math.max(0, loc.getLine() - 1);
+        int startChar = Math.max(0, loc.getColumn() - 1);
+        int endChar = startChar + Math.max(1, name.length());
+        return "{\"uri\":\"" + escapeJson(uri) + "\",\"range\":{\"start\":{\"line\":" + line
+                + ",\"character\":" + startChar + "},\"end\":{\"line\":" + line
+                + ",\"character\":" + endChar + "}}}";
+    }
+
+    private Program parseProgram(String source) {
+        try {
+            ErrorReporter reporter = new ErrorReporter("lsp", source);
+            Lexer lexer = new Lexer(source, reporter);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, reporter);
+            return parser.parse();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ── Diagnostics ─────────────────────────────────────────────────────
@@ -364,6 +692,25 @@ public final class DhrLangLspServer {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    private static boolean extractNestedBoolean(String json, String outerKey, String innerKey, boolean defaultValue) {
+        String pattern = "\"" + outerKey + "\"";
+        int idx = json.indexOf(pattern);
+        if (idx < 0) return defaultValue;
+        int braceStart = json.indexOf('{', idx + pattern.length());
+        if (braceStart < 0) return defaultValue;
+        String sub = json.substring(braceStart);
+        String inner = "\"" + innerKey + "\"";
+        int iIdx = sub.indexOf(inner);
+        if (iIdx < 0) return defaultValue;
+        iIdx = sub.indexOf(':', iIdx + inner.length());
+        if (iIdx < 0) return defaultValue;
+        iIdx++;
+        while (iIdx < sub.length() && Character.isWhitespace(sub.charAt(iIdx))) iIdx++;
+        if (sub.regionMatches(iIdx, "true", 0, 4)) return true;
+        if (sub.regionMatches(iIdx, "false", 0, 5)) return false;
+        return defaultValue;
     }
 
     private static String extractContentChange(String json) {
