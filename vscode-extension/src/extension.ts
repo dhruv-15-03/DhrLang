@@ -5,8 +5,7 @@ import { promisify } from 'util';
 import {
     LanguageClient,
     LanguageClientOptions,
-    ServerOptions,
-    TransportKind
+    ServerOptions
 } from 'vscode-languageclient/node';
 
 const execAsync = promisify(exec);
@@ -125,10 +124,22 @@ async function startLanguageClient(context: vscode.ExtensionContext): Promise<bo
     const config = vscode.workspace.getConfiguration('dhrlang');
     const javaPath = config.get<string>('javaPath', 'java');
 
+    // NOTE: deliberately no `transport` field here. For an Executable
+    // ServerOptions, vscode-languageclient only spawns via stdio when
+    // `transport` is undefined OR TransportKind.stdio — but in BOTH cases it
+    // still unconditionally appends `--stdio` to args when `transport` is
+    // explicitly TransportKind.stdio (see vscode-languageclient's
+    // createMessageTransports: `if (transport === TransportKind.stdio) {
+    // args.push('--stdio'); }`, unlike the "only if args unset" behavior for
+    // NodeModule servers). DhrLang's Main.java doesn't recognize --stdio
+    // (its `--lsp` flag already implies stdio transport), so an explicit
+    // `transport: TransportKind.stdio` here caused the java process to exit
+    // immediately with "Unknown option: --stdio" and the connection to
+    // close ~instantly. Omitting `transport` still spawns over stdio
+    // (undefined defaults to stdio) without injecting the extra flag.
     const serverOptions: ServerOptions = {
         command: javaPath,
-        args: ['-jar', jarResolved, '--lsp'],
-        transport: TransportKind.stdio
+        args: ['-jar', jarResolved, '--lsp']
     };
 
     const clientOptions: LanguageClientOptions = {

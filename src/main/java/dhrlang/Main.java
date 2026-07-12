@@ -268,6 +268,14 @@ public class Main {
                     opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
+                case "--stdio":
+                    // No-op: DhrLang's --lsp mode always communicates over
+                    // stdio already. Some LSP client libraries append
+                    // --stdio unconditionally when configured for stdio
+                    // transport, so accept and ignore it defensively rather
+                    // than failing with "Unknown option" and killing the
+                    // server before it can start.
+                    break;
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
