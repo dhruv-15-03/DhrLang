@@ -116,6 +116,63 @@ jobs:
           build/distributions/
           build/libs/
 
+  # Proves, in CI, that the VS Code extension's LanguageClient actually
+  # connects to a real `java -jar DhrLang.jar --lsp` process and that a real
+  # editor request (completion) is answered by that server rather than by
+  # the extension's static fallback provider. Static analysis (tsc / vsce
+  # package) can't prove this - only launching a real headless VS Code and
+  # exercising the extension end-to-end can.
+  vscode-lsp-integration:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: vscode-extension/package-lock.json
+
+    - name: Download built DhrLang.jar
+      uses: actions/download-artifact@v4
+      with:
+        name: dhrlang-distribution
+        path: build-artifacts
+
+    - name: Stage jar into the test fixture workspace (autoDetectJar picks it up)
+      run: |
+        JAR=$(find build-artifacts/libs -maxdepth 1 -name 'DhrLang-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1)
+        if [ -z "$JAR" ]; then
+          echo "No DhrLang shadow jar found in build-artifacts/libs" >&2
+          find build-artifacts -maxdepth 3 -type f >&2
+          exit 1
+        fi
+        echo "Using jar: $JAR"
+        cp "$JAR" vscode-extension/src/test/fixtures/workspace/DhrLang.jar
+
+    - name: Install extension dependencies
+      working-directory: vscode-extension
+      run: npm ci
+
+    - name: Compile extension (incl. test suite)
+      working-directory: vscode-extension
+      run: npm run compile
+
+    - name: Run headless VS Code integration tests (xvfb)
+      working-directory: vscode-extension
+      env:
+        DHRLANG_LSP_DEBUG_STDERR: '1'
+      run: xvfb-run -a npm test
+
   # Aggregate & publish test report as a separate job (fixes permission issues)
   test-report:
     name: Publish Test Report

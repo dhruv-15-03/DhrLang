@@ -16,8 +16,21 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 * Highlights keywords, literals, strings, comments, classes, functions, numbers
 * Updated for the simplified Englishâ€‘core tokens
 
-### ðŸ§  Completions & Snippets
-* Contextual keyword & snippet suggestions (main class, methods, loops, conditionals)
+### ðŸ§  Full Language Server (go-to-def, hover, rename, references, completion, diagnostics)
+* The extension now launches the real DhrLang Language Server (`java -jar DhrLang.jar --lsp`) over stdio
+  via `vscode-languageclient`, instead of the old static/in-process providers.
+* **Go to Definition** and **Find All References** across the open file
+* **Hover** with symbol/type information
+* **Rename Symbol** (`F2`) with `prepareRename` support
+* **Scope-aware Completion** — suggests symbols actually in scope at the cursor (locals, parameters,
+  class members), not a flat keyword dump
+* **Diagnostics** (`textDocument/publishDiagnostics`) with full-span ranges and `DHR-Exxx` error codes
+* If Java or `DhrLang.jar` can't be found, the extension falls back to the older static
+  keyword-completion/hover and shell-out diagnostics so it still degrades gracefully instead of
+  crashing on activation (governed by `dhrlang.enableAutoCompletion` / `dhrlang.enableErrorSquiggles`,
+  which now only apply to that fallback path).
+
+### ðŸ§© Snippets
 * Snippets for: main entry, class, method, if / if-else, while, for, foreach, arrays, printLine, try/catch skeleton
 
 ### ðŸš€ Run & Compile
@@ -32,8 +45,8 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 | `dhrlang.jarPath` | Explicit path to `DhrLang.jar` (leave blank for auto detection) |
 | `dhrlang.autoDetectJar` | Search workspace (root & `lib/`) for the JAR automatically |
 | `dhrlang.javaPath` | Java runtime executable (default `java`) |
-| `dhrlang.enableAutoCompletion` | Toggle keyword/snippet completion |
-| `dhrlang.enableErrorSquiggles` | Toggle inline diagnostics |
+| `dhrlang.enableAutoCompletion` | Toggle fallback keyword/snippet completion (only used if the Language Server can't start) |
+| `dhrlang.enableErrorSquiggles` | Toggle fallback inline diagnostics (only used if the Language Server can't start) |
 | `dhrlang.outputEncoding` | Output encoding (`utf8` / `utf16`) |
 
 ## ðŸ›  Installation
