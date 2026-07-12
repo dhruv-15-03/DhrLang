@@ -70,6 +70,60 @@ class DhrLangLspServerTest {
     }
 
     @Test
+    @DisplayName("Completion is scope-aware: offers locals/params of the current method, not of a sibling method")
+    void completionOffersLocalsAndParamsInScope() throws Exception {
+        String source = "class Foo {\n"
+                + "  num field1;\n"
+                + "  kaam methodA(num paramA) {\n"
+                + "    num localA = 1;\n"
+                + "\n"
+                + "  }\n"
+                + "  kaam methodB(num paramB) {\n"
+                + "    num localB = 2;\n"
+                + "  }\n"
+                + "}\n";
+        // Cursor on the blank line inside methodA, right after localA is declared.
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///scope.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///scope.dhr\"},\"position\":{\"line\":4,\"character\":0}}}");
+
+        assertTrue(result.contains("\"label\":\"paramA\""), "Should offer the enclosing method's own parameter");
+        assertTrue(result.contains("\"label\":\"localA\""), "Should offer a local declared earlier in the same method");
+        assertTrue(result.contains("\"label\":\"field1\""), "Should offer the enclosing class's field");
+        assertFalse(result.contains("\"label\":\"paramB\""), "Should NOT offer a sibling method's parameter");
+        assertFalse(result.contains("\"label\":\"localB\""), "Should NOT offer a sibling method's local variable");
+    }
+
+    @Test
+    @DisplayName("Completion offers sibling methods and other declared classes as types")
+    void completionOffersSiblingMethodsAndClasses() throws Exception {
+        String source = "class Foo {\n"
+                + "  kaam methodA() {\n"
+                + "\n"
+                + "  }\n"
+                + "  kaam methodB() {\n"
+                + "  }\n"
+                + "}\n"
+                + "class Bar {\n"
+                + "}\n";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///scope2.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///scope2.dhr\"},\"position\":{\"line\":2,\"character\":0}}}");
+
+        assertTrue(result.contains("\"label\":\"methodB\""), "Should offer a sibling method in the same class");
+        assertTrue(result.contains("\"label\":\"Bar\""), "Should offer another declared class as a type");
+        assertTrue(result.contains("\"label\":\"kaam\""), "Should still include static keyword completions");
+    }
+
+    private static String jsonEscape(String source) {
+        return source.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+    }
+
+    @Test
     @DisplayName("Hover returns info for known symbols")
     void hoverForKnownSymbol() throws Exception {
         // First open a document with 'num' keyword
