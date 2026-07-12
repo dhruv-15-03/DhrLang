@@ -1,10 +1,16 @@
 package dhrlang.lsp;
 
+import dhrlang.ast.Block;
+import dhrlang.ast.CatchClause;
 import dhrlang.ast.ClassDecl;
 import dhrlang.ast.FunctionDecl;
+import dhrlang.ast.IfStmt;
 import dhrlang.ast.InterfaceDecl;
 import dhrlang.ast.Program;
+import dhrlang.ast.Statement;
+import dhrlang.ast.TryStmt;
 import dhrlang.ast.VarDecl;
+import dhrlang.ast.WhileStmt;
 import dhrlang.error.ErrorReporter;
 import dhrlang.error.SourceLocation;
 import dhrlang.lexer.Lexer;
@@ -205,15 +211,46 @@ public final class DhrLangLspServer {
         }
     }
 
+    /** A completion candidate derived from the document's own symbols (as opposed to the
+     *  static keyword/annotation/type list). {@code kind} follows the LSP
+     *  {@code CompletionItemKind} numeric values (Method=2, Function=3, Field=5, Variable=6,
+     *  Class=7). */
+    private record ScopeSymbol(String label, int kind, String detail) {}
+
     private void handleCompletion(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+
+        Set<String> seenLabels = new HashSet<>();
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+
+        // Scope-aware symbols come first: locals/params/fields/sibling methods actually in
+        // scope at the cursor, and other declared classes as types — not a flat symbol dump.
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source != null) {
+            Program program = parseProgram(source);
+            if (program != null) {
+                for (ScopeSymbol sym : collectScopeSymbols(program, line + 1)) {
+                    if (!seenLabels.add(sym.label())) continue;
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append("{\"label\":\"").append(escapeJson(sym.label())).append("\"")
+                      .append(",\"kind\":").append(sym.kind());
+                    if (sym.detail() != null) {
+                        sb.append(",\"detail\":\"").append(escapeJson(sym.detail())).append("\"");
+                    }
+                    sb.append('}');
+                }
+            }
+        }
+
         List<VscodeLanguageSupport.CompletionItem> items = new java.util.ArrayList<>(VscodeLanguageSupport.getAnnotationCompletions());
         items.addAll(VscodeLanguageSupport.getKeywordCompletions());
         items.addAll(VscodeLanguageSupport.getTypeCompletions());
 
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < items.size(); i++) {
-            if (i > 0) sb.append(',');
-            VscodeLanguageSupport.CompletionItem item = items.get(i);
+        for (VscodeLanguageSupport.CompletionItem item : items) {
+            if (!seenLabels.add(item.getLabel())) continue;
             int kind = switch (item.getKind()) {
                 case KEYWORD -> 14;
                 case ANNOTATION -> 5;
@@ -222,6 +259,8 @@ public final class DhrLangLspServer {
                 case FUNCTION -> 3;
                 case VARIABLE -> 6;
             };
+            if (!first) sb.append(',');
+            first = false;
             sb.append("{\"label\":\"").append(escapeJson(item.getLabel())).append("\"");
             sb.append(",\"kind\":").append(kind);
             if (item.getDetail() != null) {
@@ -237,6 +276,96 @@ public final class DhrLangLspServer {
         }
         sb.append(']');
         sendResponse(id, sb.toString());
+    }
+
+    /**
+     * Builds the list of symbols actually in scope at {@code cursorLine} (1-based): the
+     * locals/parameters of the enclosing function declared at or before the cursor, the
+     * fields and sibling methods of the enclosing class, and every other top-level
+     * class/interface name (as a type). This is a best-effort, line-based approximation
+     * (not full block-scoping with shadowing) — sufficient for a single-pass LSP without a
+     * dedicated scope resolver, and far more useful than a flat keyword dump.
+     */
+    private List<ScopeSymbol> collectScopeSymbols(Program program, int cursorLine) {
+        List<ScopeSymbol> result = new ArrayList<>();
+
+        ClassDecl enclosingClass = null;
+        for (ClassDecl classDecl : program.getClasses()) {
+            SourceLocation loc = classDecl.getSourceLocation();
+            if (loc != null && loc.getLine() <= cursorLine
+                    && (enclosingClass == null || loc.getLine() >= enclosingClass.getSourceLocation().getLine())) {
+                enclosingClass = classDecl;
+            }
+        }
+
+        if (enclosingClass != null) {
+            FunctionDecl enclosingFunction = null;
+            for (FunctionDecl fn : enclosingClass.getFunctions()) {
+                SourceLocation loc = fn.getSourceLocation();
+                if (loc != null && loc.getLine() <= cursorLine
+                        && (enclosingFunction == null || loc.getLine() >= enclosingFunction.getSourceLocation().getLine())) {
+                    enclosingFunction = fn;
+                }
+            }
+
+            if (enclosingFunction != null) {
+                for (VarDecl param : enclosingFunction.getParameters()) {
+                    result.add(new ScopeSymbol(param.getName(), 6, param.getType()));
+                }
+                for (VarDecl local : collectLocalVarDecls(enclosingFunction.getBody(), cursorLine)) {
+                    result.add(new ScopeSymbol(local.getName(), 6, local.getType()));
+                }
+            }
+
+            for (VarDecl field : enclosingClass.getVariables()) {
+                result.add(new ScopeSymbol(field.getName(), 5, field.getType()));
+            }
+            for (FunctionDecl method : enclosingClass.getFunctions()) {
+                result.add(new ScopeSymbol(method.getName(), 2, method.getReturnType() + " " + method.getName() + "(...)"));
+            }
+        }
+
+        for (ClassDecl classDecl : program.getClasses()) {
+            result.add(new ScopeSymbol(classDecl.getName(), 7, "class"));
+        }
+        for (InterfaceDecl interfaceDecl : program.getInterfaces()) {
+            result.add(new ScopeSymbol(interfaceDecl.getName(), 7, "interface"));
+        }
+
+        return result;
+    }
+
+    /**
+     * Recursively collects every {@link VarDecl} statement reachable inside {@code stmt}
+     * (walking into {@code if}/{@code while}/{@code try}/{@code catch} bodies) whose
+     * declaration line is at or before {@code cursorLine}, so only variables actually
+     * declared "above" the cursor are offered.
+     */
+    private List<VarDecl> collectLocalVarDecls(Statement stmt, int cursorLine) {
+        List<VarDecl> result = new ArrayList<>();
+        collectLocalVarDecls(stmt, cursorLine, result);
+        return result;
+    }
+
+    private void collectLocalVarDecls(Statement stmt, int cursorLine, List<VarDecl> out) {
+        if (stmt == null) return;
+        if (stmt instanceof VarDecl varDecl) {
+            SourceLocation loc = varDecl.getSourceLocation();
+            if (loc == null || loc.getLine() <= cursorLine) out.add(varDecl);
+        } else if (stmt instanceof Block block) {
+            for (Statement s : block.getStatements()) collectLocalVarDecls(s, cursorLine, out);
+        } else if (stmt instanceof IfStmt ifStmt) {
+            collectLocalVarDecls(ifStmt.getThenBranch(), cursorLine, out);
+            collectLocalVarDecls(ifStmt.getElseBranch(), cursorLine, out);
+        } else if (stmt instanceof WhileStmt whileStmt) {
+            collectLocalVarDecls(whileStmt.getBody(), cursorLine, out);
+        } else if (stmt instanceof TryStmt tryStmt) {
+            collectLocalVarDecls(tryStmt.getTryBlock(), cursorLine, out);
+            collectLocalVarDecls(tryStmt.getFinallyBlock(), cursorLine, out);
+            for (CatchClause cc : tryStmt.getCatchClauses()) {
+                collectLocalVarDecls(cc.getBody(), cursorLine, out);
+            }
+        }
     }
 
     private void handleHover(Object id, String json) throws IOException {
