@@ -26,6 +26,27 @@ export interface DhrLangExtensionApi {
     getLanguageClient(): LanguageClient | undefined;
 }
 
+/**
+ * vscode-languageclient forwards the spawned server process's stderr into
+ * clientOptions.outputChannel, but VS Code's OutputChannel API has no way to
+ * read its content back out — so that text is invisible in a headless CI run
+ * (there's no UI to look at). When DHRLANG_LSP_DEBUG_STDERR is set (the
+ * integration test CI job sets it), also echo every write to process.stderr
+ * so `java -jar DhrLang.jar --lsp` failures show up directly in CI logs.
+ */
+function wrapOutputChannelForDebug(oc: vscode.OutputChannel): vscode.OutputChannel {
+    return {
+        get name() { return oc.name; },
+        append(value: string) { process.stderr.write(value); oc.append(value); },
+        appendLine(value: string) { process.stderr.write(value + '\n'); oc.appendLine(value); },
+        replace(value: string) { oc.replace(value); },
+        clear() { oc.clear(); },
+        show(...args: any[]) { (oc.show as (...a: any[]) => void)(...args); },
+        hide() { oc.hide(); },
+        dispose() { oc.dispose(); }
+    };
+}
+
 export function activate(context: vscode.ExtensionContext): DhrLangExtensionApi {
     extensionContext = context;
     console.log('DhrLang extension is now active!');
@@ -37,6 +58,9 @@ export function activate(context: vscode.ExtensionContext): DhrLangExtensionApi 
 
     // Create output channel
     outputChannel = vscode.window.createOutputChannel('DhrLang');
+    if (process.env.DHRLANG_LSP_DEBUG_STDERR) {
+        outputChannel = wrapOutputChannelForDebug(outputChannel);
+    }
     context.subscriptions.push(outputChannel);
 
     // Register commands
