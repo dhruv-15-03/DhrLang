@@ -359,4 +359,81 @@ class DhrLangLspServerTest {
         assertTrue(result.contains("\"referencesProvider\": true"),
                 "Should advertise referencesProvider capability");
     }
+
+    @Test
+    @DisplayName("Capabilities advertise renameProvider with prepareProvider")
+    void capabilitiesAdvertiseRenameProvider() throws Exception {
+        String result = sendAndReceive("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+        assertTrue(result.contains("\"renameProvider\""), "Should advertise renameProvider capability");
+        assertTrue(result.contains("\"prepareProvider\": true"), "Should advertise prepareProvider support");
+    }
+
+    @Test
+    @DisplayName("PrepareRename returns the identifier range and placeholder text")
+    void prepareRenameReturnsRangeAndPlaceholder() throws Exception {
+        String source = "class Counter { num total; kaam add(num n) { total = total + n; } }";
+        int usageSite = source.indexOf("add");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/prepareRename\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + usageSite + "}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        assertTrue(tail.contains("\"placeholder\":\"add\""), "Should return the identifier as the placeholder: " + tail);
+        assertTrue(tail.contains("\"range\""), "Should include a range");
+    }
+
+    @Test
+    @DisplayName("PrepareRename returns null when the cursor isn't on an identifier")
+    void prepareRenameNullForNonIdentifier() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\",\"text\":\"class Main { }\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/prepareRename\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\"},\"position\":{\"line\":0,\"character\":11}}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":null"),
+                "Should return null when the cursor is on whitespace, not an identifier");
+    }
+
+    @Test
+    @DisplayName("Rename updates every occurrence of a method name, including its declaration")
+    void renameUpdatesAllOccurrencesOfMethod() throws Exception {
+        String source = "class Counter { num total; kaam add(num n) { total = total + n; } "
+                + "kaam run() { add(1); add(2); } }";
+        int declSite = source.indexOf("add");
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/rename\",\"params\":{\"textDocument\":{\"uri\":\"file:///counter.dhr\"},\"position\":{\"line\":0,\"character\":"
+                        + declSite + "},\"newName\":\"increment\"}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        String tail = result.substring(idx);
+        assertTrue(tail.contains("\"changes\""), "Should return a WorkspaceEdit with changes: " + tail);
+        assertTrue(tail.contains("file:///counter.dhr"), "Should target the same document");
+        long newTextCount = tail.split("\"newText\":\"increment\"", -1).length - 1;
+        assertEquals(3, newTextCount, "Should rewrite the declaration plus both call sites: " + tail);
+    }
+
+    @Test
+    @DisplayName("Rename returns null for an identifier not present in the document")
+    void renameNullForUnknownIdentifier() throws Exception {
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\",\"text\":\"class Main { static kaam main() { printLine(1); } }\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/rename\",\"params\":{\"textDocument\":{\"uri\":\"file:///test.dhr\"},\"position\":{\"line\":0,\"character\":0},\"newName\":\"x\"}}");
+
+        int idx = result.indexOf("\"id\":2");
+        assertTrue(idx >= 0, "Should respond to the request");
+        assertTrue(result.substring(idx).contains("\"result\":null"),
+                "Should return null when the cursor is not on a renameable identifier");
+    }
 }
