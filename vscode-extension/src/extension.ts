@@ -2,18 +2,26 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import {
+    LanguageClient,
+    LanguageClientOptions,
+    ServerOptions,
+    TransportKind
+} from 'vscode-languageclient/node';
 
 const execAsync = promisify(exec);
 
 let extensionContext: vscode.ExtensionContext;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let outputChannel: vscode.OutputChannel;
+let languageClient: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     extensionContext = context;
     console.log('DhrLang extension is now active!');
 
-    // Create diagnostic collection for error squiggles
+    // Create diagnostic collection for the fallback error-squiggle path
+    // (only used when the Language Server can't start — see startLanguageClient).
     diagnosticCollection = vscode.languages.createDiagnosticCollection('dhrlang');
     context.subscriptions.push(diagnosticCollection);
 
@@ -51,22 +59,90 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize status bar early
     ensureStatusBar();
 
-    // Register completion provider
-    const completionProvider = vscode.languages.registerCompletionItemProvider(
-        'dhrlang',
-        new DhrLangCompletionProvider(),
-        '.',
-        '('
+    // Start the real DhrLang Language Server (go-to-definition, hover, rename,
+    // find references, scope-aware completion, diagnostics). If Java or the
+    // jar can't be found, fall back to the older in-process providers below
+    // instead of crashing activation.
+    startLanguageClient(context).then((started) => {
+        if (!started) {
+            registerFallbackProviders(context);
+        }
+    });
+}
+
+/**
+ * Resolves java/jar the same way the run/compile commands do, then spawns
+ * `java -jar <DhrLang.jar> --lsp` and connects a LanguageClient to it over
+ * stdio. Returns true if the client was started, false if it couldn't be
+ * (missing Java/jar) — callers should register the fallback providers in
+ * that case so the extension still degrades gracefully.
+ */
+async function startLanguageClient(context: vscode.ExtensionContext): Promise<boolean> {
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        outputChannel.appendLine('[DhrLang LSP] DhrLang.jar not found — falling back to basic in-editor completion/diagnostics. Set dhrlang.jarPath or enable autoDetectJar.');
+        return false;
+    }
+
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
+
+    const serverOptions: ServerOptions = {
+        command: javaPath,
+        args: ['-jar', jarResolved, '--lsp'],
+        transport: TransportKind.stdio
+    };
+
+    const clientOptions: LanguageClientOptions = {
+        documentSelector: [{ scheme: 'file', language: 'dhrlang' }],
+        outputChannel,
+        synchronize: {
+            fileEvents: vscode.workspace.createFileSystemWatcher('**/*.dhr')
+        }
+    };
+
+    languageClient = new LanguageClient(
+        'dhrlangLanguageServer',
+        'DhrLang Language Server',
+        serverOptions,
+        clientOptions
     );
 
-    context.subscriptions.push(completionProvider);
+    try {
+        await languageClient.start();
+        context.subscriptions.push({ dispose: () => languageClient?.stop() });
+        outputChannel.appendLine(`[DhrLang LSP] Started: ${javaPath} -jar "${jarResolved}" --lsp`);
+        return true;
+    } catch (e: any) {
+        outputChannel.appendLine(`[DhrLang LSP] Failed to start Language Server: ${e?.message ?? e}. Falling back to basic in-editor completion/diagnostics.`);
+        vscode.window.showWarningMessage('DhrLang: could not start the Language Server (check Java is installed and on PATH). Falling back to basic completion/diagnostics.');
+        languageClient = undefined;
+        return false;
+    }
+}
 
-    // Register hover provider
+/**
+ * Older, weaker in-process completion/hover/diagnostics path. Only used when
+ * the real Language Server (startLanguageClient) couldn't start, so the
+ * extension is still useful without a working Java/jar setup.
+ */
+function registerFallbackProviders(context: vscode.ExtensionContext) {
+    const config = vscode.workspace.getConfiguration('dhrlang');
+
+    if (config.get<boolean>('enableAutoCompletion', true)) {
+        const completionProvider = vscode.languages.registerCompletionItemProvider(
+            'dhrlang',
+            new DhrLangCompletionProvider(),
+            '.',
+            '('
+        );
+        context.subscriptions.push(completionProvider);
+    }
+
     const hoverProvider = vscode.languages.registerHoverProvider('dhrlang', new DhrLangHoverProvider());
     context.subscriptions.push(hoverProvider);
 
     // Run diagnostics on save and on open
-    const config = vscode.workspace.getConfiguration('dhrlang');
     if (config.get<boolean>('enableErrorSquiggles', true)) {
         context.subscriptions.push(
             vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -91,6 +167,10 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
     }
+}
+
+export function deactivate(): Thenable<void> | undefined {
+    return languageClient ? languageClient.stop() : undefined;
 }
 
 let statusItem: vscode.StatusBarItem | undefined;
