@@ -106,6 +106,48 @@ class DhrLangLspServerTest {
     }
 
     @Test
+    @DisplayName("Diagnostics span the full offending identifier, not just one character")
+    void diagnosticsSpanFullIdentifier() throws Exception {
+        String source = "class Main { static kaam main() { printLine(missingVar); } }";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///undef.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}");
+
+        int diagIdx = result.indexOf("publishDiagnostics");
+        assertTrue(diagIdx >= 0, "Should publish diagnostics");
+        String tail = result.substring(diagIdx);
+        assertTrue(tail.contains("Undefined variable 'missingVar'"),
+                "Should report the undefined variable: " + tail);
+
+        int rangeIdx = tail.indexOf("\"range\"");
+        assertTrue(rangeIdx >= 0, "Should include a range");
+        int startCharIdx = tail.indexOf("\"character\":", rangeIdx);
+        int startChar = Integer.parseInt(tail.substring(startCharIdx + 12, tail.indexOf('}', startCharIdx)));
+        int endCharIdx = tail.indexOf("\"character\":", startCharIdx + 12);
+        int endChar = Integer.parseInt(tail.substring(endCharIdx + 12, tail.indexOf('}', endCharIdx)));
+
+        assertEquals("missingVar".length(), endChar - startChar,
+                "Diagnostic range should span the whole identifier (\"missingVar\", 10 chars), not a single character: "
+                        + tail);
+    }
+
+    @Test
+    @DisplayName("Diagnostics include the DhrLang error code")
+    void diagnosticsIncludeErrorCode() throws Exception {
+        String source = "class Main { static kaam main() { printLine(missingVar); } }";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///undef2.dhr\",\"text\":\""
+                        + source.replace("\"", "\\\"") + "\"}}}");
+
+        int diagIdx = result.indexOf("publishDiagnostics");
+        assertTrue(diagIdx >= 0, "Should publish diagnostics");
+        assertTrue(result.substring(diagIdx).contains("\"code\":\"DHR-E202\""),
+                "Should include the DHR-E202 (undeclared identifier) error code: " + result.substring(diagIdx));
+    }
+
+    @Test
     @DisplayName("Initialize advertises documentSymbolProvider")
     void initializeAdvertisesDocumentSymbols() throws Exception {
         String result = sendAndReceive(

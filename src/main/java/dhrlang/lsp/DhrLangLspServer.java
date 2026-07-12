@@ -704,19 +704,41 @@ public final class DhrLangLspServer {
             SourceLocation loc = err.getLocation();
             int sl = loc != null ? Math.max(0, loc.getLine() - 1) : 0;
             int sc = loc != null ? Math.max(0, loc.getColumn() - 1) : 0;
+            int ec = sc + diagnosticSpanWidth(source, sl, sc);
             int severity = err.getType() == dhrlang.error.ErrorType.ERROR ? 1 : 2;
             sb.append("{\"range\":{\"start\":{\"line\":").append(sl)
               .append(",\"character\":").append(sc)
               .append("},\"end\":{\"line\":").append(sl)
-              .append(",\"character\":").append(sc + 1)
+              .append(",\"character\":").append(ec)
               .append("}},\"severity\":").append(severity)
-              .append(",\"source\":\"dhrlang\"")
-              .append(",\"message\":\"").append(escapeJson(err.getMessage())).append("\"}");
+              .append(",\"source\":\"dhrlang\"");
+            if (err.getCode() != null) {
+                sb.append(",\"code\":\"").append(escapeJson(err.getCode().getCode())).append("\"");
+            }
+            sb.append(",\"message\":\"").append(escapeJson(err.getMessage())).append("\"}");
         }
         sb.append(']');
 
         sendNotification("textDocument/publishDiagnostics",
                 "{\"uri\":\"" + escapeJson(uri) + "\",\"diagnostics\":" + sb + "}");
+    }
+
+    /**
+     * Computes how many characters wide a diagnostic's underline should be, starting at
+     * {@code (line, startChar)} (both 0-based). Widens the previously fixed single-character
+     * range to span the actual offending word/identifier, so editors underline the whole
+     * token instead of a single caret. Falls back to a 1-character width when the position
+     * isn't on a word character (e.g. a stray symbol) or is out of bounds.
+     */
+    private static int diagnosticSpanWidth(String source, int line, int startChar) {
+        String[] lines = source.split("\n", -1);
+        if (line < 0 || line >= lines.length) return 1;
+        String l = lines[line];
+        if (startChar < 0 || startChar >= l.length()) return 1;
+        if (!isWordChar(l.charAt(startChar))) return 1;
+        int end = startChar;
+        while (end < l.length() && isWordChar(l.charAt(end))) end++;
+        return Math.max(1, end - startChar);
     }
 
     // ── JSON helpers (minimal, no external deps) ─────────────────────────
