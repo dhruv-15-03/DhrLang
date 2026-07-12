@@ -16,7 +16,17 @@ let diagnosticCollection: vscode.DiagnosticCollection;
 let outputChannel: vscode.OutputChannel;
 let languageClient: LanguageClient | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+/**
+ * Public API returned from activate(). Exists mainly so the integration test
+ * suite (src/test/suite) can assert the real LanguageClient actually reaches
+ * the "Running" state, instead of only statically checking that the code to
+ * start one exists.
+ */
+export interface DhrLangExtensionApi {
+    getLanguageClient(): LanguageClient | undefined;
+}
+
+export function activate(context: vscode.ExtensionContext): DhrLangExtensionApi {
     extensionContext = context;
     console.log('DhrLang extension is now active!');
 
@@ -68,6 +78,10 @@ export function activate(context: vscode.ExtensionContext) {
             registerFallbackProviders(context);
         }
     });
+
+    return {
+        getLanguageClient: () => languageClient
+    };
 }
 
 /**

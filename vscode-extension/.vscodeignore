@@ -13,6 +13,9 @@
 # Keep TypeScript sources out (only ship compiled JS)
 src/
 
+# Compiled test code / fixtures should not ship in the packaged extension
+out/test/
+
 # Development files
 .vscode/
 .vscode-test/
