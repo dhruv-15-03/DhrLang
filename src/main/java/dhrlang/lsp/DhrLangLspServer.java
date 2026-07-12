@@ -131,6 +131,8 @@ public final class DhrLangLspServer {
             case "textDocument/documentSymbol" -> handleDocumentSymbol(id, json);
             case "textDocument/definition" -> handleDefinition(id, json);
             case "textDocument/references" -> handleReferences(id, json);
+            case "textDocument/prepareRename" -> handlePrepareRename(id, json);
+            case "textDocument/rename" -> handleRename(id, json);
             default -> {
                 // Unknown method — send null response if it has an id
                 if (id != null) {
@@ -154,7 +156,10 @@ public final class DhrLangLspServer {
                         "hoverProvider": true,
                         "documentSymbolProvider": true,
                         "definitionProvider": true,
-                        "referencesProvider": true
+                        "referencesProvider": true,
+                        "renameProvider": {
+                            "prepareProvider": true
+                        }
                     }
                 }""";
         sendResponse(id, capabilities);
@@ -500,6 +505,99 @@ public final class DhrLangLspServer {
         }
         sb.append(']');
         sendResponse(id, sb.toString());
+    }
+
+    // ── Rename ────────────────────────────────────────────────────────────
+
+    /**
+     * Responds to {@code textDocument/prepareRename}: validates that the cursor is on a
+     * renameable identifier and, if so, returns the range of that identifier (so editors can
+     * highlight exactly what will change) plus its current text as {@code placeholder}.
+     * Returns {@code null} when the cursor isn't on an identifier, signalling to the client
+     * that rename isn't available at this position.
+     */
+    private void handlePrepareRename(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        SourceLocation loc = findAllOccurrences(source, word).stream()
+                .filter(l -> l.getLine() == line + 1)
+                .findFirst()
+                .orElse(null);
+        if (loc == null) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        int startChar = Math.max(0, loc.getColumn() - 1);
+        int endChar = startChar + word.length();
+        String range = "{\"start\":{\"line\":" + line + ",\"character\":" + startChar
+                + "},\"end\":{\"line\":" + line + ",\"character\":" + endChar + "}}";
+        sendResponse(id, "{\"range\":" + range + ",\"placeholder\":\"" + escapeJson(word) + "\"}");
+    }
+
+    /**
+     * Responds to {@code textDocument/rename}: renames every occurrence of the identifier
+     * under the cursor (declarations, call sites, and type references alike — the same
+     * whole-file token scan {@link #handleReferences} uses) to {@code newName}, returning a
+     * {@code WorkspaceEdit} with one {@link TextEdit} per occurrence in the current document.
+     * Returns {@code null} if the cursor isn't on a renameable identifier.
+     */
+    private void handleRename(Object id, String json) throws IOException {
+        String uri = extractNestedString(json, "textDocument", "uri");
+        int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+        String newName = extractString(json, "newName");
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+        if (source == null || newName == null || newName.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        String word = getWordAt(source, line, character);
+        if (word == null || word.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        List<SourceLocation> occurrences = findAllOccurrences(source, word);
+        if (occurrences.isEmpty()) {
+            sendResponse(id, "null");
+            return;
+        }
+
+        StringBuilder edits = new StringBuilder("[");
+        boolean first = true;
+        for (SourceLocation loc : occurrences) {
+            int occLine = Math.max(0, loc.getLine() - 1);
+            int startChar = Math.max(0, loc.getColumn() - 1);
+            int endChar = startChar + word.length();
+            if (!first) edits.append(',');
+            edits.append("{\"range\":{\"start\":{\"line\":").append(occLine)
+                    .append(",\"character\":").append(startChar)
+                    .append("},\"end\":{\"line\":").append(occLine)
+                    .append(",\"character\":").append(endChar)
+                    .append("}},\"newText\":\"").append(escapeJson(newName)).append("\"}");
+            first = false;
+        }
+        edits.append(']');
+
+        String result = "{\"changes\":{\"" + escapeJson(uri) + "\":" + edits + "}}";
+        sendResponse(id, result);
     }
 
     /**
