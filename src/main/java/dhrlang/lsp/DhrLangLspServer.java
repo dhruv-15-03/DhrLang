@@ -220,6 +220,33 @@ public final class DhrLangLspServer {
     private void handleCompletion(Object id, String json) throws IOException {
         String uri = extractNestedString(json, "textDocument", "uri");
         int line = extractNestedInt(json, "position", "line");
+        int character = extractNestedInt(json, "position", "character");
+
+        String source = uri != null ? openDocuments.get(uri) : null;
+
+        // Member-access completion: when the cursor sits right after `receiver.` (optionally
+        // with a partial member name already typed, e.g. `receiver.na`), offer ONLY the
+        // resolved receiver type's fields/methods (walking the superclass chain within this
+        // file) — not the full keyword/type/scope dump. This is what a real IDE does after a
+        // dot, and it's the single most-expected completion behavior in a live demo.
+        //
+        // The typed-so-far text (`receiver.` or `receiver.partial`) is NOT valid DhrLang syntax
+        // on its own (the parser requires an identifier after '.' and a terminating ';'), so
+        // parsing the raw buffer as-is would fail. We patch just the affected line with a
+        // syntactically complete placeholder member access before parsing, without touching any
+        // other line, so every other declaration's line number (and thus scope resolution)
+        // stays exactly where it was.
+        if (source != null) {
+            MemberAccessContext ctx = findMemberAccessReceiver(source, line, character);
+            if (ctx != null) {
+                Program program = parseProgram(patchForMemberAccessParse(source, ctx));
+                if (program != null) {
+                    List<ScopeSymbol> members = collectMemberSymbols(program, line + 1, ctx.receiver());
+                    sendResponse(id, renderCompletionItemsJson(members));
+                    return;
+                }
+            }
+        }
 
         Set<String> seenLabels = new HashSet<>();
         StringBuilder sb = new StringBuilder("[");
@@ -227,7 +254,6 @@ public final class DhrLangLspServer {
 
         // Scope-aware symbols come first: locals/params/fields/sibling methods actually in
         // scope at the cursor, and other declared classes as types — not a flat symbol dump.
-        String source = uri != null ? openDocuments.get(uri) : null;
         if (source != null) {
             Program program = parseProgram(source);
             if (program != null) {
@@ -278,6 +304,160 @@ public final class DhrLangLspServer {
         sendResponse(id, sb.toString());
     }
 
+    /** Serializes a list of {@link ScopeSymbol} candidates into an LSP {@code CompletionItem[]}
+     *  JSON array, deduplicating by label. Shared by the plain scope-aware path and the
+     *  member-access ({@code receiver.}) path. */
+    private String renderCompletionItemsJson(List<ScopeSymbol> symbols) {
+        Set<String> seenLabels = new HashSet<>();
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (ScopeSymbol sym : symbols) {
+            if (!seenLabels.add(sym.label())) continue;
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"label\":\"").append(escapeJson(sym.label())).append("\"")
+              .append(",\"kind\":").append(sym.kind());
+            if (sym.detail() != null) {
+                sb.append(",\"detail\":\"").append(escapeJson(sym.detail())).append("\"");
+            }
+            sb.append('}');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static boolean isIdentChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_';
+    }
+
+    /** Describes a detected {@code receiver.} (or {@code receiver.partial}) completion context:
+     *  the receiver identifier and exactly where on {@code line} it (and any partially typed
+     *  member name) sits, so the buffer can be patched into valid syntax before parsing. */
+    private record MemberAccessContext(String receiver, int line, int receiverStart, int cursorEnd) {}
+
+    /**
+     * If the cursor at ({@code line}, {@code character}) sits immediately after a member-access
+     * dot — {@code receiver.} or {@code receiver.partialName} — returns a context describing the
+     * receiver identifier (e.g. {@code "obj"} or {@code "this"}) and its position. Returns
+     * {@code null} for any other completion context (no dot, or the dot is preceded by something
+     * other than a plain identifier, e.g. a numeric literal or another dot).
+     */
+    private MemberAccessContext findMemberAccessReceiver(String source, int line, int character) {
+        String[] lines = source.split("\n", -1);
+        if (line < 0 || line >= lines.length) return null;
+        String l = lines[line];
+        int end = Math.min(Math.max(character, 0), l.length());
+
+        // Skip back over any partial member name already typed (e.g. the "na" in "obj.na").
+        int i = end;
+        while (i > 0 && isIdentChar(l.charAt(i - 1))) i--;
+        if (i == 0 || l.charAt(i - 1) != '.') return null;
+
+        int dotPos = i - 1;
+        int j = dotPos;
+        while (j > 0 && isIdentChar(l.charAt(j - 1))) j--;
+        if (j == dotPos) return null; // dot with no identifier before it (e.g. "3.14", "..")
+        return new MemberAccessContext(l.substring(j, dotPos), line, j, end);
+    }
+
+    /**
+     * Replaces the incomplete {@code receiver.} / {@code receiver.partial} text described by
+     * {@code ctx} with a syntactically valid, semicolon-terminated placeholder member access
+     * ({@code receiver.__ide_dummy__;}) so the buffer can actually be parsed. Only the affected
+     * line's content is rewritten — no lines are inserted or removed — so every other
+     * declaration's line number (and hence scope/enclosing-class resolution) is unaffected.
+     */
+    private String patchForMemberAccessParse(String source, MemberAccessContext ctx) {
+        String[] lines = source.split("\n", -1);
+        String l = lines[ctx.line()];
+        String prefix = l.substring(0, ctx.receiverStart());
+        String suffix = l.substring(Math.min(ctx.cursorEnd(), l.length()));
+        lines[ctx.line()] = prefix + ctx.receiver() + ".__ide_dummy__;" + suffix;
+        return String.join("\n", lines);
+    }
+
+    /** Resolves {@code receiver}'s declared type at {@code cursorLine} and returns its fields
+     *  and methods (as {@link ScopeSymbol} candidates), walking the superclass chain as far as
+     *  it can be resolved within this same file. Returns an empty list when the receiver's type
+     *  can't be determined (e.g. an unresolved parameter type, or a receiver that isn't a known
+     *  local/parameter/field/{@code this}). */
+    private List<ScopeSymbol> collectMemberSymbols(Program program, int cursorLine, String receiver) {
+        ClassDecl enclosing = findEnclosingClass(program, cursorLine);
+
+        String typeName;
+        if ("this".equals(receiver)) {
+            typeName = enclosing != null ? enclosing.getName() : null;
+        } else {
+            typeName = null;
+            for (ScopeSymbol sym : collectScopeSymbols(program, cursorLine)) {
+                // kind 5 = field, kind 6 = local/parameter variable (see ScopeSymbol javadoc).
+                if (sym.label().equals(receiver) && (sym.kind() == 5 || sym.kind() == 6)) {
+                    typeName = baseTypeName(sym.detail());
+                    break;
+                }
+            }
+        }
+        if (typeName == null) return List.of();
+
+        List<ScopeSymbol> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        ClassDecl target = findClassByName(program, typeName);
+        int guard = 0; // defends against a malformed/self-referential superclass chain
+        while (target != null && guard++ < 32) {
+            for (VarDecl field : target.getVariables()) {
+                if (seen.add(field.getName())) {
+                    result.add(new ScopeSymbol(field.getName(), 5, field.getType()));
+                }
+            }
+            for (FunctionDecl method : target.getFunctions()) {
+                if (seen.add(method.getName())) {
+                    result.add(new ScopeSymbol(method.getName(), 2,
+                            method.getReturnType() + " " + method.getName() + "(...)"));
+                }
+            }
+            String superName = target.getSuperclass() != null
+                    ? target.getSuperclass().getName().getLexeme() : null;
+            target = superName != null ? findClassByName(program, superName) : null;
+        }
+        return result;
+    }
+
+    /** Strips generic arguments and array brackets from a declared type string
+     *  (e.g. {@code "List<Foo>"} or {@code "Foo[]"}) down to the base class name
+     *  (e.g. {@code "List"} / {@code "Foo"}) for class lookup purposes. */
+    private static String baseTypeName(String declaredType) {
+        if (declaredType == null) return null;
+        String t = declaredType.trim();
+        int lt = t.indexOf('<');
+        if (lt >= 0) t = t.substring(0, lt);
+        int br = t.indexOf('[');
+        if (br >= 0) t = t.substring(0, br);
+        return t.trim();
+    }
+
+    private ClassDecl findClassByName(Program program, String name) {
+        if (name == null) return null;
+        for (ClassDecl classDecl : program.getClasses()) {
+            if (classDecl.getName().equals(name)) return classDecl;
+        }
+        return null;
+    }
+
+    /** Finds the innermost class declaration whose body contains {@code cursorLine} — i.e. the
+     *  last top-level class declared at or before the cursor. Shared by scope-symbol collection
+     *  and {@code this.}-receiver resolution. */
+    private ClassDecl findEnclosingClass(Program program, int cursorLine) {
+        ClassDecl enclosingClass = null;
+        for (ClassDecl classDecl : program.getClasses()) {
+            SourceLocation loc = classDecl.getSourceLocation();
+            if (loc != null && loc.getLine() <= cursorLine
+                    && (enclosingClass == null || loc.getLine() >= enclosingClass.getSourceLocation().getLine())) {
+                enclosingClass = classDecl;
+            }
+        }
+        return enclosingClass;
+    }
+
     /**
      * Builds the list of symbols actually in scope at {@code cursorLine} (1-based): the
      * locals/parameters of the enclosing function declared at or before the cursor, the
@@ -289,14 +469,7 @@ public final class DhrLangLspServer {
     private List<ScopeSymbol> collectScopeSymbols(Program program, int cursorLine) {
         List<ScopeSymbol> result = new ArrayList<>();
 
-        ClassDecl enclosingClass = null;
-        for (ClassDecl classDecl : program.getClasses()) {
-            SourceLocation loc = classDecl.getSourceLocation();
-            if (loc != null && loc.getLine() <= cursorLine
-                    && (enclosingClass == null || loc.getLine() >= enclosingClass.getSourceLocation().getLine())) {
-                enclosingClass = classDecl;
-            }
-        }
+        ClassDecl enclosingClass = findEnclosingClass(program, cursorLine);
 
         if (enclosingClass != null) {
             FunctionDecl enclosingFunction = null;
