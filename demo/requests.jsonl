@@ -1,0 +1,9 @@
+﻿{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///demo.dhr","text":"class Point {\n  num x;\n  num y;\n  kaam distance() { return 0; }\n}\n\nclass Shape extends Point {\n  num area;\n}\n\nclass Main {\n  static kaam main() {\n    Shape s = new Shape();\n    num total = 1;\n    s.distance();\n\n  }\n}\n"}}}
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":6,"character":20}}}
+{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":12,"character":18}}}
+{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":0,"character":6},"context":{"includeDeclaration":true}}}
+{"jsonrpc":"2.0","id":5,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":6,"character":6}}}
+{"jsonrpc":"2.0","id":6,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":6,"character":6},"newName":"Rectangle"}}
+{"jsonrpc":"2.0","id":7,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":15,"character":0}}}
+{"jsonrpc":"2.0","id":8,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///demo.dhr"},"position":{"line":14,"character":6}}}
