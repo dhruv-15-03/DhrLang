@@ -119,6 +119,106 @@ class DhrLangLspServerTest {
         assertTrue(result.contains("\"label\":\"kaam\""), "Should still include static keyword completions");
     }
 
+    @Test
+    @DisplayName("Member-access completion after 'receiver.' offers ONLY the receiver's fields/methods")
+    void memberAccessCompletionOffersReceiverMembers() throws Exception {
+        String source = "class Point {\n"
+                + "  num x;\n"
+                + "  num y;\n"
+                + "  kaam distance() { return 0; }\n"
+                + "}\n"
+                + "class Foo {\n"
+                + "  kaam methodA() {\n"
+                + "    Point p = new Point();\n"
+                + "    num unrelated = 1;\n"
+                + "    p.\n"
+                + "  }\n"
+                + "}\n";
+        // Cursor right after "p." on line 9 (0-based), character 6 (after the dot).
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///member.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///member.dhr\"},\"position\":{\"line\":9,\"character\":6}}}");
+
+        assertTrue(result.contains("\"label\":\"x\""), "Should offer receiver type's field x");
+        assertTrue(result.contains("\"label\":\"y\""), "Should offer receiver type's field y");
+        assertTrue(result.contains("\"label\":\"distance\""), "Should offer receiver type's method");
+        assertFalse(result.contains("\"label\":\"unrelated\""), "Should NOT offer the enclosing scope's unrelated local");
+        assertFalse(result.contains("\"label\":\"methodA\""), "Should NOT offer the enclosing (non-receiver) class's own method");
+        assertFalse(result.contains("\"label\":\"kaam\""), "Should NOT include static keyword completions after a dot");
+    }
+
+    @Test
+    @DisplayName("Member-access completion resolves 'this.' to the enclosing class's own members")
+    void memberAccessCompletionResolvesThisReceiver() throws Exception {
+        String source = "class Counter {\n"
+                + "  num count;\n"
+                + "  kaam increment() {\n"
+                + "    this.\n"
+                + "  }\n"
+                + "}\n";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///this.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///this.dhr\"},\"position\":{\"line\":3,\"character\":9}}}");
+
+        assertTrue(result.contains("\"label\":\"count\""), "this. should offer the enclosing class's own field");
+        assertTrue(result.contains("\"label\":\"increment\""), "this. should offer the enclosing class's own method");
+    }
+
+    @Test
+    @DisplayName("Member-access completion walks the superclass chain for inherited fields/methods")
+    void memberAccessCompletionWalksSuperclassChain() throws Exception {
+        String source = "class Animal {\n"
+                + "  num age;\n"
+                + "  kaam speak() { return 0; }\n"
+                + "}\n"
+                + "class Dog extends Animal {\n"
+                + "  num breed;\n"
+                + "}\n"
+                + "class Foo {\n"
+                + "  kaam methodA() {\n"
+                + "    Dog d = new Dog();\n"
+                + "    d.\n"
+                + "  }\n"
+                + "}\n";
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///super.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///super.dhr\"},\"position\":{\"line\":10,\"character\":6}}}");
+
+        assertTrue(result.contains("\"label\":\"breed\""), "Should offer the receiver's own declared field");
+        assertTrue(result.contains("\"label\":\"age\""), "Should offer an inherited field from the superclass");
+        assertTrue(result.contains("\"label\":\"speak\""), "Should offer an inherited method from the superclass");
+    }
+
+    @Test
+    @DisplayName("Member-access completion with a partial member name still resolves the receiver correctly")
+    void memberAccessCompletionWithPartialMemberName() throws Exception {
+        String source = "class Point {\n"
+                + "  num x;\n"
+                + "  num y;\n"
+                + "}\n"
+                + "class Foo {\n"
+                + "  kaam methodA() {\n"
+                + "    Point p = new Point();\n"
+                + "    p.x\n"
+                + "  }\n"
+                + "}\n";
+        // Cursor right after the "x" typed so far on "p.x" (line 7, character 6).
+        String result = sendAndReceive(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file:///partial.dhr\",\"text\":\""
+                        + jsonEscape(source) + "\"}}}",
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/completion\",\"params\":{\"textDocument\":{\"uri\":\"file:///partial.dhr\"},\"position\":{\"line\":7,\"character\":7}}}");
+
+        assertTrue(result.contains("\"label\":\"x\""), "Should still offer field x even with a partial member name typed");
+        assertTrue(result.contains("\"label\":\"y\""), "Should still offer field y even with a partial member name typed");
+    }
+
     private static String jsonEscape(String source) {
         return source.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
     }
