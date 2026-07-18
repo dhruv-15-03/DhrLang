@@ -768,6 +768,24 @@ Settings preview (add to `settings.json` as needed):
 
 If auto-detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
 
+## Live LSP Demo
+
+The extension now spawns the real `DhrLangLspServer` (`java -jar DhrLang.jar
+--lsp`) over stdio via `vscode-languageclient` — diagnostics, hover,
+go-to-definition, find-references, rename, scope-aware completion, and
+receiver-aware dot completion all come from the same compiler front-end
+(`Parser`/`TypeChecker`) that powers `dhrc` itself.
+
+See **[demo/README.md](demo/README.md)** for a real, reproducible JSON-RPC
+transcript of all seven features running against a small fixture, plus a
+one-command script (`demo/run-demo.ps1`) to reproduce it against your own
+build. The client↔server round-trip is also **CI-proven**: the
+`vscode-lsp-integration` job in `.github/workflows/ci.yml` launches a
+headless VS Code, activates the extension, and asserts real completions come
+back from the spawned server. The extension is not yet published to the VS
+Code Marketplace (packaging is ready; publishing needs a maintainer's Azure
+DevOps PAT).
+
 ## CI Notes
 
 - **CodeQL**: if GitHub Code Scanning is not enabled for your repository, the CodeQL job
