@@ -7,7 +7,14 @@ WORKDIR /src
 
 COPY . .
 
-RUN chmod +x ./gradlew && ./gradlew --no-daemon clean shadowJar
+RUN set -eu; \
+    sed -i 's/\r$//' ./gradlew; \
+    chmod +x ./gradlew; \
+    ./gradlew --no-daemon clean shadowJar; \
+    RUNTIME_JARS="$(find build/libs -maxdepth 1 -type f -name 'DhrLang-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar')"; \
+    JAR_COUNT="$(printf '%s\n' "$RUNTIME_JARS" | sed '/^$/d' | wc -l)"; \
+    if [ "$JAR_COUNT" -ne 1 ]; then echo "Expected exactly one runnable DhrLang JAR, found $JAR_COUNT" >&2; exit 1; fi; \
+    cp "$RUNTIME_JARS" /tmp/dhrlang.jar
 
 FROM eclipse-temurin:17-jre-alpine
 
@@ -16,6 +23,6 @@ LABEL description="DhrLang compiler and runtime"
 
 WORKDIR /app
 
-COPY --from=build /src/build/libs/*.jar /app/dhrlang.jar
+COPY --from=build /tmp/dhrlang.jar /app/dhrlang.jar
 
 ENTRYPOINT ["java", "-jar", "/app/dhrlang.jar"]

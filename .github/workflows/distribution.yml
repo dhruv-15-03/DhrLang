@@ -1,10 +1,8 @@
 name: Create Distribution Packages
 
-# NOTE: GitHub Actions does not re-trigger workflows for events produced using the
-# default GITHUB_TOKEN (e.g. the "Release" workflow creating a release via
-# softprops/action-gh-release). A plain `release: published` trigger therefore never
-# fired in practice. Instead, run after the "Release" workflow completes successfully,
-# so every tagged release automatically gets distribution packages.
+# Releases created with the default GITHUB_TOKEN do not emit a second workflow run.
+# Follow successful tag-triggered Release runs instead. A manually dispatched Release
+# can be packaged by manually dispatching this workflow with the exact release tag.
 on:
   workflow_run:
     workflows: ["Release"]
@@ -16,10 +14,51 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
-  create-homebrew-tap:
+  resolve_version:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
+      VERSION_CLEAN: ${{ steps.version.outputs.VERSION_CLEAN }}
+
+    steps:
+      - name: Resolve exact release version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="$DISPATCH_VERSION"
+          else
+            VERSION="$RELEASE_REF"
+          fi
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a semantic release tag such as v4.0.0, got: $VERSION" >&2
+            exit 1
+          fi
+
+          RESOLVED=$(gh release view "$VERSION" --repo "${{ github.repository }}" --json tagName --jq '.tagName')
+          if [ "$RESOLVED" != "$VERSION" ]; then
+            echo "Release lookup returned $RESOLVED instead of $VERSION" >&2
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CLEAN=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+  create-homebrew-tap:
+    needs: resolve_version
+    runs-on: ubuntu-latest
     
     steps:
       - name: Checkout
@@ -28,20 +67,8 @@ jobs:
       - name: Get version and download info
         id: release_info
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.workflow_run.head_branch }}"
-          fi
-
-          # workflow_run doesn't expose the tag directly; resolve it from the head branch
-          # (the Release workflow only runs on `v[0-9]*` tag pushes or manual dispatch).
-          if [[ "$VERSION" != v[0-9]* ]]; then
-            VERSION=$(gh release view --json tagName --jq .tagName --repo "${{ github.repository }}")
-          fi
-
-          # Remove 'v' prefix if present
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
           
@@ -49,8 +76,6 @@ jobs:
           wget -O DhrLang.jar "https://github.com/${{ github.repository }}/releases/download/$VERSION/DhrLang.jar"
           SHA256=$(sha256sum DhrLang.jar | cut -d' ' -f1)
           echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Create Homebrew formula
         run: |
@@ -139,8 +164,8 @@ jobs:
           path: homebrew-tap/
 
   create-chocolatey-package:
+    needs: resolve_version
     runs-on: windows-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     
     steps:
       - name: Checkout
@@ -149,15 +174,9 @@ jobs:
       - name: Get version
         id: version
         shell: powershell
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $version = "${{ github.event.inputs.version }}"
-          } else {
-            $version = gh release view --json tagName --jq ".tagName" --repo "${{ github.repository }}"
-          }
-          $versionClean = $version -replace '^v', ''
+          $version = "${{ needs.resolve_version.outputs.VERSION }}"
+          $versionClean = "${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "VERSION_CLEAN=$versionClean" >> $env:GITHUB_OUTPUT
           
@@ -244,8 +263,8 @@ jobs:
           path: chocolatey-package/
 
   create-docker-images:
+    needs: resolve_version
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     
     steps:
       - name: Checkout
@@ -253,26 +272,23 @@ jobs:
         
       - name: Get version
         id: version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION=$(gh release view --json tagName --jq '.tagName' --repo "${{ github.repository }}")
-          fi
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
 
       - name: Check Docker Hub credentials
         id: dockerhub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.DOCKER_USERNAME }}" ] && [ -n "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
           else
-            echo "available=false" >> $GITHUB_OUTPUT
-            echo "::warning::DOCKER_USERNAME/DOCKER_PASSWORD secrets are not set — building the image locally only, skipping push to Docker Hub."
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Building locally only. Docker pushes require an automatic release run and configured Docker Hub credentials."
           fi
           
       - name: Download DhrLang JAR
@@ -284,7 +300,7 @@ jobs:
         
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
-        if: steps.dockerhub.outputs.available == 'true'
+        if: steps.dockerhub.outputs.push == 'true'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -292,7 +308,7 @@ jobs:
       - name: Create Dockerfile
         run: |
           cat > Dockerfile << 'EOF'
-          FROM openjdk:17-jre-slim
+          FROM eclipse-temurin:17-jre-jammy
 
           LABEL maintainer="Dhruv Patel <dhruv@example.com>"
           LABEL description="DhrLang - Programming language with Hindi keywords"
@@ -317,12 +333,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ steps.dockerhub.outputs.available == 'true' }}
-          load: ${{ steps.dockerhub.outputs.available != 'true' }}
+          push: ${{ steps.dockerhub.outputs.push == 'true' }}
+          load: ${{ steps.dockerhub.outputs.push != 'true' }}
           tags: |
             dhrlang/dhrlang:latest
             dhrlang/dhrlang:${{ steps.version.outputs.VERSION_CLEAN }}
-          platforms: ${{ steps.dockerhub.outputs.available == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          platforms: ${{ steps.dockerhub.outputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           
       - name: Create Docker usage instructions
         run: |
@@ -394,8 +410,8 @@ jobs:
           path: docker-package/
 
   create-snap-package:
+    needs: resolve_version
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     
     steps:
       - name: Checkout
@@ -403,15 +419,9 @@ jobs:
         
       - name: Get version
         id: version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION=$(gh release view --json tagName --jq '.tagName' --repo "${{ github.repository }}")
-          fi
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
           
@@ -512,21 +522,15 @@ jobs:
           path: snap-package/
 
   summary:
-    needs: [create-homebrew-tap, create-chocolatey-package, create-docker-images, create-snap-package]
+    needs: [resolve_version, create-homebrew-tap, create-chocolatey-package, create-docker-images, create-snap-package]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.resolve_version.result == 'success'
     
     steps:
       - name: Get version
         id: version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION=$(gh release view --json tagName --jq '.tagName' --repo "${{ github.repository }}")
-          fi
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
       - name: Distribution Summary
