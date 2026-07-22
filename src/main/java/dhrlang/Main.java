@@ -25,7 +25,15 @@ public class Main {
         if (options.showHelp) { printHelp(); return; }
         if (options.showVersion) { printVersion(); return; }
         if (options.lspMode) {
-            try { dhrlang.lsp.DhrLangLspServer.startLsp(); } catch (Exception e) { System.exit(1); }
+            try {
+                dhrlang.lsp.DhrLangLspServer.startLsp();
+            } catch (Exception e) {
+                // Never fail silently here: stdout is the JSON-RPC channel to the client,
+                // so any diagnostic MUST go to stderr, never stdout.
+                System.err.println("[DhrLang LSP] Fatal error starting Language Server:");
+                e.printStackTrace();
+                System.exit(1);
+            }
             return;
         }
 
@@ -260,6 +268,14 @@ public class Main {
                     opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
+                case "--stdio":
+                    // No-op: DhrLang's --lsp mode always communicates over
+                    // stdio already. Some LSP client libraries append
+                    // --stdio unconditionally when configured for stdio
+                    // transport, so accept and ignore it defensively rather
+                    // than failing with "Unknown option" and killing the
+                    // server before it can start.
+                    break;
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {

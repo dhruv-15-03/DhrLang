@@ -54,6 +54,8 @@ replay_pid*
 vscode-extension/node_modules/
 vscode-extension/out/
 vscode-extension/*.vsix
+vscode-extension/.vscode-test/
+vscode-extension/src/test/fixtures/workspace/*.jar
 *.ipr
 out/
 .vscode/
