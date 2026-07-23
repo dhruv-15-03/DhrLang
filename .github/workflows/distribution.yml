@@ -1,8 +1,12 @@
 name: Create Distribution Packages
 
+# Releases created with the default GITHUB_TOKEN do not emit a second workflow run.
+# Follow successful tag-triggered Release runs instead. A manually dispatched Release
+# can be packaged by manually dispatching this workflow with the exact release tag.
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -10,8 +14,50 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
+  resolve_version:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
+      VERSION_CLEAN: ${{ steps.version.outputs.VERSION_CLEAN }}
+
+    steps:
+      - name: Resolve exact release version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_REF: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="$DISPATCH_VERSION"
+          else
+            VERSION="$RELEASE_REF"
+          fi
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a semantic release tag such as v4.0.0, got: $VERSION" >&2
+            exit 1
+          fi
+
+          RESOLVED=$(gh release view "$VERSION" --repo "${{ github.repository }}" --json tagName --jq '.tagName')
+          if [ "$RESOLVED" != "$VERSION" ]; then
+            echo "Release lookup returned $RESOLVED instead of $VERSION" >&2
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CLEAN=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
   create-homebrew-tap:
+    needs: resolve_version
     runs-on: ubuntu-latest
     
     steps:
@@ -21,14 +67,8 @@ jobs:
       - name: Get version and download info
         id: release_info
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
-          
-          # Remove 'v' prefix if present
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
           
@@ -124,6 +164,7 @@ jobs:
           path: homebrew-tap/
 
   create-chocolatey-package:
+    needs: resolve_version
     runs-on: windows-latest
     
     steps:
@@ -134,12 +175,8 @@ jobs:
         id: version
         shell: powershell
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $version = "${{ github.event.inputs.version }}"
-          } else {
-            $version = "${{ github.event.release.tag_name }}"
-          }
-          $versionClean = $version -replace '^v', ''
+          $version = "${{ needs.resolve_version.outputs.VERSION }}"
+          $versionClean = "${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "VERSION_CLEAN=$versionClean" >> $env:GITHUB_OUTPUT
           
@@ -190,34 +227,34 @@ jobs:
           # Create tools directory and install script
           mkdir "chocolatey-package\tools"
           
-          @"
-          `$ErrorActionPreference = 'Stop'
-          `$toolsDir = "`$(Split-Path -parent `$MyInvocation.MyCommand.Definition)"
-          `$url64 = 'https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar'
+          @'
+          $ErrorActionPreference = 'Stop'
+          $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
+          $url64 = 'https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar'
 
-          `$packageArgs = @{
-            packageName   = `$env:ChocolateyPackageName
-            unzipLocation = `$toolsDir
-            url64bit      = `$url64
+          $packageArgs = @{
+            packageName   = $env:ChocolateyPackageName
+            unzipLocation = $toolsDir
+            url64bit      = $url64
             softwareName  = 'DhrLang*'
             checksum64    = '${{ steps.checksum.outputs.CHECKSUM }}'
             checksumType64= 'sha256'
-            fileFullPath  = "`$toolsDir\DhrLang.jar"
+            fileFullPath  = "$toolsDir\DhrLang.jar"
           }
 
           Get-ChocolateyWebFile @packageArgs
 
           # Create dhrlang.bat wrapper
-          `$batchFile = @"
+          $batchFile = @"
           @echo off
-          java -jar "`$toolsDir\DhrLang.jar" %*
+          java -jar "$toolsDir\DhrLang.jar" %*
           "@
 
-          `$batchFile | Out-File -FilePath "`$toolsDir\dhrlang.bat" -Encoding ASCII
+          $batchFile | Out-File -FilePath "$toolsDir\dhrlang.bat" -Encoding ASCII
 
           # Add to PATH
-          Install-ChocolateyPath "`$toolsDir" 'Machine'
-          "@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
+          Install-ChocolateyPath "$toolsDir" 'Machine'
+          '@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
           
       - name: Upload Chocolatey package
         uses: actions/upload-artifact@v4
@@ -226,6 +263,7 @@ jobs:
           path: chocolatey-package/
 
   create-docker-images:
+    needs: resolve_version
     runs-on: ubuntu-latest
     
     steps:
@@ -235,14 +273,23 @@ jobs:
       - name: Get version
         id: version
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
+
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Building locally only. Docker pushes require an automatic release run and configured Docker Hub credentials."
+          fi
           
       - name: Download DhrLang JAR
         run: |
@@ -253,15 +300,15 @@ jobs:
         
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
+        if: steps.dockerhub.outputs.push == 'true'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-        if: github.event_name != 'workflow_dispatch'
         
       - name: Create Dockerfile
         run: |
           cat > Dockerfile << 'EOF'
-          FROM openjdk:17-jre-slim
+          FROM eclipse-temurin:17-jre-jammy
 
           LABEL maintainer="Dhruv Patel <dhruv@example.com>"
           LABEL description="DhrLang - Programming language with Hindi keywords"
@@ -286,11 +333,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name != 'workflow_dispatch' }}
+          push: ${{ steps.dockerhub.outputs.push == 'true' }}
+          load: ${{ steps.dockerhub.outputs.push != 'true' }}
           tags: |
             dhrlang/dhrlang:latest
             dhrlang/dhrlang:${{ steps.version.outputs.VERSION_CLEAN }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.dockerhub.outputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           
       - name: Create Docker usage instructions
         run: |
@@ -362,6 +410,7 @@ jobs:
           path: docker-package/
 
   create-snap-package:
+    needs: resolve_version
     runs-on: ubuntu-latest
     
     steps:
@@ -371,12 +420,8 @@ jobs:
       - name: Get version
         id: version
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
-          VERSION_CLEAN=${VERSION#v}
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
+          VERSION_CLEAN="${{ needs.resolve_version.outputs.VERSION_CLEAN }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_OUTPUT
           
@@ -477,19 +522,15 @@ jobs:
           path: snap-package/
 
   summary:
-    needs: [create-homebrew-tap, create-chocolatey-package, create-docker-images, create-snap-package]
+    needs: [resolve_version, create-homebrew-tap, create-chocolatey-package, create-docker-images, create-snap-package]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.resolve_version.result == 'success'
     
     steps:
       - name: Get version
         id: version
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
+          VERSION="${{ needs.resolve_version.outputs.VERSION }}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
       - name: Distribution Summary
