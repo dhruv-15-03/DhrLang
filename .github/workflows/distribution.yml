@@ -227,34 +227,34 @@ jobs:
           # Create tools directory and install script
           mkdir "chocolatey-package\tools"
           
-          @"
-          `$ErrorActionPreference = 'Stop'
-          `$toolsDir = "`$(Split-Path -parent `$MyInvocation.MyCommand.Definition)"
-          `$url64 = 'https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar'
+          @'
+          $ErrorActionPreference = 'Stop'
+          $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
+          $url64 = 'https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar'
 
-          `$packageArgs = @{
-            packageName   = `$env:ChocolateyPackageName
-            unzipLocation = `$toolsDir
-            url64bit      = `$url64
+          $packageArgs = @{
+            packageName   = $env:ChocolateyPackageName
+            unzipLocation = $toolsDir
+            url64bit      = $url64
             softwareName  = 'DhrLang*'
             checksum64    = '${{ steps.checksum.outputs.CHECKSUM }}'
             checksumType64= 'sha256'
-            fileFullPath  = "`$toolsDir\DhrLang.jar"
+            fileFullPath  = "$toolsDir\DhrLang.jar"
           }
 
           Get-ChocolateyWebFile @packageArgs
 
           # Create dhrlang.bat wrapper
-          `$batchFile = @"
+          $batchFile = @"
           @echo off
-          java -jar "`$toolsDir\DhrLang.jar" %*
+          java -jar "$toolsDir\DhrLang.jar" %*
           "@
 
-          `$batchFile | Out-File -FilePath "`$toolsDir\dhrlang.bat" -Encoding ASCII
+          $batchFile | Out-File -FilePath "$toolsDir\dhrlang.bat" -Encoding ASCII
 
           # Add to PATH
-          Install-ChocolateyPath "`$toolsDir" 'Machine'
-          "@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
+          Install-ChocolateyPath "$toolsDir" 'Machine'
+          '@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
           
       - name: Upload Chocolatey package
         uses: actions/upload-artifact@v4
