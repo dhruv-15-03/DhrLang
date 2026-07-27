@@ -1,0 +1,6 @@
+class Foo {
+  kaam methodA() {
+    num myLocalCounter123 = 1;
+
+  }
+}

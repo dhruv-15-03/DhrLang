@@ -1,0 +1,206 @@
+name: Smart Contract Security Audit
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'input/contracts/**'
+      - 'src/main/java/dhrlang/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'input/contracts/**'
+      - 'src/main/java/dhrlang/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload to GitHub Security tab
+
+jobs:
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Build compiler
+        run: |
+          chmod +x gradlew
+          ./gradlew shadowJar -x test
+
+      - name: Find contract files
+        id: contracts
+        run: |
+          FILES=$(find input/contracts -name "*.dhr" 2>/dev/null | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "Found contracts: $FILES"
+
+      - name: Run security audit (text report)
+        if: steps.contracts.outputs.files != ''
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          echo "═══════════════════════════════════════════════════"
+          echo "  DhrLang Smart Contract Security Audit"
+          echo "═══════════════════════════════════════════════════"
+          for f in ${{ steps.contracts.outputs.files }}; do
+            echo ""
+            echo "── Auditing: $f ──"
+            java -jar "$JAR" --audit "$f" || true
+          done
+
+      - name: Generate SARIF reports
+        if: steps.contracts.outputs.files != ''
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          mkdir -p build/sarif
+          for f in ${{ steps.contracts.outputs.files }}; do
+            NAME=$(basename "$f" .dhr)
+            # --audit is an analysis mode and exits 0 even when it reports findings.
+            java -jar "$JAR" --audit --sarif --output=build/sarif "$f" >/dev/null || true
+            # The CLI writes audit-report.sarif into --output; rename per-contract.
+            if [ -f build/sarif/audit-report.sarif ]; then
+              mv build/sarif/audit-report.sarif "build/sarif/${NAME}.sarif"
+            fi
+          done
+
+      - name: Summarize findings
+        if: steps.contracts.outputs.files != ''
+        run: |
+          {
+            echo "## 🛡️ Smart Contract Security Audit"
+            echo ""
+            echo "| Contract | Findings |"
+            echo "| --- | ---: |"
+            TOTAL=0
+            for s in build/sarif/*.sarif; do
+              [ -f "$s" ] || continue
+              NAME=$(basename "$s" .sarif)
+              COUNT=$(grep -c '"ruleId"' "$s" || true)
+              TOTAL=$((TOTAL + COUNT))
+              echo "| \`$NAME\` | $COUNT |"
+            done
+            echo "| **Total** | **$TOTAL** |"
+            echo ""
+            echo "Results upload to **Security → Code scanning** (category \`dhrlang-security-audit\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Combine per-contract SARIF into a single run
+        if: steps.contracts.outputs.files != ''
+        run: |
+          # GitHub Code Scanning rejects multiple SARIF runs uploaded under the same
+          # category (one run per category). We audit several contracts, so merge the
+          # per-contract reports into ONE run whose results span all the files.
+          mkdir -p build/sarif-upload
+          jq -s '{
+            "$schema": (.[0]["$schema"]),
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {"driver": {
+                "name": .[0].runs[0].tool.driver.name,
+                "version": .[0].runs[0].tool.driver.version,
+                "informationUri": .[0].runs[0].tool.driver.informationUri,
+                "rules": ([.[].runs[0].tool.driver.rules[]] | unique_by(.id))
+              }},
+              "results": [.[].runs[0].results[]],
+              "invocations": [{"executionSuccessful": true}]
+            }]
+          }' build/sarif/*.sarif > build/sarif-upload/combined.sarif
+          echo "Combined $(ls build/sarif/*.sarif | wc -l) report(s) into build/sarif-upload/combined.sarif"
+
+      - name: Upload SARIF to GitHub Security
+        if: steps.contracts.outputs.files != '' && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: build/sarif-upload/combined.sarif
+          category: dhrlang-security-audit
+        # NOT continue-on-error: an invalid/rejected SARIF is a real bug we want to
+        # surface loudly (it previously failed silently as JOB_STATUS_CONFIGURATION_ERROR).
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit-reports
+          path: build/sarif/
+          retention-days: 30
+
+  compile-evm:
+    name: EVM Compilation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+
+      - name: Build compiler
+        run: |
+          chmod +x gradlew
+          ./gradlew shadowJar -x test
+
+      - name: Compile contracts to EVM bytecode
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          mkdir -p build/evm
+          for f in input/contracts/*.dhr; do
+            echo "Compiling: $f"
+            java -jar "$JAR" --compile-evm --output=build/evm "$f" || true
+          done
+          echo ""
+          echo "═══ Compiled Artifacts ═══"
+          ls -la build/evm/ 2>/dev/null || echo "No artifacts generated"
+
+      - name: Dry-run deploy smoke test (broadcast artifact)
+        run: |
+          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          OUT=build/deploy-smoke
+          java -jar "$JAR" contract deploy --network=local --dry-run \
+            --output="$OUT" input/contracts/ERC20Token.dhr
+          BC="$OUT/broadcast/Deploy.s.sol/31337/dry-run/run-latest.json"
+          echo ""
+          echo "═══ Broadcast Artifact ═══"
+          if [ ! -f "$BC" ]; then
+            echo "::error::Broadcast artifact not written to $BC"
+            exit 1
+          fi
+          cat "$BC"
+          # Foundry-shaped CREATE record + deterministic predicted address (Anvil acct0, nonce 0).
+          grep -q '"transactionType": "CREATE"' "$BC" || { echo "::error::no CREATE tx"; exit 1; }
+          grep -q '0x5fbdb2315678afecb367f032d93f642f64180aa3' "$BC" || { echo "::error::predicted CREATE address missing"; exit 1; }
+          echo "Broadcast artifact OK: predicted address verified."
+
+      - name: Upload EVM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evm-bytecode
+          path: build/evm/
+          retention-days: 30

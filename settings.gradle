@@ -1,1 +1,8 @@
+plugins {
+    // Lets Gradle auto-provision the Java 17 toolchain (declared in build.gradle)
+    // when a matching JDK isn't already installed, so contributors don't need a
+    // specific JDK on PATH to build.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = 'DhrLang'

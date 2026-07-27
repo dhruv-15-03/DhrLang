@@ -6,17 +6,18 @@
 
 # DhrLang Language Specification
 
-Version: 1.0.0
+Version: 4.0.0 (Smart contracts, EVM backend, AI agent orchestration, data pipelines)
 Stability: Stable – subject to semantic versioning.
-Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth.
+Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth. As of v1.1.3 (Nov 2025), IR and bytecode execution backends are available via `--backend=ir|bytecode` flags. As of v1.2.0 (Jan 2026), all errors include unique DHR-EXXX codes with actionable hints.
 
 ## 0. Overview (Informative)
 DhrLang is a statically checked, interpreted, object‑oriented language with:
 - Single inheritance (classes) & multiple interface implementation
 - Primitive + reference types, arrays, basic generics (syntactic; limited enforcement in 0.1)
-- Structured control flow, exceptions, static members, increment/decrement, basic standard library.
+- Structured control flow, exceptions (with typed catches), static members, increment/decrement, basic standard library
+- Multiple execution backends: AST (default), IR, and bytecode
 
-This spec targets the current implementation; future enhancements (bytecode VM, full generics) are noted as FUTURE.
+This spec targets the current implementation; future enhancements (full bytecode VM optimization, advanced generics) are noted as FUTURE.
 
 ## 1. Lexical Structure (Normative)
 
@@ -38,7 +39,7 @@ Case sensitive. Leading uppercase is *not* required but influences heuristics (e
 ```
 num duo ek sab kya kaam
 class interface extends implements
-if else while for break continue return
+if else while for do switch case default break continue return as
 new this super
 try catch finally throw
 private protected public static abstract final
@@ -99,6 +100,9 @@ statement      ::= block
 								 | ifStmt
 								 | whileStmt
 								 | forStmt
+								 | doWhileStmt
+								 | switchStmt
+								 | labeledStmt
 								 | breakStmt
 								 | continueStmt
 								 | returnStmt
@@ -110,8 +114,14 @@ varDecl        ::= type IDENT ('=' expression)? ';' ;
 ifStmt         ::= 'if' '(' expression ')' statement ('else' statement)? ;
 whileStmt      ::= 'while' '(' expression ')' statement ;
 forStmt        ::= 'for' '(' (varDecl | expressionStmt | ';') expression? ';' expression? ')' statement ;
-breakStmt      ::= 'break' ';' ;
-continueStmt   ::= 'continue' ';' ;
+forEachStmt    ::= 'for' '(' type IDENT ':' expression ')' statement ;
+doWhileStmt    ::= 'do' statement 'while' '(' expression ')' ';' ;
+switchStmt     ::= 'switch' '(' expression ')' '{' caseClause* defaultClause? '}' ;
+caseClause     ::= 'case' expression ':' statement* ;
+defaultClause  ::= 'default' ':' statement* ;
+labeledStmt    ::= IDENT ':' (whileStmt | forStmt | doWhileStmt) ;
+breakStmt      ::= 'break' IDENT? ';' ;
+continueStmt   ::= 'continue' IDENT? ';' ;
 returnStmt     ::= 'return' expression? ';' ;
 tryStmt        ::= 'try' block catchClause* finallyClause? ;
 catchClause    ::= 'catch' '(' catchParam ')' block ;
@@ -121,11 +131,16 @@ throwStmt      ::= 'throw' expression ';' ;
 expressionStmt ::= expression ';' ;
 
 expression     ::= assignment ;
-assignment     ::= logicalOr ( '=' assignment )? ;
+assignment     ::= ternary ( '=' assignment )? ;
+ternary        ::= logicalOr ( '?' expression ':' ternary )? ;
 logicalOr      ::= logicalAnd ( '||' logicalAnd )* ;
-logicalAnd     ::= equality ( '&&' equality )* ;
+logicalAnd     ::= bitwiseOr ( '&&' bitwiseOr )* ;
+bitwiseOr      ::= bitwiseXor ( '|' bitwiseXor )* ;
+bitwiseXor     ::= bitwiseAnd ( '^' bitwiseAnd )* ;
+bitwiseAnd     ::= equality ( '&' equality )* ;
 equality       ::= comparison ( ('==' | '!=') comparison )* ;
-comparison     ::= term ( ('<' | '<=' | '>' | '>=') term )* ;
+comparison     ::= shift ( ('<' | '<=' | '>' | '>=') shift )* ('as' type)? ;
+shift          ::= term ( ('<<' | '>>') term )* ;
 term           ::= factor ( ('+' | '-') factor )* ;
 factor         ::= unary ( ('*' | '/' | '%') unary )* ;
 unary          ::= ( '!' | '-' | '++' | '--' ) unary | postfix ;
@@ -191,7 +206,24 @@ Classes, interfaces, arrays, and parameterized forms (syntactic generics). All n
 
 ### 4.3 Arrays
 Type `T[]` where `T` is any type (primitive or reference). Arrays are covariant at runtime (Java array semantics). (FUTURE: specify invariance for safety.)
-Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported: parser, typechecker, and evaluator allow creation, assignment, and access for arrays of any dimension. Nested array allocation via `new T[m][n]` and higher is implemented; elements are initialized recursively to type default (§4.1 or null).
+
+Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported across parser, typechecker, and evaluator. Allocation and access semantics:
+- Allocation: `new T[d1][d2]...[dk]` creates a k‑dimensional array; each dimension size expression must be `num (Long)` and non‑negative. Overly large sizes are rejected.
+- Jagged arrays: Inner dimensions may be unspecified or allocated to different lengths later (e.g., `new T[2][]; arr[0] = new T[3];`).
+- Defaults: Elements are initialized to type defaults recursively: numbers→0, duo→0.0, kya→false, references→null.
+- Access: Indexing `arr[i]` is bounds-checked for each dimension; negative or `i >= length` raises an index error.
+
+Examples:
+```
+num[][] m = new num[3][4];
+m[0][1] = 5;
+num[] row = m[2];
+num x = m[2][3];
+
+num[][] jag = new num[2][];
+jag[0] = new num[1];
+jag[1] = new num[3];
+```
 
 ### 4.4 Class & Interface Types
 Single class inheritance; multiple interfaces. Abstract classes may declare abstract methods (no body). Interfaces declare signatures only.
@@ -394,12 +426,42 @@ A program conforms if:
 ## 16. Reserved for Future Features
 | Feature | Planned Section |
 |---------|-----------------|
-| Bytecode IR & VM | §17 |
+| Bytecode optimization & JIT | §17 (optimization work and potential JIT hooks) |
 | Modules / Imports | §18 |
 | Formatter / LSP | §19 |
 
-## 17. Bytecode IR (FUTURE Informative Outline)
-Planned stack machine with constant pool, instructions: LOAD, STORE, ICONST, DCONST, ADD, SUB, MUL, DIV, MOD, INVOKE, NEW, GETFIELD, PUTFIELD, GETSTATIC, PUTSTATIC, ARRAY_*, IF*, GOTO, RETURN, THROW, TRY_ENTER/EXIT metadata side table.
+## 17. IR & Bytecode Backends (Implemented as of v1.1.3)
+DhrLang includes IR and bytecode backends accessible via `--backend=ir` or `--backend=bytecode` CLI flags.
+
+### 17.1 IR (Intermediate Representation)
+The IR backend lowers AST to a structured intermediate representation with:
+- Functions containing linear instruction sequences
+- Instructions: const, load/store local, binary/unary ops, compare, jumps, labels, print, arrays, fields, calls
+- Exception handling: `IrThrow`, `IrTryPush`, `IrTryPop`, `IrCatchBind`
+- Typed exception matching for `any`, `Error`, `DhrException`, and custom exception types
+
+### 17.2 Bytecode Format
+Stack-based bytecode (DHBC v2) with:
+- Magic number, version, constant pool, function table
+- Opcodes including: LOAD, STORE, CONST, arithmetic ops, comparisons, jumps, calls, arrays, fields, exceptions
+- Exception opcodes: TRY_PUSH, TRY_POP, THROW, CATCH_BIND
+- Serialization to `.dbc` files via `--emit-bc` flag
+
+### 17.3 Bytecode VM
+Executes bytecode with:
+- Call stack with frames containing locals, operand stack, and exception handlers
+- Static field storage
+- Handler stack per frame for nested try-catch-finally
+- Typed exception matching consistent with AST interpreter
+
+### 17.4 Parity & Status
+- Full parity tests between AST/IR/bytecode for arrays, calls, fields, and exceptions
+- AST remains the default CLI backend for compatibility, but IR and bytecode are intended to be semantically equivalent for the implemented feature set.
+
+Security/robustness notes (informative):
+- The bytecode VM validates input bytecode (bounds, indices, and structural constraints) before execution.
+- For untrusted code, run with JVM property `dhrlang.bytecode.untrusted=true` to enable conservative defaults and tighter limits.
+- A shared instruction step limit exists via `dhrlang.backend.maxSteps`.
 
 ## 18. Change Log Policy (Normative)
 Each release MUST update `CHANGELOG.md` with Added / Changed / Fixed / Deprecated / Removed / Security headings. Semantic Versioning adopted at 1.0.

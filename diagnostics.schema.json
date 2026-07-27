@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dhruv-15-03/DhrLang/diagnostics.schema.json",
+  "title": "DhrLang Diagnostics",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lexMs": { "type": "integer", "minimum": 0 },
+        "parseMs": { "type": "integer", "minimum": 0 },
+        "typeMs": { "type": "integer", "minimum": 0 },
+        "execMs": { "type": "integer", "minimum": 0 },
+        "totalMs": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["lexMs", "parseMs", "typeMs", "execMs", "totalMs"]
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    }
+  },
+  "required": ["errors", "warnings"],
+  "definitions": {
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 },
+        "type": { "type": "string", "enum": ["ERROR", "WARNING"] },
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "hint": { "type": "string" },
+        "sourceLine": { "type": "string" }
+      },
+      "required": ["type", "message"]
+    }
+  }
+}

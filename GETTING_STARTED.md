@@ -1,51 +1,72 @@
 # Getting Started with DhrLang
 
-DhrLang is a modern programming language with Hindi keywords, designed to make programming more accessible to Hindi speakers while maintaining powerful features like generics, access control, and comprehensive error handling.
+DhrLang currently ships with an **English-core token set** (`class`, `static`, `kaam`, `num`, `sab`, `duo`, `kya`, `ek`, `any`, etc.). Earlier experimental drafts referenced direct Hindi keywords (e.g. `à¤®à¥à¤–à¥à¤¯`, `à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ`, `à¤…à¤—à¤°`) but those are **not accepted by the present compiler**. Future bilingual support may reâ€‘introduce them behind a compatibility flag. This guide reflects the syntax that actually parses today.
 
 ## Quick Start
 
-### Option 1: Download Release (Recommended)
-1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases)
-2. Download the latest `DhrLang-x.x.x-distribution.zip`
-3. Extract and run: `java -jar lib/DhrLang-1.0.0.jar examples/sample.dhr`
+### Option 1: VS Code Extension (Easiest)
+1. Download `dhrlang-vscode-3.0.0.vsix` from [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. In VS Code, run command **"Extensions: Install from VSIX..."** and select the file.
+3. Ensure **Java 17+** is installed.
+4. Open a `.dhr` file and click "Run" or press `Ctrl+F5`.
+   - The extension includes the compiler, so no extra setup is needed!
 
-### Option 2: Build from Source
+### Option 2: Download Release (CLI)
+1. Go to [Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest)
+2. Download `DhrLang-3.0.0.jar` (fat JAR with all dependencies)
+3. Run: `java -jar DhrLang-3.0.0.jar input/sample.dhr`
+
+**Requirements**: Java 17 or higher
+
+### Option 3: Build from Source
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
-./gradlew build
-java -jar build/libs/DhrLang-1.0.0.jar input/sample.dhr
+./gradlew shadowJar
+java -jar build/libs/DhrLang-3.0.0-all.jar input/sample.dhr
+```
+
+### CLI Options
+```bash
+--help           Show usage and options
+--version        Print version (e.g., "DhrLang version 3.0.0")
+--json           Output diagnostics as JSON (machine-readable)
+--time           Show phase timings (lex/parse/type/exec)
+--no-color       Disable ANSI colors in diagnostics
+--backend=ast|ir|bytecode  (select execution backend)
 ```
 
 ## Your First DhrLang Program
 
 Create a file `hello.dhr`:
 ```dhrlang
-// नमस्ते दुनिया!
-class HelloWorld {
+// Hello World
+class Main {
     static kaam main() {
-        printLine("नमस्ते, DhrLang!");
-        
-        // Variables with DhrLang keywords
+        printLine("Hello, DhrLang!");
         num age = 25;
-        sab name = "राहुल";
-        
-        printLine("नाम: " + name);
-        printLine("उम्र: " + age);
-        
-        return;
+        sab name = "Rahul";
+        printLine("Name: " + name);
+        printLine("Age: " + age);
     }
 }
 ```
 
 Run it:
 ```bash
-java -jar DhrLang-1.0.0.jar hello.dhr
+java -jar DhrLang-3.0.0.jar hello.dhr
+```
+
+Output:
+```
+Hello, DhrLang!
+Name: Rahul
+Age: 25
 ```
 
 ## Language Features
 
-### 🌍 **DhrLang Keywords & Type System**
+### ðŸŒ **DhrLang Keywords & Type System**
 ```dhrlang
 // DhrLang syntax with special keywords
 class Person {
@@ -62,7 +83,7 @@ class Student {
 }
 ```
 
-### 🔧 **Object-Oriented Features**
+### ðŸ”§ **Object-Oriented Features**
 ```dhrlang
 class Container {
     private sab value;
@@ -83,7 +104,7 @@ class NumberContainer {
 }
 ```
 
-### 🛡️ **Access Control**
+### ðŸ›¡ï¸ **Access Control**
 ```dhrlang
 class BankAccount {
     private duo balance = 0.0;        // Private - only class access
@@ -96,19 +117,37 @@ class BankAccount {
 }
 ```
 
-### 🎯 **Exception Handling**
+### ðŸŽ¯ **Exception Handling**
 ```dhrlang
-try {
-    num result = 10 / 0;
-    printLine("Result: " + result);
-} catch (RuntimeException e) {
-    printLine("Error caught: Division by zero");
-} finally {
-    printLine("Cleanup complete");
+class ErrorDemo {
+    static kaam main() {
+        try {
+            throw "Something went wrong";
+        } catch(err) {
+            printLine("Caught: " + err);
+        } finally {
+            printLine("Cleanup");
+        }
+    }
 }
 ```
 
-### 🔄 **Control Flow**
+Typed catches:
+```dhrlang
+class TypedCatchDemo {
+    static kaam main() {
+        try {
+            num x = 10 / 0;  // Will throw division by zero
+        } catch(Error e) {
+            printLine("Error caught: " + e);
+        } catch(any e) {
+            printLine("Fallback: " + e);
+        }
+    }
+}
+```
+
+### ðŸ”„ **Control Flow**
 ```dhrlang
 // Loops and conditionals
 for (num i = 0; i < 5; i++) {
@@ -121,6 +160,7 @@ while (counter < 3) {
     counter++;
 }
 
+num age = 20;
 if (age >= 18) {
     printLine("Adult");
 } else {
@@ -130,8 +170,8 @@ if (age >= 18) {
 
 ## IDE Setup
 
-### VS Code (Recommended) ✅
-1. Install the DhrLang extension: `code --install-extension dhrlang-vscode-1.0.0.vsix`
+### VS Code (Recommended) âœ…
+1. Install the DhrLang extension: `code --install-extension dhrlang-vscode-3.0.0.vsix`
 2. Open any `.dhr` file to get:
    - Syntax highlighting for DhrLang keywords
    - IntelliSense auto-completion
@@ -139,13 +179,13 @@ if (age >= 18) {
    - Code snippets for common patterns
 
 ### IntelliJ IDEA
-1. Configure file association: `.dhr` → Text files
+1. Configure file association: `.dhr` â†’ Text files
 2. Use Java syntax highlighting as fallback
 3. Set external tool: `java -jar path/to/DhrLang.jar $FilePath$`
 
 ## Examples Gallery
 
-Explore `input/` directory for comprehensive examples:
+Explore `input/` directory for basic examples:
 - **Basic Syntax**: `test_basic_syntax.dhr`
 - **OOP Features**: `test_oop_features.dhr` 
 - **Arrays & Collections**: `test_arrays.dhr`
@@ -155,10 +195,10 @@ Explore `input/` directory for comprehensive examples:
 
 ## Community & Support
 
-- 📖 **Documentation**: [Language Specification](SPEC.md)
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/dhruv-15-03/DhrLang/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
-- 📧 **Contact**: dhruv.rastogi@example.com
+- ðŸ“– **Documentation**: [Language Specification](SPEC.md)
+- ðŸ› **Bug Reports**: [GitHub Issues](https://github.com/dhruv-15-03/DhrLang/issues)
+- ðŸ’¬ **Discussions**: [GitHub Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
+- ðŸ“§ **Contact**: dhruv.rastogi@example.com
 
 ## Contributing
 

@@ -5,6 +5,7 @@ import java.util.Objects;
 public class WhileStmt extends Statement {
     private final Expression condition;
     private final Statement body;
+    private String label; // nullable — for labeled loops
 
     public WhileStmt(Expression condition, Statement body) {
         this.condition = condition;
@@ -18,6 +19,9 @@ public class WhileStmt extends Statement {
     public Statement getBody() {
         return body;
     }
+
+    public String getLabel() { return label; }
+    public void setLabel(String label) { this.label = label; }
 
     @Override
     public String toString() {

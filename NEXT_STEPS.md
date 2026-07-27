@@ -1,213 +1,91 @@
-# 🚀 DhrLang Next Steps - Making It Official
+# DhrLang Next Steps
 
-## ✅ What We've Accomplished
+DhrLang is shipping. This document reflects the **current state (v3.0.0)** and the
+realistic roadmap from here. For the detailed, iteration-by-iteration smart-contract /
+agent / pipeline plan see `FUTURE_ENHANCEMENTS.md`.
 
-1. **📚 Complete User Documentation**
-   - `TUTORIALS.md` - 12 comprehensive tutorials from beginner to advanced
-   - `EXAMPLES.md` - Real-world examples with banking, student management systems
-   - `GETTING_STARTED.md` - Quick start guide for new users
-   - `INSTALL.md` - Detailed installation instructions
+## Where we are today (v3.0.0)
 
-2. **🎯 VS Code Extension**
-   - Full syntax highlighting for `.dhr` files
-   - Code completion with Hindi keywords
-   - Run/compile commands (Ctrl+F5, Ctrl+Shift+B)
-   - Hover information and IntelliSense
-   - Code snippets for rapid development
-   - Customizable settings
+DhrLang's 3rd major release is live. The core language, three backends (AST / IR /
+bytecode), the EVM smart-contract path, tooling, and distribution are all shipped.
 
-3. **⚙️ Automated Release Pipeline**
-   - GitHub Actions for automated releases
-   - Multi-platform distribution packages
-   - Cross-platform JAR builds with checksums
-   - VS Code extension packaging and distribution
+### Shipped
 
-4. **📦 Distribution Strategy**
-   - Homebrew formula for macOS/Linux
-   - Chocolatey package for Windows
-   - Docker images for containerized usage
-   - Snap packages for Linux distributions
-   - Direct JAR downloads with GitHub Releases
+- **Language core** — `num`, `duo`, `sab`, `kya`, `ek`, `kaam`; classes, generics,
+  exceptions, labeled `break`/`continue`, `do`/`while`/`for`, `switch`/`case`/`default`.
+- **v3.0.0 features** — `as` type casts (`as num` / `as duo` / `as sab`), hex literals,
+  string interpolation (`"Hello ${name}!"`), bitwise operators (`& | ^ ~ << >>`).
+- **EVM backend (`evm/`)** — SafeMath overflow protection, access-control codegen,
+  collision-safe reentrancy lock, peephole optimizer, gas + memory tracking, ABI return
+  encoding.
+- **Debugging & tooling (`debug/`, `lsp/`)** — `inspect()`, `trace()`, gas profiling,
+  call-graph + storage-layout visualizers, and a full stdio LSP server (`--lsp`).
+- **Agent + pipeline runtimes (`agent/`, `pipeline/`)** — orchestration and data-pipeline
+  foundations are implemented in `src/` (these were earlier planned as P2/P3).
+- **Documentation** — `GETTING_STARTED.md`, `INSTALL.md`, `TUTORIALS.md`, `EXAMPLES.md`,
+  `STDLIB.md`, `SPEC.md`, plus a refreshed `README.md`.
+- **Automated releases**
+  - JVM release pipeline on `v[0-9]*` tags (cross-platform JARs + checksums, GitHub
+    Release).
+  - VS Code extension pipeline on `vscode-v*` tags: packages with `vsce` and publishes to
+    the Marketplace (publisher `EnggWithDhruv`). The extension is live at **v3.0.1**.
 
-## 🎯 Immediate Next Steps (Priority Order)
+### Recently fixed
 
-### 1. **Test & Package VS Code Extension** (Highest Impact)
+- **Numeric `as` casts** — `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
+  numeric operands, not just strings. `(7 / 2) as num` is the supported integer-division
+  idiom (truncates toward zero).
+- **Extension release pipeline** — the build no longer clobbers the committed icon, and
+  `vscode-*` tags no longer trigger the JVM CI/Release workflows.
 
-```bash
-# For Windows
-setup-vscode-extension.bat
+## Immediate next steps
 
-# For Linux/macOS
-chmod +x setup-vscode-extension.sh
-./setup-vscode-extension.sh
-```
+### 1. Language ergonomics
 
-**What this does:**
-- Installs Node.js dependencies
-- Compiles TypeScript to JavaScript
-- Creates `.vsix` package file
-- Validates extension structure
+- **First-class integer division** (`//` operator or an `idiv`-style form). Today integer
+  division is only reachable via the `(a / b) as num` workaround.
+- **Better diagnostics** — improve the misleading "Cannot return 'T' from a function
+  expecting 'kaam'" message when a return type is omitted.
+- **Optional checked arithmetic for `num`** — core `num` currently wraps silently on
+  overflow (two's-complement), which is at odds with the safety positioning the EVM side
+  already enforces via SafeMath.
 
-**Testing:**
-1. Install the extension: `code --install-extension dhrlang-vscode-*.vsix`
-2. Open `test-extension.dhr` in VS Code
-3. Test syntax highlighting, auto-completion, and run commands
+### 2. Build & contributor experience
 
-### 2. **Create First Official Release**
+- **Toolchain pinned to JDK 17** — `build.gradle` now declares a Java 17 toolchain and
+  `settings.gradle` enables the foojay resolver, so the project compiles/tests against
+  Java 17 regardless of the contributor's default JDK.
+- **Modernize the Gradle wrapper** — Gradle 8.13 cannot *run* under newer JDKs (e.g. JDK
+  25). Upgrading the wrapper (and the Shadow plugin to its Gradle-9-compatible fork) would
+  let contributors build on the latest JDKs. This is a larger, higher-risk change tracked
+  separately.
 
-```bash
-# Tag and push for automated release
-git add .
-git commit -m "feat: Complete v1.0.0 with VS Code extension and distribution"
-git tag v1.0.0
-git push origin main --tags
-```
+### 3. Distribution & reach
 
-**This triggers:**
-- Automated JAR building and testing
-- GitHub release with downloadable assets
-- Distribution package creation
-- Cross-platform compatibility verification
+- **Homebrew tap — done.** [`dhruv-15-03/homebrew-dhrlang`](https://github.com/dhruv-15-03/homebrew-dhrlang)
+  is live with a formula for the latest release (`brew tap dhruv-15-03/dhrlang && brew
+  install dhrlang`). Bump `Formula/dhrlang.rb`'s `version`/`sha256` on every release.
+- Chocolatey, Docker Hub, Snap Store — package configs exist in
+  `.github/workflows/distribution.yml` but still need real publishing credentials
+  (`DOCKER_USERNAME`/`DOCKER_PASSWORD` secrets, a Chocolatey API key, a Snap Store login)
+  before they reach their respective stores.
+- Online playground / REPL for zero-install trials.
+- A documentation website built from the existing Markdown guides.
 
-### 3. **Set Up Package Manager Distribution**
+## How to cut a release
 
-#### Homebrew Tap (macOS/Linux)
-```bash
-# Create homebrew tap repository
-gh repo create homebrew-dhrlang --public
-cd homebrew-tap/
-git init
-git add Formula/dhrlang.rb README.md
-git commit -m "Add DhrLang Homebrew formula"
-git remote add origin https://github.com/dhruv-15-03/homebrew-dhrlang.git
-git push -u origin main
-```
+- **Language / JVM:** bump `version` in `build.gradle`, update `CHANGELOG.md`, then push a
+  `vX.Y.Z` tag (matches the `v[0-9]*` trigger).
+- **VS Code extension:** bump `vscode-extension/package.json`, add a
+  `vscode-extension/CHANGELOG.md` entry, then push a `vscode-vX.Y.Z` tag. The workflow
+  packages and publishes to the Marketplace automatically (requires the `VSCE_PAT` repo
+  secret; regenerate it at dev.azure.com if a publish fails on auth).
 
-#### Docker Hub
-```bash
-# Build and push Docker image
-docker build -t dhrlang/dhrlang:1.0.0 .
-docker build -t dhrlang/dhrlang:latest .
-docker push dhrlang/dhrlang:1.0.0
-docker push dhrlang/dhrlang:latest
-```
+## Getting involved
 
-### 4. **Publish VS Code Extension**
+- **Good first issues:** documentation, example programs, additional snippets.
+- **Intermediate:** language features (integer division, diagnostics), stdlib functions.
+- **Advanced:** compiler optimizations, additional backends, IDE integrations.
 
-```bash
-# Get VS Code Marketplace token from https://dev.azure.com/
-# Then publish to marketplace
-cd vscode-extension/
-vsce publish --pat YOUR_PERSONAL_ACCESS_TOKEN
-```
-
-## 🌐 Making DhrLang Official - Complete Rollout Plan
-
-### Phase 1: Foundation (Week 1)
-- [ ] **Test VS Code extension locally**
-- [ ] **Create v1.0.0 release on GitHub**
-- [ ] **Publish VS Code extension to marketplace**
-- [ ] **Set up basic documentation website**
-
-### Phase 2: Distribution (Week 2)
-- [ ] **Create Homebrew tap repository**
-- [ ] **Publish Docker images to Docker Hub**
-- [ ] **Submit Chocolatey package**
-- [ ] **Create Snap package and submit to Snap Store**
-
-### Phase 3: Community Building (Week 3-4)
-- [ ] **Social media announcements**
-- [ ] **Submit to programming language communities**
-- [ ] **Create tutorial videos**
-- [ ] **Write blog posts about Hindi programming**
-
-### Phase 4: Ecosystem Growth (Month 2)
-- [ ] **Educational partnerships**
-- [ ] **Conference presentations**
-- [ ] **Community contributions and plugins**
-- [ ] **Corporate outreach**
-
-## 📊 Success Metrics & Tracking
-
-### Short-term Goals (1 Month)
-- **1,000+ downloads** across all platforms
-- **100+ GitHub stars**
-- **VS Code extension: 500+ installs**
-- **10+ community contributions**
-
-### Medium-term Goals (3 Months)
-- **5,000+ downloads**
-- **500+ GitHub stars**
-- **Featured in tech publications**
-- **Educational institutions adoption**
-
-### Long-term Goals (6-12 Months)
-- **20,000+ downloads**
-- **2,000+ GitHub stars**
-- **Active community of 100+ regular users**
-- **Commercial projects using DhrLang**
-
-## 🛠️ Technical Roadmap
-
-### v1.1.0 (Next Release)
-- [ ] **Enhanced error messages with suggestions**
-- [ ] **IDE language server protocol support**
-- [ ] **Improved debugging capabilities**
-- [ ] **Package management system**
-
-### v1.2.0 (Future)
-- [ ] **Standard library expansion**
-- [ ] **Performance optimizations**
-- [ ] **Web assembly compilation target**
-- [ ] **Online playground and REPL**
-
-### v2.0.0 (Vision)
-- [ ] **Self-hosting compiler (written in DhrLang)**
-- [ ] **Advanced type system features**
-- [ ] **Concurrent programming primitives**
-- [ ] **Native compilation targets**
-
-## 🎯 Call to Action
-
-**Ready to make DhrLang official? Here's your action plan:**
-
-### Today:
-1. **Run the VS Code extension setup script**
-2. **Test the extension with the sample program**
-3. **Create and push the v1.0.0 release tag**
-
-### This Week:
-1. **Publish VS Code extension to marketplace**
-2. **Set up package manager distributions**
-3. **Announce on social media and programming communities**
-
-### This Month:
-1. **Monitor adoption metrics**
-2. **Respond to community feedback**
-3. **Plan v1.1.0 features based on user needs**
-
-## 🤝 Getting Community Involved
-
-### For Contributors:
-- **Good First Issues**: Documentation improvements, example programs
-- **Intermediate**: Language features, standard library functions
-- **Advanced**: Compiler optimizations, IDE integrations
-
-### For Users:
-- **Try DhrLang**: Write your first program in Hindi
-- **Share Examples**: Submit interesting programs to our gallery
-- **Spread the Word**: Tell others about programming in Hindi
-- **Report Issues**: Help us improve the language
-
-## 📞 Support & Resources
-
-- **📖 Documentation**: All guides are in this repository
-- **🐛 Issues**: [GitHub Issues](https://github.com/dhruv-15-03/DhrLang/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
-- **📧 Contact**: Create an issue for direct communication
-
----
-
-**🇮🇳 Let's make programming accessible to every Hindi speaker! आइए हर हिंदी भाषी के लिए प्रोग्रामिंग को सुलभ बनाते हैं!**
-
-**Your next command should be:** `setup-vscode-extension.bat` (Windows) or `./setup-vscode-extension.sh` (Linux/macOS)
+Issues: https://github.com/dhruv-15-03/DhrLang/issues
+Discussions: https://github.com/dhruv-15-03/DhrLang/discussions

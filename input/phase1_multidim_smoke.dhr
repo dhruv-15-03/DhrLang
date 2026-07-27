@@ -1,0 +1,7 @@
+class Main {
+    static kaam main() {
+        num[][] grid = new num[2][3];
+        grid[1][2] = 7;
+        printLine(grid[1][2]);
+    }
+}

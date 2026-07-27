@@ -1,8 +1,0 @@
-class SimpleTest {
-    static kaam main() {
-        num x = 42;
-        sab message = "Hello DhrLang!";
-        printLine(message);
-        printLine("Value: " + toString(x));
-    }
-}

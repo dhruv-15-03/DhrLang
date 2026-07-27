@@ -1,16 +1,20 @@
 # VS Code Extension ignore file
 
-# Compiled JavaScript files
-out/
+# NOTE: Removed 'out/' ignore so compiled extension code is included in VSIX
 
 # Source maps
 *.map
 
-# Node modules
-node_modules/
+# Node modules: vsce prunes this to production ("dependencies") entries only,
+# so vscode-languageclient (a runtime dependency, required by the Language
+# Server client) ships in the VSIX while devDependencies (typescript, @types/*)
+# are excluded. Do NOT blanket-ignore node_modules/ here.
 
-# TypeScript source files (include only compiled JS)
+# Keep TypeScript sources out (only ship compiled JS)
 src/
+
+# Compiled test code / fixtures should not ship in the packaged extension
+out/test/
 
 # Development files
 .vscode/

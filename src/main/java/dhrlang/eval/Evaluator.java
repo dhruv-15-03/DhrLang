@@ -58,11 +58,16 @@ public class Evaluator implements ASTVisitor<Object> {
     @Override public Object visitWhileStmt(WhileStmt whileStmt) {
         boolean prev = interpreter.isInLoop();
         interpreter.setInLoop(true);
+        String label = whileStmt.getLabel();
         try {
             while(isTruthy(whileStmt.getCondition().accept(this))){
                 try { whileStmt.getBody().accept(this); }
-                catch (BreakException b){ break; }
+                catch (BreakException b){
+                    if (b.getLabel() == null || b.getLabel().equals(label)) break;
+                    throw b; // propagate to outer labeled loop
+                }
                 catch (ContinueException c){
+                    if (c.getLabel() != null && !c.getLabel().equals(label)) throw c;
                     Statement body = whileStmt.getBody();
                     if(body instanceof Block block && block.isDesugaredForLoopBody()){
                         var stmts = block.getStatements();
@@ -76,8 +81,8 @@ public class Evaluator implements ASTVisitor<Object> {
         } finally { interpreter.setInLoop(prev); }
         return null;
     }
-    @Override public Object visitBreakStmt(BreakStmt breakStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'break' statement not within a loop", ErrorFactory.getLocation(breakStmt)); throw new BreakException(); }
-    @Override public Object visitContinueStmt(ContinueStmt continueStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'continue' statement not within a loop", ErrorFactory.getLocation(continueStmt)); throw new ContinueException(); }
+    @Override public Object visitBreakStmt(BreakStmt breakStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'break' statement not within a loop", ErrorFactory.getLocation(breakStmt)); throw new BreakException(breakStmt.getLabel()); }
+    @Override public Object visitContinueStmt(ContinueStmt continueStmt) { if(!interpreter.isInLoop()) throw ErrorFactory.validationError("'continue' statement not within a loop", ErrorFactory.getLocation(continueStmt)); throw new ContinueException(continueStmt.getLabel()); }
     @Override public Object visitTryStmt(TryStmt tryStmt) {
     // Execute try/catch/finally. Debug printing removed after stabilization.
         boolean finallyExecuted = false;
@@ -141,6 +146,11 @@ public class Evaluator implements ASTVisitor<Object> {
 
     // === Expressions migrated ===
     @Override public Object visitLiteralExpr(LiteralExpr literalExpr) { return literalExpr.getValue(); }
+    @Override public Object visitTernaryExpr(TernaryExpr ternaryExpr) {
+        Object cond = ternaryExpr.getCondition().accept(this);
+        if (isTruthy(cond)) return ternaryExpr.getThenBranch().accept(this);
+        return ternaryExpr.getElseBranch().accept(this);
+    }
     @Override public Object visitVariableExpr(VariableExpr variableExpr) {
         String name = variableExpr.getName().getLexeme();
         try { return env.get(name); }
@@ -286,8 +296,15 @@ public class Evaluator implements ASTVisitor<Object> {
     @Override public Object visitNewArrayExpr(NewArrayExpr newArrayExpr) {
         java.util.List<Expression> dims = newArrayExpr.getSizes();
         if(dims==null || dims.isEmpty()) throw ErrorFactory.validationError("Array creation requires at least one dimension.", ErrorFactory.getLocation(newArrayExpr));
-        int[] sizes = new int[dims.size()];
-        for(int i=0;i<dims.size();i++){
+        // Determine how many leading dimensions have explicit sizes (non-null)
+        int specifiedDims = 0;
+        for (Expression dim : dims) {
+            if (dim == null) break;
+            specifiedDims++;
+        }
+        if (specifiedDims == 0) throw ErrorFactory.validationError("Array creation requires at least one dimension with a size.", ErrorFactory.getLocation(newArrayExpr));
+        int[] sizes = new int[specifiedDims];
+        for(int i=0;i<specifiedDims;i++){
             Object v = dims.get(i).accept(this);
             if(!(v instanceof Long)) throw ErrorFactory.typeError("Array size must be a number.", ErrorFactory.getLocation(newArrayExpr));
             int s = ((Long)v).intValue();
@@ -296,17 +313,22 @@ public class Evaluator implements ASTVisitor<Object> {
             sizes[i]=s;
         }
         Object def = dhrlang.runtime.RuntimeDefaults.getDefaultValue(newArrayExpr.getElementType());
-        return allocateMultiDimArray(sizes, 0, def);
+        boolean isJagged = specifiedDims < dims.size();
+        return allocateMultiDimArray(sizes, 0, def, isJagged);
     }
 
-    private Object allocateMultiDimArray(int[] sizes, int dim, Object def){
+    private Object allocateMultiDimArray(int[] sizes, int dim, Object def, boolean isJagged){
         int n = sizes[dim];
         Object[] arr = new Object[n];
         if(dim == sizes.length-1){
+            if (isJagged) {
+                // Jagged: leave sub-arrays as null (to be assigned later)
+                return arr;
+            }
             java.util.Arrays.fill(arr, def);
             return arr;
         }
-        for(int i=0;i<n;i++) arr[i] = allocateMultiDimArray(sizes, dim+1, def);
+        for(int i=0;i<n;i++) arr[i] = allocateMultiDimArray(sizes, dim+1, def, isJagged);
         return arr;
     }
     @Override public Object visitIndexExpr(IndexExpr indexExpr) {
@@ -356,6 +378,10 @@ public class Evaluator implements ASTVisitor<Object> {
                 throw ErrorFactory.typeError("Operand for '-' must be a number, got: "+(right==null?"null": right.getClass().getSimpleName()), operator);
             }
             case NOT -> !isTruthy(right);
+            case BIT_NOT -> {
+                if(right instanceof Long) yield ~((Long)right);
+                throw ErrorFactory.typeError("Operand for '~' must be an integer.", operator);
+            }
             default -> throw ErrorFactory.systemError("Unsupported unary operator: "+operator.getType(), operator);
         };
     }
@@ -399,6 +425,21 @@ public class Evaluator implements ASTVisitor<Object> {
                 validateNumberOperands(operator,left,right);
                 if(left instanceof Long && right instanceof Long) return (Long)left <= (Long)right;
                 return toDouble(left) <= toDouble(right);
+            case BIT_AND:
+                if(left instanceof Long && right instanceof Long) return (Long)left & (Long)right;
+                throw ErrorFactory.typeError("Bitwise '&' requires integer operands.", operator);
+            case BIT_OR:
+                if(left instanceof Long && right instanceof Long) return (Long)left | (Long)right;
+                throw ErrorFactory.typeError("Bitwise '|' requires integer operands.", operator);
+            case BIT_XOR:
+                if(left instanceof Long && right instanceof Long) return (Long)left ^ (Long)right;
+                throw ErrorFactory.typeError("Bitwise '^' requires integer operands.", operator);
+            case LSHIFT:
+                if(left instanceof Long && right instanceof Long) return (Long)left << (Long)right;
+                throw ErrorFactory.typeError("Shift '<<' requires integer operands.", operator);
+            case RSHIFT:
+                if(left instanceof Long && right instanceof Long) return (Long)left >> (Long)right;
+                throw ErrorFactory.typeError("Shift '>>' requires integer operands.", operator);
             default: throw ErrorFactory.systemError("Unsupported binary operator: "+operator.getType(), operator);
         }
     }

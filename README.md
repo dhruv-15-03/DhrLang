@@ -1,124 +1,445 @@
 # DhrLang Programming Language
 
 [![Build Status](https://github.com/dhruv-15-03/DhrLang/actions/workflows/ci.yml/badge.svg)](https://github.com/dhruv-15-03/DhrLang/actions)
+[![Coverage](docs/badges/coverage.svg)](#test-coverage--mutation-testing)
+[![Mutation](docs/badges/mutation.svg)](#test-coverage--mutation-testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Release](https://img.shields.io/github/v/release/dhruv-15-03/DhrLang)](https://github.com/dhruv-15-03/DhrLang/releases/latest)
 
-DhrLang is a modern, object-oriented programming language that combines familiar syntax with Hindi keywords, making programming more accessible to Hindi speakers while maintaining the power and flexibility of traditional programming languages.
+DhrLang is a modern, statically typed, object-oriented programming language with a
+concise English-core token set (`num`, `duo`, `sab`, `kya`, `ek`, `kaam`) inspired by
+earlier Hindi-localized experimentation. Focus: clarity, pedagogy, and strong static
+analysis while retaining culturally inspired naming roots.
 
-## Quick links
-- Install/Build: see Installation
-- Run a program: see Running DhrLang Programs
-- Language Spec: SPEC.md
-- Examples: input/
+It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
+and an experimental EVM (smart-contract) compiler target.
+
+> **Current release: v4.0.0** - see [What's New in v4.0.0](#whats-new-in-v400) and
+> [CHANGELOG.md](CHANGELOG.md). **v4.0.0 is a breaking release** (checked arithmetic by
+> default); see the migration note in the changelog.
+
+## Quick Links
+
+- Getting Started: [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+- Installation: [see below](#installation)
+- Language Spec: [SPEC.md](SPEC.md)
+- Standard Library: [STDLIB.md](STDLIB.md)
+- Error Codes: [ERROR_CODES.md](ERROR_CODES.md)
+- Examples: [`input/`](input/)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Release Checklist: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
+- Bytecode / IR Plan: [design/bytecode-roadmap.md](design/bytecode-roadmap.md)
+  ([format](design/bytecode-format.md))
+- Editor Integration: [VS Code Extension](#vs-code-extension-editor-integration)
 
 ## Features
 
+- **Concise core tokens**: minimal memorable keywords - `num` (int), `duo` (float),
+  `sab` (string), `kya` (boolean), `ek` (char), `kaam` (function/method)
+- **Object-oriented programming**: classes, inheritance (`extends`), access control,
+  static members
+- **Static typing**: strong compile-time type checking with generic substitution
+- **Arrays**: multi-dimensional and jagged arrays with bounds and type safety
+- **Generics**: type parameters on classes/methods with full substitution + diagnostics
+- **Implicit field access**: instance-method identifier resolution falls back to fields
+  safely
+- **String and array utilities**: core built-ins (`printLine`, `arrayLength`,
+  substring helpers, etc.)
+- **Structured error handling**: `try`/`catch`/`finally` (including typed catches)
+- **Three backends**: AST (default, debug-friendly), IR, and bytecode - semantically
+  equivalent for the implemented feature set
+- **Static initialization safety**: detects forward references and dependency cycles
+  early
+- **Tooling**: LSP server (`--lsp`), JSON diagnostics, VS Code extension, EVM target
 
-- **Hindi Keywords**: Uses Hindi terms like `kaam`, `num`, `sab`, `kya` for a more localized programming experience
-- **Object-Oriented Programming**: Full support for classes, inheritance, and polymorphism
-- **Static Typing**: Strong type system with compile-time type checking
-- **Exception Handling**: Comprehensive try-catch-finally exception handling
-- **Array Support**: Built-in array operations with type safety, including multi-dimensional arrays
-- **Generics**: Type parameter substitution and diagnostics for generic classes, fields, and methods
-- **Implicit Field Access**: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
-- **String Manipulation**: Rich string operations and methods
-- **Static Methods**: Support for utility functions and class-level operations
-- **Centralized Evaluator Architecture**: All expression/statement semantics consolidated in a dedicated Evaluator (Interpreter is now a thin orchestration layer)
-- **Access Control**: Compile-time enforcement of private/protected/public for instance and static members
-- **Static Initialization Safety**: Same-class static forward references and cycles are rejected at compile time (see SPEC §6.4)
+### Currently unsupported / experimental
 
-### Currently Unsupported / Partial Features
+Some constructs (modules, concurrency, lambdas/closures) are either experimental or not
+implemented yet. See [SPEC.md](SPEC.md) for authoritative status markers and
+[design/bytecode-roadmap.md](design/bytecode-roadmap.md) for backend evolution.
 
-See the full language specification in [SPEC.md](SPEC.md).
+## What's New in v4.0.0
 
-## Language Syntax
+> **Breaking change.** This major release flips one default; see
+> [CHANGELOG.md](CHANGELOG.md) for the full migration note.
 
-### Data Types
-- `num` - Integer numbers
-- `duo` - Floating-point numbers  
-- `sab` - Strings
-- `kya` - Boolean values
-- `ek` - Characters
+**Checked arithmetic by default.** `num`/`duo` `+`, `-`, `*` now **revert on
+overflow/underflow** by default on the EVM backend (`"arithmetic overflow"` /
+`"arithmetic underflow"`), matching **Solidity 0.8+**. The alpha default was silent
+wrapping modulo 2^256 - that footgun is gone.
 
-### Keywords
-- `class` - Class declaration
-- `kaam` - Function/method declaration
-- `if`/`else` - Conditional statements
-- `while`/`for` - Loop statements
-- `try`/`catch`/`finally` - Exception handling
-- `return` - Return statement
-- `new` - Object instantiation
-- `this`/`super` - Object references
-- `extends`/`implements` - Inheritance
-- `static` - Static members
-- `private`/`protected`/`public` - Access modifiers
+- **Opt back into wrapping** per method with `@unchecked` (for hot paths where modular
+  arithmetic is intentional). `@checked`/`@unchecked` always override the default, so
+  methods already carrying either annotation are unchanged.
+- The static prover (`contract prove`) is **sound under checked arithmetic**, so it now
+  proves `@ensures`/`@invariant` obligations for unannotated functions out of the box -
+  no `@checked` needed. The L3 fuzzer mirrors the same default.
+
+```dhrlang
+@contract
+class Vault {
+    @storage num balance;
+
+    // No annotation needed - reverts on overflow by default in v4.0.0.
+    kaam deposit(num amount) {
+        balance = balance + amount;
+    }
+}
+```
+
+Everything else from the 3.x line (smart-contract backend, provable-safety L0-L4 + L2b,
+deploy loop, interop export, ERC-4337, 21 chains) carries forward unchanged.
+
+## What's New in v3.13.0
+
+**`contract prove`** - experimental **static proving** (provable-safety level **L2b**).
+Where [`contract fuzz`](#) *samples* inputs hunting for a counterexample, `prove`
+attempts a **universal proof** of each `@ensures`/`@invariant` over *all* inputs:
+- **Symbolic execution** forks on `if`/`@requires` and normalizes integer expressions
+  into a linear-arithmetic IR, then a hand-rolled **Fourier-Motzkin** decision procedure
+  discharges each obligation as `PROVED`, `REFUTED`, or `UNKNOWN`.
+- Every `REFUTED` obligation ships a **concrete counterexample**, cross-checked by the L3
+  `SpecFuzzEngine` so a refutation is never a false alarm
+  (`@ensures(result > a)` on `add` -> `REFUTED a=0, b=0`).
+- **Sound by construction**: proving runs under checked arithmetic, so it is enabled for
+  `@checked` functions; loops, mappings, and external calls report `UNKNOWN` rather than
+  guess. `--bound=<n>` tunes refutation search; `--json` for CI; non-zero exit on any
+  refutation, so it gates a pipeline alongside `fuzz`/`safety`.
+
+```bash
+dhrlang contract prove --bound=8 token.dhr      # PROVED / REFUTED / UNKNOWN per spec
+```
+
+Additive and non-breaking (new `proving` package + CLI subcommand). Marked
+**experimental**. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.12.0
+
+A **one-command verified deploy loop** for `contract deploy`:
+- Every deploy writes a **Foundry-compatible broadcast artifact**
+  (`broadcast/Deploy.s.sol/<chainId>/run-latest.json`) recording each CREATE tx, the
+  deployed/predicted address, and the receipt for live deploys - so a DhrLang deploy
+  drops straight into Foundry-shaped tooling.
+- `--verify` chains source verification right after a successful live deploy (deploy
+  **and** verify in one command; degrades gracefully with no API key).
+- `--from=<0x..>` predicts CREATE addresses for dry runs. `deploy --network=local
+  --dry-run` now prints each contract's deterministic predicted address (validated
+  against ethers.js `getCreateAddress` vectors).
+
+Also fixes the generated Foundry deploy script (`contract Deploy is Script`, was the
+invalid `extends Script`). Additive and non-breaking. Details in
+[CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.11.0
+
+Offline **ERC-4337 account abstraction**. A new `contract account` subcommand builds and
+hashes UserOperations entirely off-chain - no bundler or RPC node needed:
+- `contract account entrypoint [--version=0.6|0.7]` prints the canonical EntryPoint
+  address (identical on every chain via CREATE2).
+- `contract account userop --sender=0x.. [--nonce=N] [--call-data=0x..] [--network=base]`
+  builds a v0.6 UserOperation, prints it in the `eth_sendUserOperation` JSON shape, and
+  computes the deterministic **`userOpHash`** the account owner signs.
+
+The hash is the canonical v0.6 `keccak256(abi.encode(keccak256(pack(op)), entryPoint,
+chainId))`, validated byte-for-byte against ethers.js reference vectors and chain-scoped
+(the same op hashes differently per network). Additive and non-breaking; bundler
+submission stays out of scope. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.10.0
+
+Twelve more deployment targets - the chain registry grows from 9 to 21 networks and
+gains first-class **ZK rollup** support:
+- **ZK rollups:** zkSync Era, Polygon zkEVM, Scroll and Linea (plus their testnets) -
+  the first chains tagged `L2_ZK`.
+- **Blast** (and Blast Sepolia), an additional optimistic rollup.
+- **Optimism Sepolia** and **Polygon Amoy**, filling in testnets for chains that only
+  had mainnet entries.
+
+Target any of them with `contract deploy --network=<name>` using a friendly alias
+(`zksync`, `era`, `zkevm`, `scroll`, `linea`, `blast`, `amoy`, `op-sepolia`, ...) or the
+raw chain ID; run `contract networks` to see the full list. Additive and non-breaking -
+no existing network changed. Details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.9.0
+
+First-class calldata introspection in contracts, closing the last `msg.*` gap:
+- **`msg.data.length`** - the size of the transaction calldata, lowered to the EVM
+  `CALLDATASIZE` opcode and typed as a number.
+- **`msg.sig`** - the 4-byte function selector (first calldata word, right-aligned),
+  lowered to `calldataload(0) >> 224`. Handy for selector-based routing, logging, or
+  access guards.
+
+Both read like any other number (usable in `@view` getters and `@requires` / `@ensures`
+specs), and both are correctly treated as transaction-context reads - so `@pure` methods
+reject them, exactly like `msg.sender`. `msg.data` deliberately exposes only `.length`
+(DhrLang has no dynamic `bytes` value type); bare `msg.data` is a type error. Full details
+in [CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.8.0
+
+A standard-library you can actually reach, plus the language feature it needed:
+- **`contract stdlib` - browse & scaffold base contracts.** Eight OpenZeppelin-style
+  templates (Ownable, ReentrancyGuard, Pausable, SafeMath, ERC20, ERC721, AccessControl,
+  TimelockController) are now first-class: `dhrlang contract stdlib list` to browse,
+  `stdlib show <Name>` to read the source, and `stdlib new <Name> [--name=<Custom>]
+  [--output=<dir>]` to scaffold a ready-to-edit `.dhr` file. Every template is compiled
+  by the test suite, so the catalog can't silently rot.
+- **`address(0)` / `address(num)` builtin.** A first-class numeric-to-`Address` cast
+  (lowered to a 160-bit mask on the EVM), so zero/sentinel-address guards like
+  `if (newOwner == address(0)) { ... }` are finally expressible in source. Typed as
+  `Address`, arity- and type-checked.
+
+Honest framing: ERC20/ERC721 ship as **starter scaffolds** (transfer/balance bookkeeping
+is stubbed for you to complete); the access-control / safety templates are complete
+patterns. Full details in [CHANGELOG.md](CHANGELOG.md) and
+[BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.7.0
+
+`contract export` - turn a DhrLang contract into framework-ready interop artifacts:
+- **Hardhat + Foundry artifacts.** `dhrlang contract export token.dhr` writes a
+  Hardhat `hh-sol-artifact-1` JSON and a Foundry-style `out/`-shaped JSON per contract,
+  so the compiled ABI + bytecode drop into either toolchain unchanged.
+- **viem / wagmi typings.** Emits a TypeScript module exporting the ABI `as const`
+  (the assertion that unlocks viem's fully-typed contract calls) plus `0x`-prefixed
+  bytecode constants, with an `index.ts` barrel re-exporting every contract.
+- **Pick your targets.** `--format=all|hardhat|foundry|ts` (default `all`) and
+  `--output=<dir>` control what gets written and where. Pure projection of the compiled
+  artifacts - no codegen or audit path is touched, and output is deterministic ASCII.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [BLOCKCHAIN_TUTORIAL.md](BLOCKCHAIN_TUTORIAL.md).
+
+## What's New in v3.6.0
+
+Smart-contract safety report with a CI gate (`contract safety`) - provable safety, layer L4:
+- **One command, one grade.** `dhrlang contract safety token.dhr` runs the full security
+  audit *and* the L3 spec fuzzer, then prints a Markdown report led by a **safety score**
+  (`100 - risk`) and an **A-F grade**.
+- **Spec bugs become findings.** Every invariant/postcondition counterexample the fuzzer
+  finds is folded in as a HIGH `FUZZ-INVARIANT` finding with a minimized counterexample,
+  alongside the static reentrancy / taint / overflow detectors.
+- **CI-ready.** Writes `safety.sarif` (GitHub Code Scanning) and `safety-report.md`, and
+  gates the build with `--fail-on=critical|high|medium|low|none` (default `high`) - exiting
+  non-zero when a finding crosses the threshold.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [SPEC.md](SPEC.md).
+
+## What's New in v3.4.0
+
+Design-by-contract spec annotations, runtime-enforced on the EVM backend (provable
+safety, layer L2a):
+- **`@requires(expr)` preconditions.** Checked at function entry, after parameters are
+  decoded; a false condition reverts with `precondition failed`. Multiple `@requires`
+  on one function are AND-ed.
+- **`@ensures(expr)` postconditions.** Checked at every return; a false condition reverts
+  with `postcondition failed`. May reference the **`result`** keyword to constrain a
+  function's scalar return value.
+- **`@invariant(expr)` contract invariants.** Declared at the class level (alongside
+  `@contract`); re-checked after every state-mutating call and reverts with
+  `invariant violated`. `@view`/`@pure` functions are exempt.
+- **Typo guard (`DHR-E516`).** Unknown identifiers in a spec expression are rejected at
+  compile time, since on the EVM an unresolved name would silently lower to `0` and
+  quietly defeat the check.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [SPEC.md](SPEC.md).
+
+## What's New in v3.3.0
+
+Smart-contract security — two new detectors (provable safety, layer L1):
+- **Reentrancy (`SEC-REENTRANCY`, SWC-107).** Flags a storage write that happens *after* an
+  external call in the same function — the classic checks-effects-interactions violation —
+  for both value transfers (`this.transfer(...)`) and calls on an `Address`-typed storage
+  field/parameter. `@nonreentrant` is honoured as an explicit guard.
+- **`tx.origin` authorization (`SEC-TX_ORIGIN`, SWC-115).** Flags `tx.origin` used in an
+  equality check, which is phishable — use `msg.sender` for access control.
+- **Richer SARIF.** Every rule now carries `tags` (`security` + the mapped `SWC-*`) and a
+  numeric `security-severity`, so GitHub Code Scanning buckets and filters DhrLang alerts.
+
+Full details in [CHANGELOG.md](CHANGELOG.md) and [SECURITY_RULES.md](SECURITY_RULES.md).
+
+## What's New in v3.2.0
+
+Smart-contract security tooling:
+- **SARIF code scanning is first-class.** `--audit --sarif` now emits real source line numbers
+  (`region.startLine`) and a stable `partialFingerprints` per finding, so results land precisely
+  in GitHub's **Security → Code scanning** tab and dedupe across runs. Rule links resolve to the
+  new [SECURITY_RULES.md](SECURITY_RULES.md) (every `ARITH-*`, `SEC-*`, `INV-*`, `AUD-*`,
+  `DHR-E5xx` rule with severities + SWC mappings).
+- **`--audit` now runs on contracts that have errors.** It is an analysis mode: it no longer
+  aborts when a contract fails type/validation checks — those issues are reported as findings and
+  it always exits `0`. Previously the most security-relevant contracts produced no report at all.
+
+> **v3.2.1** corrects the audit SARIF so it passes GitHub's schema validation and actually
+> appears in the Security tab — the per-finding `fixes` entries were missing a required field,
+> so uploads were silently rejected.
+
+Full details in [CHANGELOG.md](CHANGELOG.md).
+
+## What's New in v3.1.0
+
+EVM (smart-contract) backend:
+- **Checked / wrapping arithmetic modes**: opt into overflow-safe math per function with
+  `@checked` (reverts with `"arithmetic overflow"` / `"arithmetic underflow"`) or `@unchecked`
+  (wraps mod 2²⁵⁶). Default stays wrapping in this release (changed to checked-by-default
+  in v4.0.0).
+- **Custom errors + `revert`**: declare gas-efficient typed errors
+  (`@error kaam InsufficientBalance(num available, num required) {}`) and raise them with
+  `revert(...)` / `require(cond, ...)`; emitted as `"type":"error"` in the ABI.
+- **Explicit `indexed` event parameters**: event topics are driven by the `indexed` keyword
+  (e.g. `Transfer(indexed Address from, indexed Address to, num amount)`).
+
+Fixed:
+- EVM backend now emits correct **unsigned** opcodes and operand order for `-`, `/`, `%` and
+  comparisons (`num` is `uint256`); checked multiply uses the SafeMath identity.
+- Peephole optimizer no longer misreads `PUSH` immediate data as opcodes (it could corrupt
+  bytecode — e.g. embedded revert strings).
+- Numeric `as` casts: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept numeric
+  operands; `(7 / 2) as num` → `3` is the supported integer-division idiom.
+
+Full details in [CHANGELOG.md](CHANGELOG.md).
+
+## What's New in v3.0.0
+
+Language:
+- **Labeled `break`/`continue`** with labeled loops: `outer: for(...) { ... break outer; }`
+- **`as` type cast**: `expr as num`, `expr as duo`, `expr as sab`
+- **Hex literals**: `0xFF`, `0xABCD` (all backends)
+- **String interpolation**: `"Hello ${name}!"`
+- **Bitwise operators**: `&`, `|`, `^`, `~`, `<<`, `>>` (all backends + type checker)
+
+Tooling:
+- **LSP server**: stdio-based diagnostics, completion, and hover via `--lsp`
+- **VS Code extension v3.0.0**: updated grammar and keyword highlighting
+
+EVM (smart-contract) backend:
+- SafeMath overflow/underflow protection, auto-generated access control (`onlyOwner`),
+  collision-safe reentrancy lock, peephole optimizer, gas/stack/memory tracking
+
+Quality: **1,287 tests, 0 failures**. Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
 ### Prerequisites
-- Java 17 or higher
-- Gradle 8.0 or higher
- - Tested on Java 17 and 21 in CI (Ubuntu); local development verified on Windows.
 
-### Install (Download Release)
-- Download the latest release ZIP from: https://github.com/dhruv-15-03/DhrLang/releases/latest
-- Extract the ZIP; inside `lib/` you’ll find a runnable fat JAR (shadow JAR) with `Main-Class` set.
+- **Java**: JDK 17 or higher
+- **OS**: Windows, macOS, or Linux
 
-Linux/macOS:
-```bash
-cd path/to/DhrLang-<version>/lib
-java -jar DhrLang-<version>.jar input/sample.dhr
-```
+### Option 1: VS Code Extension (easiest)
 
-Windows (PowerShell):
-```powershell
-Set-Location path\to\DhrLang-<version>\lib
-java -jar DhrLang-<version>.jar input\sample.dhr
-```
+1. Download `dhrlang-vscode-3.0.0.vsix` from the
+   [latest release](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. In VS Code: Command Palette -> "Extensions: Install from VSIX..." and select the file.
+3. Ensure **Java 17+** is installed.
+4. Open any `.dhr` file and run it directly (Ctrl+F5).
+   - **Zero config**: the extension bundles the compiler, so no manual JAR download is
+     needed.
 
-### Building from Source
-Linux/macOS:
+### Option 2: Download a Release (manual CLI)
+
+1. Go to the [Releases page](https://github.com/dhruv-15-03/DhrLang/releases/latest).
+2. Download the runnable fat JAR **`DhrLang.jar`** (or a platform bundle:
+   `DhrLang-3.0.0-windows.zip` / `DhrLang-3.0.0-linux.tar.gz`). Optionally verify against
+   `checksums.txt`.
+3. Run it:
+   ```bash
+   java -jar DhrLang.jar input/sample.dhr
+   ```
+
+### Option 3: Build from Source
+
 ```bash
 git clone https://github.com/dhruv-15-03/DhrLang.git
 cd DhrLang
-./gradlew build
+./gradlew shadowJar          # use ./gradlew.bat on Windows
+java -jar build/libs/DhrLang-3.0.0.jar input/sample.dhr
 ```
 
-Windows (PowerShell):
-```powershell
-git clone https://github.com/dhruv-15-03/DhrLang.git
-Set-Location DhrLang
-./gradlew.bat build
-```
+A plain `./gradlew build` (or `./gradlew.bat build` on Windows) compiles and runs the
+full test suite.
 
-### Running DhrLang Programs
-Linux/macOS:
+## Command-Line Interface
+
 ```bash
-# Using Gradle
-./gradlew run --args="path/to/your/file.dhr"
-
-# Using Java directly
-java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+java -jar DhrLang.jar [options] path/to/file.dhr
 ```
 
-Windows (PowerShell):
-```powershell
-# Using Gradle
-./gradlew.bat run --args="path/to/your/file.dhr"
+If no file is given, DhrLang defaults to `input/sample.dhr`.
 
-# Using Java directly
-java -cp build/classes/java/main dhrlang.Main path/to/your/file.dhr
+| Flag | Description |
+|------|-------------|
+| `--help`, `-h` | Print usage and exit |
+| `--version`, `-v` | Print version (e.g. "DhrLang version 3.0.0") |
+| `--json` | Emit diagnostics as JSON (see [JSON Diagnostics](#json-diagnostics)) |
+| `--time` | Show phase timings (lex/parse/type/exec) and embed them in JSON |
+| `--no-color` | Disable ANSI colors in diagnostics |
+| `--backend=ast\|ir\|bytecode` | Select execution backend (default: `ast`) |
+| `--emit-ir` | Dump lowered IR (JSON) for debugging |
+| `--emit-bc` | Write compiled bytecode to `build/bytecode/Main.dbc` |
+| `--lsp` | Start the Language Server Protocol server (stdio) |
+
+### Exit codes
+
+- `0`: success (or warnings only)
+- `1`: compile-time error(s)
+- `2`: runtime/system error
+- `65`: JSON diagnostics emission that includes errors
+
+### Runtime safety flags (JVM system properties)
+
+- `dhrlang.backend.maxSteps` - instruction step limit (IR + bytecode)
+- `dhrlang.bytecode.untrusted=true` - conservative validation + limits for bytecode
+- `dhrlang.bytecode.strictEntry` - require an entrypoint (`Main.main` or any `*.main`)
+
+When running untrusted code, prefer `--backend=bytecode` with
+`-Ddhrlang.bytecode.untrusted=true` to enable strict verification and resource limits.
+
+### JSON Diagnostics
+
+DhrLang can emit machine-readable diagnostics for tooling integration:
+
+```bash
+java -jar DhrLang.jar --json --time program.dhr
 ```
 
-### CLI exit codes
-Exit codes:
-- 0: success
-- 1: compile-time error(s)
-- 2: runtime/system error
+Output conforms to [`diagnostics.schema.json`](diagnostics.schema.json) (JSON Schema v7):
+
+- `schemaVersion`: currently `1` (stable contract)
+- `timings`: phase timings in ms (lex, parse, type, exec, total)
+- `errors` / `warnings`: arrays of objects with file, line, column, type, message, hint,
+  sourceLine
+
+## Language Syntax
+
+### Data types
+
+- `num` - integer numbers
+- `duo` - floating-point numbers
+- `sab` - strings
+- `kya` - boolean values
+- `ek` - characters
+
+### Keywords
+
+- `class` - class declaration
+- `kaam` - function/method declaration
+- `if` / `else` - conditional statements
+- `while` / `for` / `do` - loop statements (with labeled `break`/`continue`)
+- `try` / `catch` / `finally` - exception handling
+- `return` - return statement
+- `new` - object instantiation
+- `this` / `super` - object references
+- `extends` / `implements` - inheritance
+- `static` - static members
+- `private` / `protected` / `public` - access modifiers
+- `as` - type cast
 
 ## Quick Start
 
 ### Hello World
+
 ```dhrlang
 class Main {
     static kaam main() {
@@ -127,14 +448,15 @@ class Main {
 }
 ```
 
-### Variables and Basic Operations
+### Variables and basic operations
+
 ```dhrlang
 class Example {
     static kaam main() {
         num x = 42;
         sab message = "Hello World";
         kya flag = true;
-        
+
         printLine("Number: " + x);
         printLine("Message: " + message);
         printLine("Flag: " + flag);
@@ -142,15 +464,46 @@ class Example {
 }
 ```
 
-### Object-Oriented Programming
+### String interpolation, hex literals, and `as` casts (v3.0.0)
+
+```dhrlang
+class Modern {
+    static kaam main() {
+        sab name = "DhrLang";
+        num mask = 0xFF;                 // hex literal
+        num packed = 0xF0 & 0x0F;        // bitwise AND
+        printLine("Hello ${name}! mask=${mask}");
+        sab text = packed as sab;        // type cast
+        printLine("packed as text: " + text);
+    }
+}
+```
+
+### Labeled break (v3.0.0)
+
+```dhrlang
+class LabeledBreak {
+    static kaam main() {
+        outer: for (num i = 0; i < 3; i++) {
+            for (num j = 0; j < 3; j++) {
+                if (i + j == 3) { break outer; }
+                printLine(i + "," + j);
+            }
+        }
+    }
+}
+```
+
+### Object-oriented programming
+
 ```dhrlang
 class Animal {
     protected sab name;
-    
+
     kaam init(sab name) {
         this.name = name;
     }
-    
+
     kaam makeSound() {
         printLine(this.name + " makes a sound");
     }
@@ -160,26 +513,53 @@ class Dog extends Animal {
     kaam init(sab name) {
         super.init(name);
     }
-    
+
     kaam makeSound() {
         printLine(this.name + " barks!");
     }
 }
 ```
 
-### Exception Handling
+### Multi-dimensional arrays
+
+```dhrlang
+class NDArrayDemo {
+    static kaam main() {
+        // Allocate a 2D array 3x4 of num
+        num[][] m = new num[3][4];
+        m[0][0] = 1; m[2][3] = 7;
+        for (num i = 0; i < 3; i++) {
+            for (num j = 0; j < 4; j++) {
+                print(" " + m[i][j]);
+            }
+            printLine("");
+        }
+        // Jagged arrays are supported (rows can differ in length)
+        num[][] jag = new num[2][];
+        jag[0] = new num[1];
+        jag[1] = new num[3];
+        printLine(arrayLength(jag)); // prints 2
+    }
+}
+```
+
+Notes:
+- Indexing is bounds-checked: negative or `>= length` raises an index error.
+- Allocation requires non-negative sizes; very large sizes are rejected.
+- Element defaults follow type defaults (num -> 0, duo -> 0.0, kya -> false,
+  references -> null).
+
+### Exception handling
+
 ```dhrlang
 class ErrorExample {
     static kaam main() {
         try {
-            // Risky operation
-            throw "Something went wrong";
-        }
-        catch(error) {
-            printLine("Caught: " + error);
-        }
-        finally {
-            printLine("Cleanup completed");
+            throw "boom";
+        } catch (err) {
+            printLine("Caught: " + err);
+        } finally {
+            printLine("Cleanup");
         }
     }
 }
@@ -187,147 +567,266 @@ class ErrorExample {
 
 ## Language Features
 
-### Comprehensive Type System
-DhrLang features a strong static type system that catches errors at compile time:
+### Type system
+
 - Explicit static types for variable declarations (no local type inference yet)
-- Generics with type parameter substitution and clear diagnostics
+- Generics with type-parameter substitution and clear diagnostics
 - Array type safety, including multi-dimensional arrays
 - Simple method model (no overloading; duplicate names are rejected)
 
-### Rich Standard Library
-- String manipulation functions (`length()`, `charAt()`, `indexOf()`, `contains()`, `replace()`)
-- Array operations (`arrayLength()`, indexing, iteration)
-- Built-in I/O operations (`print()`, `printLine()`)
-- Mathematical operations with proper type handling
+### Core built-ins
 
-### Advanced Error Handling
-- Detailed error messages with source location
-- Helpful hints for common mistakes
-- Colored terminal output for better readability
-- Comprehensive error reporting system
+- String utilities (e.g. `charAt`, `replace`, `substring` - scope documented in SPEC)
+- Array operations (`arrayLength`, indexing, iteration patterns)
+- Output (`print`, `printLine`)
+- Basic math / operator semantics via the core evaluator
+
+### Diagnostics
+
+- Source-mapped error messages with codes and hints
+- Colorized terminal output (ANSI) for clarity
+- Categories: parser, type checker, runtime (documented in
+  [ERROR_CODES.md](ERROR_CODES.md))
+
+## Backends and Roadmap
+
+The high-level roadmap lives in
+[design/bytecode-roadmap.md](design/bytecode-roadmap.md) (IR + bytecode path).
+
+- `--backend=ast` is the default and is useful for debugging.
+- `--backend=ir` and `--backend=bytecode` are intended to be semantically equivalent to
+  AST for the implemented language feature set.
+- Backend selection is authoritative: IR/bytecode runs do not fall back to AST.
+
+Implemented in IR/bytecode:
+- Literals, locals (load/store), arithmetic (`+ - * /`), comparisons
+  (`== != < <= > >=`)
+- Control flow: `if`/`else`, `while`, short-circuit `&&`/`||`, `break`/`continue`
+- `print`/`printLine`, `return` (with/without value), unary `-`/`!`, postfix `++`/`--`
+- Arrays (literal/new/load/store/`arrayLength`), static function calls
+- Static fields + instance fields
+- Exceptions: `throw`, `try`/`catch`/`finally` (including typed catches)
+- Bitwise operators, hex literals, string interpolation, `as` casts
 
 ## Development
 
-### Project Structure
+### Project structure
+
 ```
 src/
-├── main/java/dhrlang/
-│   ├── Main.java              # Main entry point
-│   ├── lexer/                 # Lexical analysis
-│   ├── parser/                # Syntax analysis
-│   ├── ast/                   # Abstract Syntax Tree
-│   ├── typechecker/           # Type checking
-│   ├── interpreter/           # Code execution
-│   ├── error/                 # Error reporting
-│   └── stdlib/                # Standard library
-└── test/java/dhrlang/         # Test suite
+  main/java/dhrlang/
+    Main.java        # CLI entry point
+    lexer/           # Lexical analysis
+    parser/          # Syntax analysis
+    ast/             # Abstract syntax tree
+    typechecker/     # Type checking
+    types/           # Type model
+    eval/            # Core semantic evaluator
+    interpreter/     # AST interpretation
+    ir/              # Intermediate representation
+    bytecode/        # Bytecode compiler/VM
+    evm/             # EVM (smart-contract) compiler target
+    lsp/             # Language Server Protocol server
+    agent/           # Agent orchestration
+    pipeline/        # Compilation pipeline
+    debug/           # Debugger support
+    deploy/          # Deployment tooling
+    production/      # Production utilities
+    runtime/         # Runtime support
+    stdlib/          # Standard library
+    error/           # Error reporting
+    testing/         # Testing helpers
+    tools/           # Developer tools
+    util/            # Utilities
+    validation/      # Static validation/checks
+  test/java/dhrlang/ # Test suite
 ```
 
-### Running Tests
+### Running tests
+
 ```bash
-# Run all tests
-./gradlew test
-
-# Run with detailed output
-./gradlew test --info
-
-# Run specific test class
-./gradlew test --tests "dhrlang.DhrLangCompilerTest"
+./gradlew test                                      # all tests
+./gradlew test --info                               # detailed output
+./gradlew test --tests "dhrlang.DhrLangCompilerTest" # a specific class
 ```
 
-### Test Coverage
-The project includes comprehensive test coverage for:
-- Lexical analysis (tokenization)
-- Parsing (syntax analysis)
-- Type checking (semantic analysis)
-- Runtime execution (interpretation)
-- Error handling and reporting
+### Test coverage & mutation testing
 
-## Contributing
+Jacoco + PIT run in CI. The badges reflect instruction coverage and mutation kill ratio.
+Thresholds ratchet upwards over time. Coverage spans lexical analysis, parsing, type
+checking, runtime execution, and error handling.
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+### Benchmarks
 
-### Development Setup
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes and add tests
-4. Ensure all tests pass (`./gradlew test`)
-5. Commit your changes (`git commit -am 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+Run micro benchmarks:
+
+```bash
+./gradlew bench
+```
+
+Outputs `build/bench/bench-results.json` (JSON array). Each entry:
+
+```jsonc
+{
+    "file": "fib.dhr",
+    "timings": { "lexMs": 0, "parseMs": 0, "typeMs": 0, "execMs": 0, "totalMs": 0 },
+    "errorCount": 0,
+    "warningCount": 0
+}
+```
+
+Compare with the baseline (fails the build on >50% regression):
+
+```bash
+./gradlew benchCompare
+```
+
+Update the baseline after validating stability:
+
+```bash
+cp build/bench/bench-results.json bench/baseline.json
+```
+
+Bench runs are advisory (micro scale, not a full perf suite).
 
 ## Examples
 
-Check out the `input/` directory for comprehensive examples:
-- `test_basic_syntax.dhr` - Basic language features
-- `test_oop_features.dhr` - Object-oriented programming
-- `test_arrays.dhr` - Array operations
-- `test_exceptions.dhr` - Exception handling
-- `test_strings.dhr` - String manipulation
-- `test_static_methods.dhr` - Static methods and utilities
- - `advanced_features_test.dhr` - Demonstrates generics syntax and substitution (fully supported)
- - `complete_feature_demo.dhr` - Comprehensive showcase including generics, multi-dimensional arrays, and implicit field access
- - `advanced_edge_cases.dhr` - Stress tests for multi-dimensional arrays and generics
- - `duplicate_error_test.dhr`, `parser_error_test.dhr` - Intentional negative tests to verify diagnostics
+See the [`input/`](input/) directory for runnable examples:
 
-## Roadmap
+- `test_basic_syntax.dhr` - basic language features
+- `test_oop_features.dhr` - object-oriented programming
+- `test_arrays.dhr` - array operations
+- `test_exceptions.dhr` - exception handling
+- `test_strings.dhr` - string manipulation
+- `test_static_methods.dhr` - static methods and utilities
+- `advanced_features_test.dhr` - generics syntax and substitution
+- `complete_feature_demo.dhr` - generics, multi-dimensional arrays, implicit field access
+- `advanced_edge_cases.dhr` - stress tests for arrays and generics
+- `duplicate_error_test.dhr`, `parser_error_test.dhr` - intentional negative tests
 
 ## Feature Status
-- Generics: Fully implemented, including type parameter substitution and diagnostics
-- Multi-dimensional arrays: Fully supported in parser, typechecker, and evaluator
-- Implicit field access: Unqualified variable/assignment inside instance methods resolves to fields, with generic substitution and access checks
-- Comprehensive diagnostics: Structured error codes, JSON output, and actionable hints
-- CI/Quality: Jacoco, PIT, CodeQL, Dependabot integrated
 
-## Diagnostics Quick Guide
-- Cannot access private/protected member → ACCESS_MODIFIER
-- Wrong number of generic type arguments → GENERIC_ARITY
-- Type doesn’t match expected (incl. after generic substitution) → TYPE_MISMATCH
-- Name not found (and static method context doesn’t resolve instance fields) → UNDECLARED_IDENTIFIER
-- Array index/size invalid or allocation too large → BOUNDS_VIOLATION
-- Static field reads a later-declared static field (same class) → STATIC_FORWARD_REFERENCE
-- Static field initializers form a dependency cycle → STATIC_INIT_CYCLE
+- **Generics**: implemented, including type-parameter substitution and diagnostics
+- **Multi-dimensional arrays**: supported in parser, type checker, and evaluator
+- **Implicit field access**: unqualified variable/assignment inside instance methods
+  resolves to fields, with generic substitution and access checks
+- **Diagnostics**: structured error codes, JSON output, actionable hints
+- **CI/Quality**: Jacoco, PIT, CodeQL, Dependabot integrated
+
+### Diagnostics quick guide
+
+| Situation | Code |
+|-----------|------|
+| Cannot access private/protected member | `ACCESS_MODIFIER` |
+| Wrong number of generic type arguments | `GENERIC_ARITY` |
+| Type does not match expected (incl. after substitution) | `TYPE_MISMATCH` |
+| Name not found (static context cannot resolve instance fields) | `UNDECLARED_IDENTIFIER` |
+| Array index/size invalid or allocation too large | `BOUNDS_VIOLATION` |
+| Static field reads a later-declared static field (same class) | `STATIC_FORWARD_REFERENCE` |
+| Static field initializers form a dependency cycle | `STATIC_INIT_CYCLE` |
+
+## Known Limitations
+
+DhrLang is an educational/exploratory language under active development. Current gaps:
+
+- **No module/import system**: all code lives in a single file
+- **No lambdas/closures**: functional patterns not yet supported
+- **No enum types**: language-level enums not yet available
+- **Single-threaded**: no concurrency primitives (async/await, coroutines)
+- **No REPL**: interactive mode not yet available (a debug REPL exists for EVM contracts)
+- **Generics**: syntactic and substitution support exist; runtime enforcement is limited
+- **EVM compiler**: production-ready for basic contracts; complex ABI types (nested
+  arrays, tuples) are partial
+
+See [NEXT_STEPS.md](NEXT_STEPS.md) for the detailed roadmap.
+
+## VS Code Extension (Editor Integration)
+
+The official VS Code extension (version-aligned with core releases) provides:
+
+- Syntax highlighting for the current English-core tokens
+- Snippets (main class, loops, methods, `printLine`, `try`/`catch` skeleton)
+- Run / Compile commands with status-bar JAR detection
+- Optional inline diagnostics (enable via settings)
+
+Manual install (until a marketplace listing is active):
+
+1. Download `dhrlang-vscode-3.0.0.vsix` from the release assets.
+2. In VS Code: Command Palette -> "Extensions: Install from VSIX...".
+3. Select the file and open a `.dhr` file to activate.
+
+Settings preview (add to `settings.json` as needed):
+
+```jsonc
+{
+    "dhrlang.autoDetectJar": true,
+    "dhrlang.jarPath": "",
+    "dhrlang.enableAutoCompletion": true,
+    "dhrlang.enableErrorSquiggles": true
+}
+```
+
+If auto-detection fails, set `dhrlang.jarPath` directly to your built `DhrLang.jar`.
+
+## Live LSP Demo
+
+The extension now spawns the real `DhrLangLspServer` (`java -jar DhrLang.jar
+--lsp`) over stdio via `vscode-languageclient` — diagnostics, hover,
+go-to-definition, find-references, rename, scope-aware completion, and
+receiver-aware dot completion all come from the same compiler front-end
+(`Parser`/`TypeChecker`) that powers `dhrc` itself.
+
+See **[demo/README.md](demo/README.md)** for a real, reproducible JSON-RPC
+transcript of all seven features running against a small fixture, plus a
+one-command script (`demo/run-demo.ps1`) to reproduce it against your own
+build. The client↔server round-trip is also **CI-proven**: the
+`vscode-lsp-integration` job in `.github/workflows/ci.yml` launches a
+headless VS Code, activates the extension, and asserts real completions come
+back from the spawned server. The extension is not yet published to the VS
+Code Marketplace (packaging is ready; publishing needs a maintainer's Azure
+DevOps PAT).
 
 ## CI Notes
-- CodeQL: If GitHub Code Scanning is not enabled for your repository, the CodeQL job will run but its upload step is marked non-blocking and won’t fail CI. To enable full CodeQL results (including alerts in the Security tab), turn on Code Scanning in your repository settings.
+
+- **CodeQL**: if GitHub Code Scanning is not enabled for your repository, the CodeQL job
+  still runs but its upload step is non-blocking. Enable Code Scanning in repository
+  settings for full results (alerts in the Security tab).
 
 ## Planned Features
-- Package management system
-- Standard library expansion
-- IDE support and language server
-- Debugging capabilities
-- Module system
-- Concurrency support
-- Foreign function interface
-- JIT compilation
-- WebAssembly target
-- Advanced optimization
-- Cross-platform GUI framework
 
-## Performance
+Package management, standard-library expansion, a module system, concurrency support,
+a foreign function interface, JIT compilation, a WebAssembly target, advanced
+optimization, and broader IDE/language-server support.
 
-DhrLang is designed for:
-- **Fast compilation**: Efficient lexing, parsing, and type checking
-- **Clear error reporting**: Detailed diagnostics with helpful hints
-- **Educational use**: Clean syntax suitable for teaching programming concepts
-- **Extensibility**: Modular architecture for easy feature addition
+## Contributing
+
+Contributions are welcome. See the [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/amazing-feature`).
+3. Make your changes and add tests.
+4. Ensure all tests pass (`./gradlew test`).
+5. Commit your changes.
+6. Push to the branch and open a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for
+details.
 
 ## Acknowledgments
 
-- Inspired by modern language design principles
+- Inspired by modern language-design principles
 - Built with Java for cross-platform compatibility
-- Designed to make programming accessible to Hindi speakers
+- Inspired by earlier efforts to make programming approachable with culturally resonant
+  naming
 - Community-driven development approach
 
 ## Contact
 
 - GitHub: [@dhruv-15-03](https://github.com/dhruv-15-03)
-- Project Link: [https://github.com/dhruv-15-03/DhrLang](https://github.com/dhruv-15-03/DhrLang)
+- Project: [https://github.com/dhruv-15-03/DhrLang](https://github.com/dhruv-15-03/DhrLang)
 
 ---
 
-*DhrLang - Making programming accessible in your native language* 🚀
+*DhrLang - a compact, statically typed educational and exploratory language.*

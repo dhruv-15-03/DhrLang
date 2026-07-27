@@ -107,7 +107,7 @@
       "patterns": [
         {
           "name": "keyword.control.dhrlang",
-          "match": "\\b(if|else|while|for|return|break|continue|try|catch|finally|throw)\\b"
+          "match": "\\b(if|else|while|for|do|switch|case|default|return|break|continue|try|catch|finally|throw|as)\\b"
         },
         {
           "name": "keyword.declaration.dhrlang",
@@ -115,7 +115,7 @@
         },
         {
           "name": "keyword.other.dhrlang",
-          "match": "\\b(this|super|null)\\b"
+          "match": "\\b(this|super|null|emit)\\b"
         }
       ]
     },

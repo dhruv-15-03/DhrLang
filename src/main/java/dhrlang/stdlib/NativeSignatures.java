@@ -10,8 +10,8 @@ public final class NativeSignatures {
         add("readLine", List.of(), "sab");
         add("readLineWithPrompt", List.of("sab"), "sab");
         // Conversion
-        add("toNum", List.of("sab"), "num");
-        add("toDuo", List.of("sab"), "duo");
+        add("toNum", List.of("any"), "num");
+        add("toDuo", List.of("any"), "duo");
         add("toString", List.of("any"), "sab");
         // Time / util
         add("clock", List.of(), "duo");

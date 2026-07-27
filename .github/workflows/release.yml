@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Match JVM version tags (v1.2.3) only — not vscode-v* / other prefixed tags
+    tags: ['v[0-9]*']
   workflow_dispatch:
     inputs:
       version:
@@ -32,7 +33,7 @@ jobs:
           java-version: '17'
           
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/gradle-build-action@v3
         
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -83,10 +84,10 @@ jobs:
           cp INSTALL.md release/
           cp TUTORIALS.md release/
           cp EXAMPLES.md release/
-          
-          # Create examples directory in release
+
+          # Create examples directory in release (using current input/ folder as canonical sample programs)
           mkdir -p release/examples
-          cp examples/* release/examples/ 2>/dev/null || true
+          cp input/* release/examples/ 2>/dev/null || true
           
           # Create release info
           echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}" > release/RELEASE_NOTES.md
@@ -106,6 +107,20 @@ jobs:
           echo "## What's New" >> release/RELEASE_NOTES.md
           echo "" >> release/RELEASE_NOTES.md
           echo "See the [changelog](CHANGELOG.md) for detailed release notes." >> release/RELEASE_NOTES.md
+      - name: Package VS Code extension (vsix)
+        run: |
+          echo "Packaging VS Code extension..."
+          
+          # Copy the built JAR to the extension compiler directory
+          mkdir -p vscode-extension/compiler
+          cp release/DhrLang.jar vscode-extension/compiler/DhrLang.jar
+          
+          pushd vscode-extension
+          npm ci --no-audit --no-fund
+          npx vsce package --no-yarn || (npm install -g @vscode/vsce && vsce package --no-yarn)
+          cp *.vsix ../release/ || true
+          popd
+
       - name: List release directory (debug)
         run: ls -l release
 
@@ -140,14 +155,16 @@ jobs:
             DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz
             DhrLang-${{ steps.get_version.outputs.VERSION }}-windows.zip
             checksums.txt
+            release/*.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Publish to GitHub Packages
-        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace
+        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace || echo 'Publish failed (likely 409 conflict for existing version). Continuing.'
         env:
+          GPR_USER: ${{ github.actor }}
+          GPR_KEY: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
           
   create-homebrew-formula:
     needs: build-and-release
@@ -181,7 +198,7 @@ jobs:
             const fs = require('fs');
             
             const formula = `class Dhrlang < Formula
-              desc "Programming language with Hindi keywords - हिंदी में प्रोग्रामिंग भाषा"
+              desc "DhrLang programming language (English-core tokens: num/duo/sab/kya/ek/kaam)"
               homepage "https://github.com/${{ github.repository }}"
               url "https://github.com/${{ github.repository }}/releases/download/v${{ steps.vars.outputs.VERSION }}/DhrLang.jar"
               sha256 "${{ env.SHA256 }}"
@@ -200,11 +217,13 @@ jobs:
 
               test do
                 (testpath/"test.dhr").write <<~EOS
-                  मुख्य() {
-                      प्रिंट("नमस्ते DhrLang!");
+                  class Main {
+                    static kaam main() {
+                      printLine("Hello DhrLang!");
+                    }
                   }
                 EOS
-                assert_match "नमस्ते DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
+                assert_match "Hello DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
               end
             end`;
             

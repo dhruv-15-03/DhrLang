@@ -7,6 +7,11 @@ import dhrlang.error.SourceLocation;
 import dhrlang.lexer.TokenType;
 import dhrlang.interpreter.GenericTypeManager;
 import dhrlang.stdlib.NativeSignatures;
+import dhrlang.types.BlockchainTypes;
+import dhrlang.validation.ContractValidator;
+import dhrlang.validation.ViewPureChecker;
+import dhrlang.validation.StorageLayouter;
+import dhrlang.validation.MsgContext;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +39,7 @@ public class TypeChecker {
     private ErrorReporter errorReporter;
     private Set<String> nonNullVars = new HashSet<>();
     private final Map<String, Map<String,String>> genericInstanceBindings = new HashMap<>();
+    private FunctionDecl currentFunction = null;
 
     public TypeChecker() {
         this.errorReporter = null;
@@ -97,6 +103,22 @@ public class TypeChecker {
                 validateGenericInterface(gi);
             }
         }
+
+        // Smart contract validation: validate annotations, view/pure, storage layout
+        ContractValidator contractValidator = new ContractValidator(errorReporter);
+        contractValidator.validate(program);
+
+        ViewPureChecker viewPureChecker = new ViewPureChecker(errorReporter);
+        viewPureChecker.check(program);
+
+        StorageLayouter storageLayouter = new StorageLayouter();
+        storageLayouter.layoutAll(program);
+
+        // Iteration 2 safety validators: reentrancy, CEI ordering, checked arithmetic, access control
+        new dhrlang.validation.NonReentrantChecker(errorReporter).check(program);
+        new dhrlang.validation.EffectOrderingAnalyzer(errorReporter).analyze(program);
+        new dhrlang.validation.CheckedArithmetic(errorReporter).analyze(program);
+        new dhrlang.validation.AccessControlChecker(errorReporter).analyze(program);
         
         FunctionDecl mainMethod = null;
         for (ClassDecl classDecl : program.getClasses()) {
@@ -111,6 +133,9 @@ public class TypeChecker {
         }
         
         if (mainMethod == null) {
+            // @contract programs don't need a main() — they have constructors and public functions
+            boolean hasContracts = program.getClasses().stream().anyMatch(ClassDecl::isContract);
+            if (!hasContracts) {
             if (program.getClasses().isEmpty()) {
                 // No classes at all - show first non-interface declaration or start of file
                 SourceLocation loc = !program.getInterfaces().isEmpty() ? 
@@ -123,6 +148,7 @@ public class TypeChecker {
                 SourceLocation loc = program.getClasses().get(0).getSourceLocation();
                 errorWithHint("Entry point error: No static main method found. Please define 'static kaam main()' in any class.", loc,
                              "Add a main method: 'static kaam main() { ... }' in any class to serve as the program entry point");
+            }
             }
     } else if (!mainMethod.getParameters().isEmpty()) {
             errorWithHint("Entry point 'main' should not have parameters.", mainMethod.getSourceLocation(),
@@ -536,9 +562,16 @@ public class TypeChecker {
     nonNullVars = new HashSet<>();
         boolean prevStatic = currentFunctionIsStatic;
         currentFunctionIsStatic = function.hasModifier(Modifier.STATIC);
+        FunctionDecl prevFunction = currentFunction;
+        currentFunction = function;
         
         if (currentClass != null) {
             local.define("this", currentClass.getName());
+            // Define msg and block globals for @contract classes
+            if (currentClass.isContract()) {
+                local.define("msg", MsgContext.MSG_TYPE);
+                local.define("block", MsgContext.BLOCK_TYPE);
+            }
         }
         
         for (VarDecl param : function.getParameters()) {
@@ -555,7 +588,10 @@ public class TypeChecker {
 
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
-            if(errorReporter!=null){
+            // Skip unused-param warnings for @event/@error functions (they're declarations, not implementations)
+            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR);
+            if(errorReporter!=null && !isEvent){
                 for (VarDecl param : function.getParameters()) {
                     Boolean used = local.getLocalUsageMap().get(param.getName());
                     if(used!=null && !used){
@@ -567,13 +603,17 @@ public class TypeChecker {
 
         currentFunctionReturnType = previousReturnType;
         currentFunctionIsStatic = prevStatic;
+        currentFunction = prevFunction;
     }
 
     private void checkBlock(Block block, TypeEnvironment env) {
         TypeEnvironment blockEnv = new TypeEnvironment(env);
         boolean unreachable = false;
-        // Empty block (no statements) warning (skip if it's function body already handled upstream?)
-        if(block.getStatements().isEmpty() && errorReporter!=null){
+        // Empty block (no statements) warning — skip for @event/@error functions (they're declarations)
+        boolean isEventBody = currentFunction != null
+                && (currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR));
+        if(block.getStatements().isEmpty() && errorReporter!=null && !isEventBody){
             errorReporter.warning(block.getSourceLocation(), "Empty block.", "Remove or add statements", ErrorCode.EMPTY_BLOCK);
         }
         for (Statement stmt : block.getStatements()) {
@@ -777,7 +817,14 @@ public class TypeChecker {
         } else {
             TypeDesc ret = checkExprDesc(stmt.getValue(), env);
             TypeDesc expected = TypeDesc.parse(currentFunctionReturnType);
-            if (!isAssignable(ret, expected)) {
+            // In @contract @view/@pure functions, kaam return type allows any return value
+            // (view functions return data to callers, not void)
+            boolean isContractViewOrPure = currentClass != null && currentClass.isContract()
+                    && currentFunction != null
+                    && (currentFunction.isView() || currentFunction.isPure());
+            if (isContractViewOrPure && currentFunctionReturnType.equals("kaam")) {
+                // Allow — @view/@pure functions in contracts can return values
+            } else if (!isAssignable(ret, expected)) {
                 errorWithHint("Cannot return '" + ret + "' from a function expecting '" + currentFunctionReturnType + "'.", 
                              stmt.getSourceLocation(),
                              buildTypeMismatchHint(ret, expected, "return statement"), ErrorCode.TYPE_MISMATCH);
@@ -867,6 +914,7 @@ public class TypeChecker {
         if (expr instanceof PrefixIncrementExpr) return checkPrefixIncrement((PrefixIncrementExpr) expr, env);
         if (expr instanceof StaticAccessExpr) return checkStaticAccess((StaticAccessExpr) expr, env);
         if (expr instanceof StaticAssignExpr) return checkStaticAssign((StaticAssignExpr) expr, env);
+        if (expr instanceof TernaryExpr te) return checkTernary(te, env);
 
         errorWithHint("Unsupported expression type: " + expr.getClass().getSimpleName(), expr.getSourceLocation(),
                      "This expression type is not yet supported in DhrLang");
@@ -1014,6 +1062,7 @@ public class TypeChecker {
     }
 
     private String checkLiteral(LiteralExpr expr) {
+        if (expr.getValue() == null) return "null";
         if (expr.getValue() instanceof Long) return "num";
         if (expr.getValue() instanceof Double) return "duo";
         if (expr.getValue() instanceof Boolean) return "kya";
@@ -1077,10 +1126,17 @@ public class TypeChecker {
                              "Use boolean values (true/false) with the '!' operator");
             }
             return "kya";
+        } else if (op == TokenType.BIT_NOT) {
+            if (!rightDesc.isNumeric()) {
+                errorWithHint("Operand for '~' must be a number, got '" + rightType + "'.", 
+                             expr.getSourceLocation(),
+                             "Bitwise NOT (~) requires a numeric operand");
+            }
+            return "num";
         }
         
         errorWithHint("Unsupported unary operator: " + op, expr.getSourceLocation(),
-                     "Use supported unary operators: - (minus) or ! (not)");
+                     "Use supported unary operators: - (minus), ! (not), or ~ (bitwise not)");
         return "unknown";
     }
 
@@ -1205,6 +1261,17 @@ public class TypeChecker {
                                  "Logical operators (&&, ||) require boolean values: true && false");
                 }
                 return "kya";
+
+            case BIT_AND:
+            case BIT_OR:
+            case BIT_XOR:
+            case LSHIFT:
+            case RSHIFT:
+                if (!leftDesc.isNumeric() || !rightDesc.isNumeric()) {
+                    errorWithHint("Operands for bitwise operator must be numbers, got '" + leftType + "' and '" + rightType + "'.", expr.getSourceLocation(),
+                                 "Bitwise operators (&, |, ^, <<, >>) require numeric operands");
+                }
+                return "num";
                 
             default:
                 errorWithHint("Unsupported binary operator: " + op, expr.getSourceLocation(),
@@ -1329,6 +1396,7 @@ public class TypeChecker {
             return elementType + "[]";
         }
         for(Expression dimExpr : dims){
+            if (dimExpr == null) continue; // jagged dimension (e.g., new num[3][]) — no size to check
             TypeDesc sizeDesc = checkExprDesc(dimExpr, env);
             if (!sizeDesc.isNumeric()) {
                 errorWithHint("Array size must be numeric, got '" + sizeDesc + "'.", expr.getSourceLocation(),
@@ -1394,13 +1462,18 @@ public class TypeChecker {
             // If objectType were 'null' we'd have returned already; tracking reserved for future enhancements
             if(!nonNullVars.contains(v.getName().getLexeme()) && errorReporter!=null){
                 // Heuristic: if original static type is a class (not primitive) and not proven non-null, warn
+                // Exception: msg and block are always non-null in @contract classes
                 String name = v.getName().getLexeme();
+                if ("msg".equals(name) || "block".equals(name)) {
+                    // No warning — blockchain globals are always available in contracts
+                } else {
                 try {
                     String staticType = env.get(name);
                     if(!isPrimitive(staticType) && !staticType.endsWith("[]")){
                         errorReporter.warning(expr.getSourceLocation(), "Possible null dereference of '"+name+"'.", "Ensure '"+name+"' is checked for null before property access", ErrorCode.POSSIBLE_NULL_DEREFERENCE);
                     }
                 } catch (TypeException ignored) {}
+                }
             }
         }
         String propName = expr.getName().getLexeme();
@@ -1409,6 +1482,36 @@ public class TypeChecker {
         }
         if (objectType.equals("sab") && propName.equals("length")) {
             return "num";
+        }
+        
+        // Handle msg.sender, msg.value, block.timestamp for smart contracts
+        if (objectType.equals(MsgContext.MSG_TYPE)) {
+            String resolvedType = MsgContext.getMsgPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'msg." + propName + "'.", expr.getSourceLocation(),
+                         "Available msg properties: sender (Address), value (uint256), data (calldata), sig (uint256)");
+            return "unknown";
+        }
+        // Handle msg.data.length (calldata size) for smart contracts
+        if (objectType.equals(MsgContext.CALLDATA_TYPE)) {
+            String resolvedType = MsgContext.getCallDataPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'msg.data." + propName + "'.", expr.getSourceLocation(),
+                         "msg.data only supports '.length' (uint256); use msg.sig for the function selector");
+            return "unknown";
+        }
+        if (objectType.equals(MsgContext.BLOCK_TYPE)) {
+            String resolvedType = MsgContext.getBlockPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'block." + propName + "'.", expr.getSourceLocation(),
+                         "Available block properties: timestamp (uint256), number (uint256)");
+            return "unknown";
         }
         
         // Handle built-in string methods for sab type
@@ -1615,6 +1718,21 @@ public class TypeChecker {
         return "unknown";
     }
 
+    private String checkTernary(TernaryExpr expr, TypeEnvironment env) {
+        String condType = checkExpr(expr.getCondition(), env);
+        if (!"kya".equals(condType)) {
+            errorWithHint("Ternary condition must be boolean (kya), got '" + condType + "'.", expr.getSourceLocation(),
+                         "The condition before '?' must evaluate to kya (boolean)");
+        }
+        String thenType = checkExpr(expr.getThenBranch(), env);
+        String elseType = checkExpr(expr.getElseBranch(), env);
+        TypeDesc thenDesc = TypeDesc.parse(thenType);
+        TypeDesc elseDesc = TypeDesc.parse(elseType);
+        if (isAssignable(elseDesc, thenDesc)) return thenType;
+        if (isAssignable(thenDesc, elseDesc)) return elseType;
+        return thenType;
+    }
+
     private String checkCall(CallExpr call, TypeEnvironment env) {
         Expression callee = call.getCallee();
         FunctionSignature signature;
@@ -1624,6 +1742,36 @@ public class TypeChecker {
             funcName = ((VariableExpr) callee).getName().getLexeme();
             if (isNativeFunction(funcName)) {
                 return checkNativeFunction(funcName, call.getArguments(), call, env);
+            }
+            // Contract built-in: `revert(...)` lowers to an EVM REVERT — a custom
+            // error, a string message, or a bare revert. Validate argument
+            // expressions (including any inner @error call) without requiring a
+            // user-declared `revert` function.
+            if ("revert".equals(funcName)) {
+                for (Expression arg : call.getArguments()) {
+                    checkExpr(arg, env);
+                }
+                return "kaam";
+            }
+            // Contract built-in: `address(x)` casts a numeric value to an Address
+            // (e.g. the zero address `address(0)`). Lowered on the EVM to a 160-bit
+            // mask. There is no user-declarable `address` function.
+            if ("address".equals(funcName)) {
+                if (call.getArguments().size() != 1) {
+                    errorWithHint("address(x) takes exactly one argument.", call.getSourceLocation(),
+                                 "Use address(0) for the zero address, or address(n) to cast a number",
+                                 ErrorCode.NATIVE_ARITY);
+                } else {
+                    String argType = checkExpr(call.getArguments().get(0), env);
+                    TypeDesc argDesc = TypeDesc.parse(argType);
+                    if (!"Address".equals(argType) && !"unknown".equals(argType)
+                            && !isAssignable(argDesc, TypeDesc.parse("num"))) {
+                        errorWithHint("address(x) expects a numeric argument, got '" + argType + "'.",
+                                     call.getSourceLocation(), "Pass a num, e.g. address(0)",
+                                     ErrorCode.TYPE_MISMATCH);
+                    }
+                }
+                return "Address";
             }
             try {
                 signature = env.getFunction(funcName);
@@ -1992,9 +2140,11 @@ public class TypeChecker {
                                  "Use " + name + "(string) to convert a string to a number");
                 }
                 String parseType = checkExpr(args.get(0), env);
-                if (!parseType.equals("sab")) {
-                    errorWithHint("'" + name + "' requires a string argument, got '" + parseType + "'.", call.getSourceLocation(),
-                                 "Number conversion only works with strings: " + name + "('42')");
+                if (!parseType.equals("sab") && !parseType.equals("num") && !parseType.equals("duo")) {
+                    errorWithHint("'" + name + "' requires a num, duo, or sab argument, got '" + parseType + "'.", call.getSourceLocation(),
+                                 name.equals("toNum")
+                                     ? "Parse a string or truncate a duo to an integer: " + name + "('42') or (3.9 as num)"
+                                     : "Parse a string or widen a num to a duo: " + name + "('4.2') or (3 as duo)");
                 }
                 return name.equals("toNum") ? "num" : "duo";
                 
@@ -2319,7 +2469,17 @@ public class TypeChecker {
 
 
     private boolean isPrimitive(String type) {
-        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek");
+        return type.equals("num") || type.equals("duo") || type.equals("sab") || type.equals("kya") || type.equals("ek")
+            || type.equals("any") || type.equals("null")
+            || isBlockchainPrimitive(type);
+    }
+
+    /**
+     * Check if a type is a blockchain primitive type.
+     */
+    private boolean isBlockchainPrimitive(String type) {
+        return type.equals("Address") || type.equals("uint256") || type.equals("int256")
+            || type.equals("bytes32") || type.equals("wei");
     }
     
     
@@ -2456,8 +2616,13 @@ public class TypeChecker {
         }
         
     if (!isPrimitive(type) && !classRegistry.containsKey(type) && !interfaceRegistry.containsKey(type)) {
+        // Check for mapping types: mapping(K → V)
+        if (type.startsWith("mapping")) {
+            // mapping types are valid blockchain types
+            return;
+        }
         errorWithHint("Unknown type '" + type + "'.", location,
-            "Make sure the type is defined or use a valid primitive type: num, duo, sab, kya, ek");
+            "Make sure the type is defined or use a valid primitive type: num, duo, sab, kya, ek, Address, uint256, int256, bytes32, wei");
         }
     }
     
@@ -2520,7 +2685,14 @@ public class TypeChecker {
     }
     // New descriptor-based assignability (to gradually replace string variant)
     private boolean isAssignable(TypeDesc from, TypeDesc to){
-        return TypeDesc.assignable(from,to);
+        if(TypeDesc.assignable(from,to)) return true;
+        // Subtype check: allow assigning a subclass to a superclass variable
+        if(from.kind == TypeKind.CLASS && to.kind == TypeKind.CLASS){
+            ClassDecl fromClass = classRegistry.get(from.name);
+            ClassDecl toClass = classRegistry.get(to.name);
+            if(isSubclass(fromClass, toClass)) return true;
+        }
+        return false;
     }
 
     /* -------------------- Generic Instantiation Support (Foundational) -------------------- */

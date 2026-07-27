@@ -11,6 +11,7 @@ import dhrlang.typechecker.TypeChecker;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public final class MiniRunner {
@@ -25,7 +26,8 @@ public final class MiniRunner {
         ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
         ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
         PrintStream oOut = System.out, oErr = System.err;
-        System.setOut(new PrintStream(outBuf)); System.setErr(new PrintStream(errBuf));
+        System.setOut(new PrintStream(outBuf, true, StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(errBuf, true, StandardCharsets.UTF_8));
         boolean compileErr=false;
         try {
             Lexer lexer = new Lexer(source, er);
@@ -34,8 +36,19 @@ public final class MiniRunner {
             Parser parser = new Parser(tokens, er); Program program=null; try { program = parser.parse(); } catch(ParseException e){ compileErr=true; }
             if(er.hasErrors() || program==null) return new Result(outBuf.toString(), errBuf.toString(), true,false);
             TypeChecker tc = new TypeChecker(er); tc.check(program); if(er.hasErrors()) return new Result(outBuf.toString(), errBuf.toString(), true,false);
-            try { new Interpreter().execute(program); } catch (dhrlang.interpreter.DhrRuntimeException e){ if(errBuf.size()==0) errBuf.write(e.getMessage().getBytes()); return new Result(outBuf.toString(), errBuf.toString(), compileErr, true);} 
+            try {
+                new Interpreter().execute(program);
+            } catch (dhrlang.interpreter.DhrRuntimeException e){
+                if(errBuf.size()==0){
+                    String msg = String.valueOf(e.getMessage());
+                    errBuf.write(msg.getBytes(StandardCharsets.UTF_8));
+                }
+                return new Result(outBuf.toString(StandardCharsets.UTF_8), errBuf.toString(StandardCharsets.UTF_8), compileErr, true);
+            }
             return new Result(outBuf.toString(), errBuf.toString(), compileErr,false);
-        } catch(Exception ex){ return new Result(outBuf.toString(), errBuf.toString()+"\nEX:"+ex.getMessage(), true,true); }
+        } catch(Exception ex){
+            String exMsg = ex.getMessage() == null ? ex.getClass().getName() : ex.getMessage();
+            return new Result(outBuf.toString(StandardCharsets.UTF_8), errBuf.toString(StandardCharsets.UTF_8)+"\nEX:"+exMsg, true,true);
+        }
         finally { System.setOut(oOut); System.setErr(oErr);} }
 }

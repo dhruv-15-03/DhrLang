@@ -54,6 +54,8 @@ replay_pid*
 vscode-extension/node_modules/
 vscode-extension/out/
 vscode-extension/*.vsix
+vscode-extension/.vscode-test/
+vscode-extension/src/test/fixtures/workspace/*.jar
 *.ipr
 out/
 .vscode/
@@ -98,3 +100,12 @@ Thumbs.db
 /build/distributions/
 /build/libs/
 /build/scripts/
+
+# Copilot Plan canvas (session-local working plan, not a repo doc)
+plan.md
+
+# Portable local JDKs (not committed)
+.jdks/
+
+# Deployment broadcast artifacts (per-chain, generated)
+deployments/

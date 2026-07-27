@@ -1,0 +1,15 @@
+// Recursive Fibonacci benchmark – intentionally modest upper bound for CI stability.
+class Main {
+    static num fib(num n) {
+        if (n < 2) return n;
+        return Main.fib(n - 1) + Main.fib(n - 2); // Qualify to avoid any static resolution edge cases
+    }
+
+    static kaam main() {
+        num total = 0;
+        for (num i = 0; i < 20; i = i + 1) {
+            total = total + Main.fib(i);
+        }
+        printLine("fib-sum=" + total);
+    }
+}

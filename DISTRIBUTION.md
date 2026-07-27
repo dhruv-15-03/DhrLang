@@ -1,10 +1,10 @@
 # DhrLang Package Manager Guide
 
-## 🚀 Distribution Strategy
+## ðŸš€ Distribution Strategy
 
 To make DhrLang truly accessible to users worldwide, we need to distribute it through popular package managers and provide easy installation methods.
 
-## 📦 Package Manager Targets
+## ðŸ“¦ Package Manager Targets
 
 ### 1. Homebrew (macOS/Linux)
 Create a Homebrew formula for easy installation on macOS and Linux.
@@ -13,16 +13,18 @@ Create a Homebrew formula for easy installation on macOS and Linux.
 
 ```ruby
 class Dhrlang < Formula
-  desc "Programming language with Hindi keywords - हिंदी में प्रोग्रामिंग भाषा"
+  desc "DhrLang programming language (JVM, modern static typing)"
   homepage "https://github.com/dhruv-15-03/DhrLang"
-  url "https://github.com/dhruv-15-03/DhrLang/releases/download/v1.0.0/DhrLang-1.0.0.tar.gz"
+  # Prefer a tagged release asset (single JAR): DhrLang-<version>.jar
+  version "<version>"
+  url "https://github.com/dhruv-15-03/DhrLang/releases/download/v#{version}/DhrLang-#{version}.jar"
   sha256 "REPLACE_WITH_ACTUAL_SHA256"
   license "MIT"
 
   depends_on "openjdk@17"
 
   def install
-    libexec.install "DhrLang.jar"
+    libexec.install "DhrLang-#{version}.jar" => "DhrLang.jar"
     (bin/"dhrlang").write <<~EOS
       #!/bin/bash
       exec "#{Formula["openjdk@17"].opt_bin}/java" -jar "#{libexec}/DhrLang.jar" "$@"
@@ -31,11 +33,13 @@ class Dhrlang < Formula
 
   test do
     (testpath/"test.dhr").write <<~EOS
-      मुख्य() {
-          प्रिंट("नमस्ते DhrLang!");
+      class Main {
+          static kaam main() {
+              printLine("Hello, DhrLang!");
+          }
       }
     EOS
-    assert_match "नमस्ते DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
+    assert_match "Hello, DhrLang!", shell_output("#{bin}/dhrlang #{testpath}/test.dhr")
   end
 end
 ```
@@ -57,7 +61,7 @@ Create a Chocolatey package for Windows users.
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>dhrlang</id>
-    <version>1.0.0</version>
+    <version>&lt;version&gt;</version>
     <packageSourceUrl>https://github.com/dhruv-15-03/DhrLang</packageSourceUrl>
     <owners>dhruv-15-03</owners>
     <title>DhrLang</title>
@@ -69,9 +73,9 @@ Create a Chocolatey package for Windows users.
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/dhruv-15-03/DhrLang</projectSourceUrl>
     <bugTrackerUrl>https://github.com/dhruv-15-03/DhrLang/issues</bugTrackerUrl>
-    <tags>programming-language hindi java compiler</tags>
-    <summary>Programming language with Hindi keywords</summary>
-    <description>DhrLang is a programming language that uses Hindi keywords, making programming accessible to Hindi speakers. Features include object-oriented programming, generics, exception handling, and seamless Java interoperability.</description>
+    <tags>programming-language jvm java compiler</tags>
+    <summary>Modern statically typed language on the JVM</summary>
+    <description>DhrLang is a statically typed language and toolchain on the JVM. It supports classes, generics, interfaces, arrays, and exceptions, with multiple execution backends (AST/IR/bytecode).</description>
     <dependencies>
       <dependency id="openjdk17" version="17.0.0" />
     </dependencies>
@@ -86,7 +90,7 @@ Create a Chocolatey package for Windows users.
 ```powershell
 $ErrorActionPreference = 'Stop'
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
-$url64 = 'https://github.com/dhruv-15-03/DhrLang/releases/download/v1.0.0/DhrLang-1.0.0.jar'
+$url64 = 'https://github.com/dhruv-15-03/DhrLang/releases/download/v<version>/DhrLang-<version>.jar'
 
 $packageArgs = @{
   packageName   = $env:ChocolateyPackageName
@@ -124,12 +128,11 @@ Create a Snap package for Linux distributions.
 `snap/snapcraft.yaml`:
 ```yaml
 name: dhrlang
-version: '1.0.0'
-summary: Programming language with Hindi keywords
+version: '<version>'
+summary: Modern statically typed language on the JVM
 description: |
-  DhrLang is a programming language that uses Hindi keywords, making 
-  programming accessible to Hindi speakers. Features include object-oriented 
-  programming, generics, exception handling, and seamless Java interoperability.
+  DhrLang is a statically typed language and toolchain on the JVM.
+  It supports classes, generics, interfaces, arrays, and exceptions.
 
 grade: stable
 confinement: strict
@@ -153,7 +156,7 @@ parts:
     override-build: |
       snapcraftctl build
       mkdir -p $SNAPCRAFT_PART_INSTALL/bin
-      cp build/libs/DhrLang-1.0.0-all.jar $SNAPCRAFT_PART_INSTALL/bin/DhrLang.jar
+      cp build/libs/DhrLang-<version>.jar $SNAPCRAFT_PART_INSTALL/bin/DhrLang.jar
       cat > $SNAPCRAFT_PART_INSTALL/bin/dhrlang << 'EOF'
       #!/bin/bash
       exec java -jar $SNAP/bin/DhrLang.jar "$@"
@@ -172,16 +175,15 @@ Create a custom APT repository for Debian-based systems.
 `DEBIAN/control`:
 ```
 Package: dhrlang
-Version: 1.0.0
+Version: <version>
 Section: devel
 Priority: optional
 Architecture: all
 Depends: openjdk-17-jre-headless
 Maintainer: Dhruv Patel <email@example.com>
-Description: Programming language with Hindi keywords
- DhrLang is a programming language that uses Hindi keywords, making
- programming accessible to Hindi speakers. Features include object-oriented
- programming, generics, exception handling, and seamless Java interoperability.
+Description: Modern statically typed language on the JVM
+ DhrLang is a statically typed language and toolchain on the JVM.
+ It supports classes, generics, interfaces, arrays, and exceptions.
 ```
 
 **Installation**:
@@ -202,8 +204,8 @@ Create an npm wrapper for easy installation via npm.
 ```json
 {
   "name": "dhrlang",
-  "version": "1.0.0",
-  "description": "Programming language with Hindi keywords",
+  "version": "<version>",
+  "description": "Modern statically typed language on the JVM",
   "main": "index.js",
   "bin": {
     "dhrlang": "./bin/dhrlang.js"
@@ -211,7 +213,7 @@ Create an npm wrapper for easy installation via npm.
   "scripts": {
     "postinstall": "node install.js"
   },
-  "keywords": ["programming", "language", "hindi", "compiler"],
+  "keywords": ["programming", "language", "jvm", "compiler"],
   "author": "Dhruv Patel",
   "license": "MIT",
   "repository": {
@@ -239,7 +241,7 @@ child.on('exit', code => process.exit(code));
 npm install -g dhrlang
 ```
 
-## 🐳 Docker Distribution
+## ðŸ³ Docker Distribution
 
 ### Official Docker Image
 Create official Docker images for containerized usage.
@@ -249,7 +251,7 @@ Create official Docker images for containerized usage.
 FROM openjdk:17-jre-slim
 
 LABEL maintainer="Dhruv Patel"
-LABEL description="DhrLang - Programming language with Hindi keywords"
+LABEL description="DhrLang - A modern statically typed language on the JVM"
 
 # Install DhrLang
 COPY DhrLang.jar /usr/local/lib/DhrLang.jar
@@ -278,7 +280,7 @@ docker run -v $(pwd):/workspace dhrlang/dhrlang:latest myprogram.dhr
 docker run -it -v $(pwd):/workspace dhrlang/dhrlang:latest bash
 ```
 
-## 📱 IDE Extensions
+## ðŸ“± IDE Extensions
 
 ### VS Code Extension
 Create a VS Code extension for syntax highlighting and language support.
@@ -289,7 +291,7 @@ Create a VS Code extension for syntax highlighting and language support.
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Syntax highlighting and language support for DhrLang",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -320,7 +322,7 @@ Create a VS Code extension for syntax highlighting and language support.
 }
 ```
 
-## 🌐 Web Distribution
+## ðŸŒ Web Distribution
 
 ### Official Website
 Create a comprehensive website with:
@@ -368,7 +370,7 @@ jobs:
           prerelease: false
 ```
 
-## 📊 Analytics & Metrics
+## ðŸ“Š Analytics & Metrics
 
 ### Download Tracking
 Implement download tracking to understand adoption:
@@ -387,7 +389,7 @@ Optional telemetry (with user consent):
 3. **Performance** - Compilation and runtime performance
 4. **Platforms** - Operating system distribution
 
-## 🚀 Launch Strategy
+## ðŸš€ Launch Strategy
 
 ### Phase 1: Technical Foundation
 - [ ] Create all package manager configurations
@@ -407,7 +409,7 @@ Optional telemetry (with user consent):
 - [ ] Educational partnerships
 - [ ] Corporate adoption
 
-## 📈 Success Metrics
+## ðŸ“ˆ Success Metrics
 
 ### Short-term (3 months)
 - 1,000+ downloads across all platforms
@@ -427,7 +429,7 @@ Optional telemetry (with user consent):
 - Active community of 100+ regular users
 - Commercial projects using DhrLang
 
-## 🎯 Call to Action
+## ðŸŽ¯ Call to Action
 
 **Ready to make DhrLang official?** Let's start with the most impactful distribution channels:
 

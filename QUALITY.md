@@ -3,12 +3,17 @@
 This document tracks production readiness dimensions and enforced gates.
 
 ## Readiness Dimensions (Current Snapshot)
-- Correctness: Growing golden + negative test suite (51 tests). Core parser/lexer well covered; interpreter/typechecker medium coverage.
-- Safety & Errors: Structured runtime error categories; access modifiers enforced; stack depth guard (MAX_CALL_DEPTH=1000) in functions.
+- Correctness: Golden + negative test suite with parity coverage across AST/IR/bytecode for core semantics.
+- Safety & Errors: Structured runtime error categories; access modifiers enforced; runtime execution caps available (e.g., `dhrlang.backend.maxSteps`).
 - Maintainability: Central `NativeSignatures` registry partially integrated (existence + arity). Interpreter still wires natives manually.
-- Test Coverage: Instruction ~43%, branch ~33% (Jacoco). Gate set to 40% / 30% to prevent regression; will ratchet upward.
+- Test Coverage: Enforced Jacoco minimums to prevent regressions; run `./gradlew.bat test jacocoTestReport` to see current numbers.
 - Observability: Stack traces for thrown exceptions; need future logging hooks.
-- Performance: Tree-walk implementation (baseline). No profiling yet.
+- Performance: AST interpreter is the baseline; IR and bytecode backends exist to enable optimizations without changing semantics.
+
+## Bytecode Safety (Runtime)
+The bytecode VM validates bytecode before executing and supports an untrusted mode:
+- `-Ddhrlang.bytecode.untrusted=true` enables conservative defaults and tighter caps.
+- Additional caps exist for bytecode size/shape, call depth, handler depth, and control-flow verification.
 
 ## Gates
 Jacoco verification (build.gradle):

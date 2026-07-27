@@ -1,0 +1,21 @@
+class Animal {
+    sab name;
+    kaam init(sab n) {
+        this.name = n;
+    }
+    sab speak() {
+        return "...";
+    }
+}
+class Dog extends Animal {
+    sab speak() {
+        return "Woof";
+    }
+}
+class Main {
+    static kaam main() {
+        Dog d = new Dog("Rex");
+        printLine(d.name);
+        printLine(d.speak());
+    }
+}

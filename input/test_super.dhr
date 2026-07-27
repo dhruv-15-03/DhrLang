@@ -1,0 +1,22 @@
+class Animal {
+    sab sound() {
+        return "generic sound";
+    }
+}
+
+class Dog extends Animal {
+    sab sound() {
+        return "Woof!";
+    }
+    sab parentSound() {
+        return super.sound();
+    }
+}
+
+class Main {
+    static void main() {
+        Dog d = new Dog();
+        printLine(d.sound());
+        printLine(d.parentSound());
+    }
+}

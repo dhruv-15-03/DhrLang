@@ -45,9 +45,22 @@ public final class ProgramLoader {
             Map<String, Function> staticMethods = new HashMap<>();
             Map<String, Object> staticFields = new HashMap<>();
 
+            // Create a class-level environment so static methods can resolve sibling static methods
+            Environment classEnv = new Environment(globals);
+
             for (FunctionDecl method : classDecl.getFunctions()) {
-                Function function = new Function(method, globals, classDecl.getName());
-                if (method.hasModifier(Modifier.STATIC)) staticMethods.put(method.getName(), function); else methods.put(method.getName(), function);
+                if (method.hasModifier(Modifier.STATIC)) {
+                    Function function = new Function(method, classEnv, classDecl.getName());
+                    staticMethods.put(method.getName(), function);
+                } else {
+                    Function function = new Function(method, globals, classDecl.getName());
+                    methods.put(method.getName(), function);
+                }
+            }
+
+            // Define all static methods in the class-level environment so they can call each other
+            for (Map.Entry<String, Function> entry : staticMethods.entrySet()) {
+                classEnv.define(entry.getKey(), entry.getValue());
             }
 
             for (VarDecl field : classDecl.getVariables()) {

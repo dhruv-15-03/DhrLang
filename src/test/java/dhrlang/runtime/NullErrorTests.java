@@ -5,18 +5,20 @@ import org.junit.jupiter.api.DisplayName;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class NullErrorTests {
-    @Test @DisplayName("Compile-time rejection: property access on null")
+    @Test @DisplayName("Runtime error: property access on null")
     void nullPropertyAccess() {
         String src = "class A { static kaam main(){ sab x = null; printLine(x.length); } }";
         var result = RuntimeTestUtil.runSource(src);
-        assertTrue(result.hadCompileErrors, "Expected compile/type error");
-        assertFalse(result.hadRuntimeError, "Should not reach runtime for invalid property access");
+        // null is now a valid literal; property access on null is a runtime error
+        assertFalse(result.hadCompileErrors, "No compile error expected: " + result.stderr);
+        assertTrue(result.hadRuntimeError, "Expected runtime error for property access on null");
     }
-    @Test @DisplayName("Compile-time rejection: property access on possibly-null return")
+    @Test @DisplayName("Runtime error: property access on null return")
     void nullPropertyAccessRuntime() {
         String src = "class A { num v; } class Maker { static A make(){ return null; } static kaam main(){ A obj = Maker.make(); printLine(obj.v); } }";
         var result = RuntimeTestUtil.runSource(src);
-        assertTrue(result.hadCompileErrors, "Expected compile/type error for property on potential null");
-        assertFalse(result.hadRuntimeError, "No runtime error expected");
+        // null is valid at compile time; property access on null is a runtime error
+        assertFalse(result.hadCompileErrors, "No compile error expected: " + result.stderr);
+        assertTrue(result.hadRuntimeError, "Expected runtime error for property access on null");
     }
 }

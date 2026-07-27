@@ -1,1 +1,0 @@
-class G { static kaam main(){ num sum=0; num[] r = range(1,5); num i=0; while(i<r.length){ sum = sum + r[i]; i = i + 1; } printLine(sum); } }

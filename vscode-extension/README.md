@@ -1,145 +1,139 @@
 # DhrLang VS Code Extension
 
-This extension provides comprehensive support for the DhrLang programming language in Visual Studio Code.
+Modern language tooling for the DhrLang language: syntax highlighting, snippets, run / compile commands, diagnostics, and quality-of-life helpers.
 
-## Features
+> This README now reflects the current Englishâ€‘core token set (num, duo, sab, kya, any, kaam, class, static, etc.). Legacy Hindi keyword forms were removed from the language docs and are no longer advertised here.
 
-### 🎨 Syntax Highlighting
-- Full syntax highlighting for DhrLang (.dhr) files
-- Support for Hindi keywords and English equivalents
-- Proper highlighting for strings, comments, numbers, and operators
+## âœ¨ Features
 
-### 📝 Code Completion
-- Intelligent auto-completion for Hindi keywords
-- Snippet templates for common constructs
-- Type suggestions for variables and functions
+### ðŸš€ Zero Config Run
+* **Bundled Compiler**: The extension includes the DhrLang compiler. Just install and run!
+* **No Setup**: You don't need to download the JAR separately.
+* **Requirement**: Ensure **Java 17+** is installed on your system.
 
-### 🚀 Run & Compile
-- **Ctrl+F5**: Run DhrLang files directly
-- **Ctrl+Shift+B**: Compile and check for errors
-- Integrated terminal output
-- Error highlighting and diagnostics
+### ðŸŽ¨ Syntax Highlighting
+* Accurate grammar for `.dhr` files
+* Highlights keywords, literals, strings, comments, classes, functions, numbers
+* Updated for the simplified Englishâ€‘core tokens
 
-### 💡 IntelliSense Features
-- Hover information for Hindi keywords
-- Code snippets for faster development
-- Context-aware suggestions
+### ðŸ§  Full Language Server (go-to-def, hover, rename, references, completion, diagnostics)
+* The extension now launches the real DhrLang Language Server (`java -jar DhrLang.jar --lsp`) over stdio
+  via `vscode-languageclient`, instead of the old static/in-process providers.
+* **Go to Definition** and **Find All References** across the open file
+* **Hover** with symbol/type information
+* **Rename Symbol** (`F2`) with `prepareRename` support
+* **Scope-aware Completion** — suggests symbols actually in scope at the cursor (locals, parameters,
+  class members), not a flat keyword dump
+* **Diagnostics** (`textDocument/publishDiagnostics`) with full-span ranges and `DHR-Exxx` error codes
+* If Java or `DhrLang.jar` can't be found, the extension falls back to the older static
+  keyword-completion/hover and shell-out diagnostics so it still degrades gracefully instead of
+  crashing on activation (governed by `dhrlang.enableAutoCompletion` / `dhrlang.enableErrorSquiggles`,
+  which now only apply to that fallback path).
 
-### 🛠️ Customization
-Configure the extension through VS Code settings:
-- `dhrlang.jarPath`: Path to DhrLang.jar file
-- `dhrlang.javaPath`: Path to Java executable
-- `dhrlang.enableAutoCompletion`: Enable/disable auto-completion
-- `dhrlang.enableErrorSquiggles`: Enable/disable error highlighting
+### ðŸ§© Snippets
+* Snippets for: main entry, class, method, if / if-else, while, for, foreach, arrays, printLine, try/catch skeleton
 
-## Installation
+### ðŸš€ Run & Compile
+* `Ctrl+F5` Run current DhrLang file
+* `Ctrl+Shift+B` Compile / diagnostics
+* Status bar indicator (auto jar detection state)
+* Error squiggles (when enabled) sourced from compiler output
 
-### From VS Code Marketplace
+### âš™ï¸ Configuration (Settings)
+| Setting | Description |
+|---------|-------------|
+| `dhrlang.jarPath` | Explicit path to `DhrLang.jar` (leave blank for auto detection) |
+| `dhrlang.autoDetectJar` | Search workspace (root & `lib/`) for the JAR automatically |
+| `dhrlang.javaPath` | Java runtime executable (default `java`) |
+| `dhrlang.enableAutoCompletion` | Toggle fallback keyword/snippet completion (only used if the Language Server can't start) |
+| `dhrlang.enableErrorSquiggles` | Toggle fallback inline diagnostics (only used if the Language Server can't start) |
+| `dhrlang.outputEncoding` | Output encoding (`utf8` / `utf16`) |
+
+## ðŸ›  Installation
+
+### From Marketplace (Coming Soon)
+*Once published to the VS Code Marketplace:*
 1. Open VS Code
-2. Go to Extensions (Ctrl+Shift+X)
-3. Search for "DhrLang Support"
-4. Click Install
+2. Extensions (Ctrl+Shift+X)
+3. Search: `DhrLang Support` (publisher: `dhruv-15-03`)
+4. Install
 
-### Manual Installation
-1. Download the `.vsix` file from releases
-2. Open VS Code
-3. Run `code --install-extension dhrlang-vscode-1.0.0.vsix`
+### Manual (VSIX) - Recommended
+1. Download `dhrlang-vscode-1.1.8.vsix` from the [GitHub Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest) page.
+2. Open VS Code.
+3. Press `Ctrl+Shift+P` (Command Palette).
+4. Type "Install from VSIX" and select **Extensions: Install from VSIX...**.
+5. Select the downloaded `.vsix` file.
 
-## Getting Started
+## ðŸš§ Packaging / Updating the VSIX
 
-1. **Create a new file** with `.dhr` extension
-2. **Type `main`** and press Tab for main function template
-3. **Write your code** using Hindi keywords:
-   ```dhrlang
-   मुख्य() {
-       प्रिंट("नमस्ते, DhrLang!");
-   }
-   ```
-4. **Press Ctrl+F5** to run your program
+The repository currently contains an older `dhrlang-vscode-3.0.0.vsix`. Rebuild to match new version:
 
-## Code Snippets
+1. In `vscode-extension/` run (PowerShell):
+   - Install dependencies: `npm ci`
+   - (If not installed) `npm install -g @vscode/vsce`
+2. Compile: `npm run compile`
+3. Package: `vsce package` (produces `dhrlang-vscode-1.1.4.vsix`)
+4. (Optional) Publish: `vsce publish patch` (requires a Personal Access Token and verified publisher)
 
-Type these prefixes and press Tab:
+## ðŸš€ Quick Start
 
-| Prefix | Snippet | Description |
-|--------|---------|-------------|
-| `main` | Main function | `मुख्य() { ... }` |
-| `print` | Print statement | `प्रिंट("...");` |
-| `if` | If condition | `अगर (...) { ... }` |
-| `while` | While loop | `जबकि (...) { ... }` |
-| `for` | For loop | `के लिए (...) { ... }` |
-| `class` | Class definition | `क्लास ... { ... }` |
-| `try` | Try-catch block | `कोशिश { ... } पकड़ना { ... }` |
-
-## Hindi Keywords Reference
-
-### Control Flow
-- `अगर` - if
-- `नहीं तो` - else
-- `जबकि` - while
-- `के लिए` - for
-- `स्विच` - switch
-- `केस` - case
-
-### Data Types
-- `संख्या` - integer
-- `दशमलव` - decimal/float
-- `स्ट्रिंग` - string
-- `बूलियन` - boolean
-- `चार` - character
-
-### OOP Keywords
-- `क्लास` - class
-- `निजी` - private
-- `संरक्षित` - protected
-- `सार्वजनिक` - public
-- `स्टैटिक` - static
-
-### Exception Handling
-- `कोशिश` - try
-- `पकड़ना` - catch
-- `अंततः` - finally
-
-## Requirements
-
-- **Java 17 or higher** installed on your system
-- **DhrLang.jar** compiler (download from [releases](https://github.com/dhruv-15-03/DhrLang/releases))
-
-## Configuration
-
-Add these settings to your VS Code `settings.json`:
-
-```json
-{
-  "dhrlang.jarPath": "/path/to/DhrLang.jar",
-  "dhrlang.javaPath": "java",
-  "dhrlang.enableAutoCompletion": true,
-  "dhrlang.enableErrorSquiggles": true
+Create `Main.dhr`:
+```dhrlang
+class Main {
+  static kaam main() {
+    printLine("Hello, DhrLang!");
+  }
 }
 ```
+Press `Ctrl+F5` to run (jar must be resolvable or `dhrlang.jarPath` set).
 
-## Commands
+## ðŸ”‘ Core Tokens (Current)
 
-- **DhrLang: Run File** - Execute the current .dhr file
-- **DhrLang: Compile File** - Check for compilation errors
-- **DhrLang: Show Help** - Display language help
+| Category | Tokens |
+|----------|--------|
+| Types | `num`, `duo`, `sab`, `kya`, `any` |
+| Flow | `if`, `else`, `for`, `while`, `return` |
+| OOP | `class`, `extends`, `static` |
+| Functions | `kaam` (method/function indicator) |
+| Builtâ€‘ins (examples) | `printLine`, `arrayLength` |
 
-## Support
+Language feature status is tracked in the main docs (README/SPEC).
 
-- 📖 [Documentation](https://github.com/dhruv-15-03/DhrLang/blob/main/README.md)
-- 🎓 [Tutorials](https://github.com/dhruv-15-03/DhrLang/blob/main/TUTORIALS.md)
-- 💾 [Examples](https://github.com/dhruv-15-03/DhrLang/blob/main/EXAMPLES.md)
-- 🐛 [Report Issues](https://github.com/dhruv-15-03/DhrLang/issues)
-- 💬 [Discussions](https://github.com/dhruv-15-03/DhrLang/discussions)
+## ðŸ“¦ Snippet Prefix Samples
 
-## Contributing
+| Prefix | Expands To |
+|--------|------------|
+| `mainc` | Main class + entry method skeleton |
+| `main` | Only `main` method skeleton |
+| `pl` | `printLine("...");` |
+| `if` / `ife` | If / Ifâ€‘Else block |
+| `for` / `foreach` | Loop templates |
+| `while` | While loop |
+| `class` | Class skeleton |
+| `kaam` | Method skeleton |
 
-Contributions are welcome! Please see our [contributing guidelines](https://github.com/dhruv-15-03/DhrLang/blob/main/CONTRIBUTING.md).
+## ðŸ§ª Troubleshooting
 
-## License
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Extension not found in search | Not yet published or caching delay | Install via VSIX manually |
+| Run command says JAR not found | Auto-detect failed | Set `dhrlang.jarPath` explicitly |
+| No completions | Auto completion disabled | Enable `dhrlang.enableAutoCompletion` |
+| No diagnostics | Error squiggles off or compile failed | Enable setting / check terminal output |
 
-This extension is licensed under the [MIT License](https://github.com/dhruv-15-03/DhrLang/blob/main/LICENSE).
+## ðŸ“š Links
+* Core README â€“ language overview
+* Tutorials â€“ stepwise examples
+* Examples â€“ curated sample programs
+* Issues / Discussions â€“ feedback & support
+
+## ðŸ¤ Contributing
+See the project CONTRIBUTING guidelines. PRs to improve grammar, diagnostics, or snippets are welcome.
+
+## ðŸ“„ License
+MIT License â€“ see repository root `LICENSE`.
 
 ---
 
-**Enjoy programming in Hindi with DhrLang! हिंदी में प्रोग्रामिंग का आनंद लें! 🇮🇳**
+Happy hacking with DhrLang!

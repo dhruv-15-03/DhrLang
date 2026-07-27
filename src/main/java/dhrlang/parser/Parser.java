@@ -9,6 +9,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.EnumSet;
+
+/**
+ * Container class for parsed modifiers and contract annotations.
+ */
+class ParsedModifiers {
+    final Set<Modifier> modifiers;
+    final Set<ContractAnnotation> contractAnnotations;
+    /** {@code @requires(expr)} preconditions collected on a function. */
+    final List<Expression> requires;
+    /** {@code @ensures(expr)} postconditions collected on a function. */
+    final List<Expression> ensures;
+    /** {@code @invariant(expr)} contract invariants collected before a class or member. */
+    final List<Expression> invariants;
+
+    ParsedModifiers(Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
+        this(modifiers, contractAnnotations, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    }
+
+    ParsedModifiers(Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations,
+                    List<Expression> requires, List<Expression> ensures, List<Expression> invariants) {
+        this.modifiers = modifiers;
+        this.contractAnnotations = contractAnnotations;
+        this.requires = requires;
+        this.ensures = ensures;
+        this.invariants = invariants;
+    }
+}
 
 public class Parser {
 
@@ -44,7 +72,10 @@ public class Parser {
     }
 
     private ClassDecl parseClassDecl() {
-        Set<Modifier> classModifiers = parseModifiers();
+        ParsedModifiers parsed = parseAllModifiers();
+        Set<Modifier> classModifiers = parsed.modifiers;
+        Set<ContractAnnotation> classAnnotations = parsed.contractAnnotations;
+        List<Expression> classInvariants = new ArrayList<>(parsed.invariants);
         
         consume(TokenType.CLASS, "Expected 'class' keyword to start a class declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected class name after 'class'.");
@@ -124,15 +155,22 @@ public class Parser {
         List<FunctionDecl> functions = new ArrayList<>();
         List<VarDecl> variables = new ArrayList<>();
         while (!check(TokenType.RBRACE) && !isAtEnd()) {
-            Set<Modifier> modifiers = parseModifiers();
+            ParsedModifiers memberParsed = parseAllModifiers();
+            Set<Modifier> modifiers = memberParsed.modifiers;
+            Set<ContractAnnotation> memberAnnotations = memberParsed.contractAnnotations;
+            // @invariant(expr) may also be declared at the top of the class body.
+            classInvariants.addAll(memberParsed.invariants);
             
             if (checkType()) {
                 Token typeToken = consumeType("Expected type.");
                 Token nameToken = consume(TokenType.IDENTIFIER, "Expected name after type.");
                 if (check(TokenType.LPAREN)) {
-                    functions.add(parseFunctionDecl(typeToken, nameToken, modifiers));
+                    FunctionDecl fn = parseFunctionDecl(typeToken, nameToken, modifiers, memberAnnotations);
+                    fn.getRequires().addAll(memberParsed.requires);
+                    fn.getEnsures().addAll(memberParsed.ensures);
+                    functions.add(fn);
                 } else {
-                    variables.add(parseVarDecl(typeToken, nameToken, modifiers));
+                    variables.add(parseVarDecl(typeToken, nameToken, modifiers, memberAnnotations));
                 }
             } else {
                 throw error(peek(), "Expected field or method declaration.");
@@ -142,10 +180,11 @@ public class Parser {
         
         ClassDecl classDecl;
         if (!typeParameters.isEmpty()) {
-            classDecl = new GenericClassDecl(name.getLexeme(), typeParameters, superclass, interfaces, functions, variables, classModifiers);
+            classDecl = new GenericClassDecl(name.getLexeme(), typeParameters, superclass, interfaces, functions, variables, classModifiers, classAnnotations);
         } else {
-            classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers);
+            classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers, classAnnotations);
         }
+        classDecl.getInvariants().addAll(classInvariants);
         
         classDecl.setSourceLocation(name.getLocation());
         return classDecl;
@@ -254,6 +293,10 @@ public class Parser {
     
     
     private FunctionDecl parseFunctionDecl(Token returnType, Token name, Set<Modifier> modifiers) {
+        return parseFunctionDecl(returnType, name, modifiers, EnumSet.noneOf(ContractAnnotation.class));
+    }
+    
+    private FunctionDecl parseFunctionDecl(Token returnType, Token name, Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
         consume(TokenType.LPAREN, "Expected '(' after function name.");
         List<VarDecl> parameters = new ArrayList<>();
         if (!check(TokenType.RPAREN)) {
@@ -270,16 +313,28 @@ public class Parser {
             body = parseBlock();
         }
         
-        FunctionDecl functionDecl = new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers);
+        FunctionDecl functionDecl = new FunctionDecl(returnType.getLexeme(), name.getLexeme(), parameters, body, modifiers, contractAnnotations);
         functionDecl.setSourceLocation(returnType.getLocation());
         return functionDecl;
     }
 
     private VarDecl parseParameter() {
+        boolean indexed = false;
+        // Contextual 'indexed' modifier for event parameters (e.g. `indexed num from`).
+        // Only treated as a modifier when a type+name still follow, so an ordinary
+        // parameter whose type happens to be named "indexed" is unaffected.
+        if (check(TokenType.IDENTIFIER) && "indexed".equals(peek().getLexeme())
+                && current + 1 < tokens.size()
+                && tokens.get(current + 1).getType() != TokenType.COMMA
+                && tokens.get(current + 1).getType() != TokenType.RPAREN) {
+            advance();
+            indexed = true;
+        }
         Token type = consumeType("Expected type in parameter declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected parameter name.");
         VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), null);
         varDecl.setSourceLocation(type.getLocation());
+        varDecl.setIndexed(indexed);
         return varDecl;
     }
 
@@ -295,12 +350,16 @@ public class Parser {
     }
     
     private VarDecl parseVarDecl(Token type, Token name, Set<Modifier> modifiers) {
+        return parseVarDecl(type, name, modifiers, EnumSet.noneOf(ContractAnnotation.class));
+    }
+    
+    private VarDecl parseVarDecl(Token type, Token name, Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
         Expression initializer = null;
         if (match(TokenType.ASSIGN)) {
             initializer = parseExpression();
         }
         consume(TokenType.SEMICOLON, "Expected ';' after variable declaration.");
-        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers);
+        VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), initializer, modifiers, contractAnnotations);
         varDecl.setSourceLocation(name.getLocation());
         return varDecl;
     }
@@ -334,15 +393,23 @@ public class Parser {
     private Statement parseStatement() {
         if (match(TokenType.BREAK)) {
             Token breakToken = previous();
+            String label = null;
+            if (check(TokenType.IDENTIFIER)) {
+                label = advance().getLexeme();
+            }
             consume(TokenType.SEMICOLON, "Expected ';' after 'break'.");
-            BreakStmt breakStmt = new BreakStmt();
+            BreakStmt breakStmt = new BreakStmt(label);
             breakStmt.setSourceLocation(breakToken.getLocation());
             return breakStmt;
         }
         if (match(TokenType.CONTINUE)) {
             Token continueToken = previous();
+            String label = null;
+            if (check(TokenType.IDENTIFIER)) {
+                label = advance().getLexeme();
+            }
             consume(TokenType.SEMICOLON, "Expected ';' after 'continue'.");
-            ContinueStmt continueStmt = new ContinueStmt();
+            ContinueStmt continueStmt = new ContinueStmt(label);
             continueStmt.setSourceLocation(continueToken.getLocation());
             return continueStmt;
         }
@@ -362,11 +429,38 @@ public class Parser {
             Token forToken = previous();
             return parseFor(forToken);
         }
+        if (match(TokenType.SWITCH)) {
+            return parseSwitchStmt();
+        }
+        if (match(TokenType.DO)) {
+            return parseDoWhile();
+        }
         if (match(TokenType.TRY)) {
             return parseTryStmt();
         }
         if (match(TokenType.THROW)) {
             return parseThrowStmt();
+        }
+        if (match(TokenType.EMIT)) {
+            // emit EventName(args...) → syntactic sugar for EventName(args...)
+            return parseExpressionStmt();
+        }
+
+        // Labeled loops: label: while/for/do
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            Token labelToken = advance(); // consume identifier
+            advance(); // consume colon
+            String label = labelToken.getLexeme();
+            if (match(TokenType.WHILE)) {
+                return parseLabeledWhile(label);
+            } else if (match(TokenType.FOR)) {
+                Token forToken = previous();
+                return parseLabeledFor(label, forToken);
+            } else if (match(TokenType.DO)) {
+                return parseLabeledDoWhile(label);
+            } else {
+                throw error(peek(), "Label '" + label + "' must precede a loop statement (while, for, or do).");
+            }
         }
 
         if (isVariableDeclaration()) {
@@ -444,7 +538,7 @@ public class Parser {
     }
 
     private Expression parseAssignment() {
-        Expression expr = parseLogicalOr();
+        Expression expr = parseTernary();
         if (match(TokenType.ASSIGN)) {
             Token equals = previous();
             Expression value = parseAssignment();
@@ -472,6 +566,19 @@ public class Parser {
         return expr;
     }
 
+    private Expression parseTernary() {
+        Expression expr = parseLogicalOr();
+        if (match(TokenType.QUESTION)) {
+            Expression thenBranch = parseExpression();
+            consume(TokenType.COLON, "Expected ':' after then-branch of ternary expression.");
+            Expression elseBranch = parseTernary();
+            TernaryExpr ternary = new TernaryExpr(expr, thenBranch, elseBranch);
+            ternary.setSourceLocation(expr.getSourceLocation());
+            return ternary;
+        }
+        return expr;
+    }
+
     private Expression parseLogicalOr() {
         Expression expr = parseLogicalAnd();
         while (match(TokenType.OR)) {
@@ -485,13 +592,46 @@ public class Parser {
     }
 
     private Expression parseLogicalAnd() {
-        Expression expr = parseEquality();
+        Expression expr = parseBitwiseOr();
         while (match(TokenType.AND)) {
             Token operator = previous();
-            Expression right = parseEquality();
+            Expression right = parseBitwiseOr();
             BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
             binaryExpr.setSourceLocation(operator.getLocation());
             expr = binaryExpr;
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseOr() {
+        Expression expr = parseBitwiseXor();
+        while (match(TokenType.BIT_OR)) {
+            Token operator = previous();
+            Expression right = parseBitwiseXor();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseXor() {
+        Expression expr = parseBitwiseAnd();
+        while (match(TokenType.BIT_XOR)) {
+            Token operator = previous();
+            Expression right = parseBitwiseAnd();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
+        }
+        return expr;
+    }
+
+    private Expression parseBitwiseAnd() {
+        Expression expr = parseEquality();
+        while (match(TokenType.BIT_AND)) {
+            Token operator = previous();
+            Expression right = parseEquality();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
         }
         return expr;
     }
@@ -509,13 +649,57 @@ public class Parser {
     }
 
     private Expression parseComparison() {
-        Expression expr = parseTerm();
+        Expression expr = parseShift();
         while (match(TokenType.LESS, TokenType.LEQ, TokenType.GREATER, TokenType.GEQ)) {
             Token operator = previous();
-            Expression right = parseTerm();
+            Expression right = parseShift();
             BinaryExpr binaryExpr = new BinaryExpr(expr, operator, right);
             binaryExpr.setSourceLocation(operator.getLocation());
             expr = binaryExpr;
+        }
+        // Handle 'as' cast: expr as Type → desugar to toNum(expr), toDuo(expr), toString(expr)
+        if (match(TokenType.AS)) {
+            Token asToken = previous();
+            String typeName;
+            if (match(TokenType.NUM)) {
+                typeName = "num";
+            } else if (match(TokenType.DUO)) {
+                typeName = "duo";
+            } else if (match(TokenType.SAB)) {
+                typeName = "sab";
+            } else if (match(TokenType.KYA)) {
+                typeName = "kya";
+            } else if (match(TokenType.IDENTIFIER)) {
+                typeName = previous().getLexeme();
+            } else {
+                throw error(peek(), "Expected type name after 'as'. Supported: num, duo, sab.");
+            }
+            String converterFn = switch (typeName) {
+                case "num" -> "toNum";
+                case "duo" -> "toDuo";
+                case "sab" -> "toString";
+                default -> null;
+            };
+            if (converterFn == null) {
+                throw error(asToken, "Cannot cast to '" + typeName + "'. Supported cast types: num, duo, sab.");
+            }
+            Token fnToken = syntheticToken(converterFn, asToken);
+            VariableExpr fnRef = new VariableExpr(fnToken);
+            fnRef.setSourceLocation(asToken.getLocation());
+            CallExpr castCall = new CallExpr(fnRef, List.of(expr));
+            castCall.setSourceLocation(asToken.getLocation());
+            return castCall;
+        }
+        return expr;
+    }
+
+    private Expression parseShift() {
+        Expression expr = parseTerm();
+        while (match(TokenType.LSHIFT, TokenType.RSHIFT)) {
+            Token operator = previous();
+            Expression right = parseTerm();
+            expr = new BinaryExpr(expr, operator, right);
+            expr.setSourceLocation(operator.getLocation());
         }
         return expr;
     }
@@ -558,7 +742,7 @@ public class Parser {
             return prefixExpr;
         }
 
-        if (match(TokenType.MINUS, TokenType.NOT)) {
+        if (match(TokenType.MINUS, TokenType.NOT, TokenType.BIT_NOT)) {
             Token operator = previous();
             Expression right = parseUnary();
             UnaryExpr unaryExpr = new UnaryExpr(operator, right);
@@ -632,6 +816,11 @@ public class Parser {
             expr.setSourceLocation(previous().getLocation());
             return expr;
         }
+        if (match(TokenType.NULL)) {
+            LiteralExpr expr = new LiteralExpr(null);
+            expr.setSourceLocation(previous().getLocation());
+            return expr;
+        }
         if (match(TokenType.LBRACKET)) {
             return arrayLiteral();
         }
@@ -641,13 +830,23 @@ public class Parser {
             if (check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) || 
                 check(TokenType.SAB) || check(TokenType.KYA)) {
                 Token typeToken = advance(); 
-                // Support multi-dimensional: new num[a][b][c]
+                // Support multi-dimensional: new num[a][b][c] and jagged: new num[a][]
                 List<Expression> sizes = new ArrayList<>();
+                boolean seenEmptyDim = false;
                 do {
                     consume(TokenType.LBRACKET, "Expected '[' after type for array creation.");
-                    Expression size = parseExpression();
+                    if (check(TokenType.RBRACKET)) {
+                        // Empty dimension for jagged arrays (e.g., new num[3][])
+                        sizes.add(null);
+                        seenEmptyDim = true;
+                    } else {
+                        if (seenEmptyDim) {
+                            throw error(peek(), "Cannot specify a size after an empty dimension in array creation.");
+                        }
+                        Expression size = parseExpression();
+                        sizes.add(size);
+                    }
                     consume(TokenType.RBRACKET, "Expected ']' after array size.");
-                    sizes.add(size);
                 } while (check(TokenType.LBRACKET));
                 NewArrayExpr expr = new NewArrayExpr(typeToken.getLexeme(), sizes);
                 expr.setSourceLocation(newToken.getLocation());
@@ -754,6 +953,20 @@ public class Parser {
     private Statement parseFor(Token forToken) {
         consume(TokenType.LPAREN, "Expect '(' after 'for'.");
         
+        // Detect for-each: for(Type name : expr)
+        if (checkType()) {
+            int saved = current;
+            Token typeToken = consumeType("Expected variable type.");
+            if (check(TokenType.IDENTIFIER)) {
+                Token nameToken = advance();
+                if (match(TokenType.COLON)) {
+                    return parseForEach(forToken, typeToken, nameToken);
+                }
+            }
+            // Not a for-each — reset and fall through to standard for
+            current = saved;
+        }
+
         Statement initializer = null;
         if (match(TokenType.SEMICOLON)) {
         } else if (checkType()) {
@@ -810,6 +1023,215 @@ public class Parser {
             }
             return whileStmt;
         }
+    }
+
+    /**
+     * Desugar for-each: for(Type name : arr) body
+     * →  { Type[] $arr = arr; num $i = 0; while($i < arrayLength($arr)) { Type name = $arr[$i]; body; $i = $i + 1; } }
+     * Uses synthetic variable names that can't collide with user code.
+     */
+    private Statement parseForEach(Token forToken, Token typeToken, Token nameToken) {
+        Expression collection = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after for-each clause.");
+        Statement body = parseStatement();
+
+        // Synthetic tokens for desugared variables
+        Token arrVar = syntheticToken("$forEach_arr", forToken);
+        Token idxVar = syntheticToken("$forEach_i", forToken);
+        Token numType = syntheticToken("num", forToken);
+
+        // $arr = collection
+        VarDecl arrDecl = new VarDecl(typeToken.getLexeme() + "[]", arrVar.getLexeme(), collection, Set.of());
+        arrDecl.setSourceLocation(forToken.getLocation());
+
+        // $i = 0
+        LiteralExpr zero = new LiteralExpr(0L); zero.setSourceLocation(forToken.getLocation());
+        VarDecl idxDecl = new VarDecl("num", idxVar.getLexeme(), zero, Set.of());
+        idxDecl.setSourceLocation(forToken.getLocation());
+
+        // condition: $i < arrayLength($arr)
+        VariableExpr arrRef = new VariableExpr(arrVar); arrRef.setSourceLocation(forToken.getLocation());
+        CallExpr lenCall = new CallExpr(new VariableExpr(syntheticToken("arrayLength", forToken)), List.of(arrRef));
+        lenCall.setSourceLocation(forToken.getLocation());
+        VariableExpr idxRef = new VariableExpr(idxVar); idxRef.setSourceLocation(forToken.getLocation());
+        BinaryExpr cond = new BinaryExpr(idxRef, syntheticToken("<", forToken, TokenType.LESS), lenCall);
+        cond.setSourceLocation(forToken.getLocation());
+
+        // Type name = $arr[$i]
+        VariableExpr arrRef2 = new VariableExpr(arrVar); arrRef2.setSourceLocation(forToken.getLocation());
+        VariableExpr idxRef2 = new VariableExpr(idxVar); idxRef2.setSourceLocation(forToken.getLocation());
+        IndexExpr elemAccess = new IndexExpr(arrRef2, idxRef2); elemAccess.setSourceLocation(forToken.getLocation());
+        VarDecl elemDecl = new VarDecl(typeToken.getLexeme(), nameToken.getLexeme(), elemAccess, Set.of());
+        elemDecl.setSourceLocation(forToken.getLocation());
+
+        // $i = $i + 1
+        VariableExpr idxRef3 = new VariableExpr(idxVar); idxRef3.setSourceLocation(forToken.getLocation());
+        LiteralExpr one = new LiteralExpr(1L); one.setSourceLocation(forToken.getLocation());
+        BinaryExpr incr = new BinaryExpr(idxRef3, syntheticToken("+", forToken, TokenType.PLUS), one);
+        incr.setSourceLocation(forToken.getLocation());
+        AssignmentExpr incrAssign = new AssignmentExpr(idxVar, incr);
+        incrAssign.setSourceLocation(forToken.getLocation());
+        ExpressionStmt incrStmt = new ExpressionStmt(incrAssign);
+        incrStmt.setSourceLocation(forToken.getLocation());
+
+        // loop body = { Type name = $arr[$i]; <original body>; $i = $i + 1; }
+        Block loopBlock = new Block(List.of(elemDecl, body, incrStmt));
+        loopBlock.setSourceLocation(forToken.getLocation());
+        loopBlock.markAsDesugaredForLoopBody();
+
+        WhileStmt whileStmt = new WhileStmt(cond, loopBlock);
+        whileStmt.setSourceLocation(forToken.getLocation());
+
+        Block outerBlock = new Block(List.of(arrDecl, idxDecl, whileStmt));
+        outerBlock.setSourceLocation(forToken.getLocation());
+        return outerBlock;
+    }
+
+    private Token syntheticToken(String lexeme, Token ref) {
+        return new Token(TokenType.IDENTIFIER, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+    }
+
+    private Token syntheticToken(String lexeme, Token ref, TokenType type) {
+        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+    }
+
+    /**
+     * Desugar switch(expr) { case v1: { ... } case v2: { ... } default: { ... } }
+     * →  { sab $sw = expr; if($sw == v1) { ... } else if($sw == v2) { ... } else { ... } }
+     * Uses a synthetic temp variable to evaluate the switch expression once.
+     */
+    private Statement parseSwitchStmt() {
+        Token switchToken = previous();
+        consume(TokenType.LPAREN, "Expect '(' after 'switch'.");
+        Expression switchExpr = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after switch expression.");
+        consume(TokenType.LBRACE, "Expect '{' after switch expression.");
+
+        // Store switch expr in a synthetic variable
+        Token swVar = syntheticToken("$switch_val", switchToken);
+        // Use "any" type so any value can be compared
+        VarDecl swDecl = new VarDecl("any", swVar.getLexeme(), switchExpr, Set.of());
+        swDecl.setSourceLocation(switchToken.getLocation());
+
+        List<Expression> caseValues = new ArrayList<>();
+        List<Statement> caseBodies = new ArrayList<>();
+        Statement defaultBody = null;
+
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            if (match(TokenType.CASE)) {
+                Expression caseVal = parseExpression();
+                consume(TokenType.COLON, "Expect ':' after case value.");
+                Statement caseBody = parseCaseBody();
+                caseValues.add(caseVal);
+                caseBodies.add(caseBody);
+            } else if (match(TokenType.DEFAULT)) {
+                consume(TokenType.COLON, "Expect ':' after 'default'.");
+                defaultBody = parseCaseBody();
+            } else {
+                throw error(peek(), "Expected 'case' or 'default' in switch statement.");
+            }
+        }
+        consume(TokenType.RBRACE, "Expect '}' after switch body.");
+
+        // Build if-else chain from bottom up
+        Statement result = defaultBody;
+        for (int i = caseValues.size() - 1; i >= 0; i--) {
+            VariableExpr swRef = new VariableExpr(swVar);
+            swRef.setSourceLocation(switchToken.getLocation());
+            BinaryExpr cond = new BinaryExpr(swRef,
+                    syntheticToken("==", switchToken, TokenType.EQUALITY),
+                    caseValues.get(i));
+            cond.setSourceLocation(switchToken.getLocation());
+            IfStmt ifStmt = new IfStmt(cond, caseBodies.get(i), result);
+            ifStmt.setSourceLocation(switchToken.getLocation());
+            result = ifStmt;
+        }
+
+        if (result == null) {
+            // Empty switch — just evaluate the expression
+            return new ExpressionStmt(switchExpr);
+        }
+
+        Block outerBlock = new Block(List.of(swDecl, result));
+        outerBlock.setSourceLocation(switchToken.getLocation());
+        return outerBlock;
+    }
+
+    private Statement parseCaseBody() {
+        if (check(TokenType.LBRACE)) {
+            return parseBlock();
+        }
+        // Allow single or multiple statements until next case/default/rbrace
+        List<Statement> stmts = new ArrayList<>();
+        while (!check(TokenType.CASE) && !check(TokenType.DEFAULT) && !check(TokenType.RBRACE) && !isAtEnd()) {
+            stmts.add(parseStatement());
+        }
+        Block block = new Block(stmts);
+        if (!stmts.isEmpty()) {
+            block.setSourceLocation(stmts.get(0).getSourceLocation());
+        }
+        return block;
+    }
+
+    /**
+     * do { body } while(condition);
+     * Desugars to: { body; while(condition) { body } }
+     * Actually desugar to a while(true) with condition check at end.
+     */
+    private Statement parseDoWhile() {
+        Token doToken = previous();
+        Statement body = parseStatement();
+        consume(TokenType.WHILE, "Expect 'while' after do-block.");
+        consume(TokenType.LPAREN, "Expect '(' after 'while'.");
+        Expression condition = parseExpression();
+        consume(TokenType.RPAREN, "Expect ')' after while condition.");
+        consume(TokenType.SEMICOLON, "Expect ';' after do-while statement.");
+
+        // Desugar: run body once, then while(condition) body
+        // Use: { body; while(condition) { body } }
+        // But body may have side effects from variable declarations that can't be duplicated.
+        // Better approach: while(true) { body; if(!condition) break; }
+        LiteralExpr trueExpr = new LiteralExpr(true);
+        trueExpr.setSourceLocation(doToken.getLocation());
+
+        UnaryExpr notCond = new UnaryExpr(syntheticToken("!", doToken, TokenType.NOT), condition);
+        notCond.setSourceLocation(doToken.getLocation());
+        BreakStmt breakStmt = new BreakStmt();
+        breakStmt.setSourceLocation(doToken.getLocation());
+        IfStmt breakIf = new IfStmt(notCond, breakStmt, null);
+        breakIf.setSourceLocation(doToken.getLocation());
+
+        Block loopBody = new Block(List.of(body, breakIf));
+        loopBody.setSourceLocation(doToken.getLocation());
+
+        WhileStmt whileStmt = new WhileStmt(trueExpr, loopBody);
+        whileStmt.setSourceLocation(doToken.getLocation());
+        return whileStmt;
+    }
+
+    private Statement parseLabeledWhile(String label) {
+        Statement stmt = parseWhile();
+        if (stmt instanceof WhileStmt ws) { ws.setLabel(label); }
+        return stmt;
+    }
+
+    private Statement parseLabeledFor(String label, Token forToken) {
+        Statement stmt = parseFor(forToken);
+        // parseFor may return a WhileStmt directly, or a Block wrapping init + WhileStmt
+        if (stmt instanceof WhileStmt ws) {
+            ws.setLabel(label);
+        } else if (stmt instanceof Block blk) {
+            for (Statement s : blk.getStatements()) {
+                if (s instanceof WhileStmt ws) { ws.setLabel(label); break; }
+            }
+        }
+        return stmt;
+    }
+
+    private Statement parseLabeledDoWhile(String label) {
+        Statement stmt = parseDoWhile();
+        if (stmt instanceof WhileStmt ws) { ws.setLabel(label); }
+        return stmt;
     }
 
     
@@ -881,7 +1303,15 @@ public class Parser {
     private boolean checkType() {
         boolean isBaseType = check(TokenType.NUM) || check(TokenType.DUO) || check(TokenType.EK) ||
                 check(TokenType.SAB) || check(TokenType.KYA) || check(TokenType.KAAM) ||
-                check(TokenType.IDENTIFIER);
+                check(TokenType.IDENTIFIER) ||
+                // Blockchain types
+                check(TokenType.ADDRESS) || check(TokenType.UINT256) || check(TokenType.INT256) ||
+                check(TokenType.BYTES32) || check(TokenType.WEI);
+
+        // Handle mapping type: mapping(KeyType => ValueType)
+        if (!isBaseType && check(TokenType.MAPPING)) {
+            return true;
+        }
 
         if (!isBaseType) return false;
         
@@ -915,6 +1345,35 @@ public class Parser {
         }
 
         Token baseType = advance();
+
+        // Handle mapping type: mapping(KeyType => ValueType)
+        if (baseType.getType() == TokenType.MAPPING && check(TokenType.LPAREN)) {
+            StringBuilder mappingType = new StringBuilder(baseType.getLexeme());
+            mappingType.append("(");
+            advance(); // consume '('
+            
+            // Consume everything until matching ')'
+            int depth = 1;
+            while (depth > 0 && !isAtEnd()) {
+                Token token = advance();
+                if (token.getType() == TokenType.LPAREN) {
+                    depth++;
+                } else if (token.getType() == TokenType.RPAREN) {
+                    depth--;
+                    if (depth == 0) break;
+                }
+                mappingType.append(token.getLexeme());
+                // Add space around => for readability
+                if (token.getLexeme().equals("=") && check(TokenType.GREATER)) {
+                    mappingType.append(">");
+                    advance(); // consume '>'
+                } else {
+                    mappingType.append(" ");
+                }
+            }
+            mappingType.append(")");
+            return new Token(TokenType.IDENTIFIER, mappingType.toString(), baseType.getLine());
+        }
 
         if (check(TokenType.LBRACKET)) {
             // Support multiple [] suffixes on types: num[][]
@@ -975,6 +1434,11 @@ public class Parser {
         return peek().getType() == type;
     }
 
+    private boolean checkNext(TokenType type) {
+        if (current + 1 >= tokens.size()) return false;
+        return tokens.get(current + 1).getType() == type;
+    }
+
     private Token consume(TokenType type, String message) {
         if (check(type)) return advance();
         throw error(peek(), message);
@@ -992,13 +1456,53 @@ public class Parser {
         return peek().getType() == TokenType.EOF;
     }
     
-    private Set<Modifier> parseModifiers() {
+    /**
+     * Parse both regular modifiers and contract annotations.
+     * Contract annotations (@contract, @storage, @view, etc.) are parsed first,
+     * followed by regular modifiers (public, private, static, etc.).
+     */
+    private ParsedModifiers parseAllModifiers() {
         Set<Modifier> modifiers = new HashSet<>();
+        Set<ContractAnnotation> contractAnnotations = EnumSet.noneOf(ContractAnnotation.class);
+        List<Expression> requires = new ArrayList<>();
+        List<Expression> ensures = new ArrayList<>();
+        List<Expression> invariants = new ArrayList<>();
+
+        // Parse contract annotations first (including expression-carrying
+        // design-by-contract annotations: @requires/@ensures/@invariant).
+        while (true) {
+            if (match(TokenType.REQUIRES)) {
+                requires.add(parseSpecCondition("@requires"));
+            } else if (match(TokenType.ENSURES)) {
+                ensures.add(parseSpecCondition("@ensures"));
+            } else if (match(TokenType.INVARIANT)) {
+                // @invariant(expr) is the explicit, runtime-enforced form.
+                // Bare @invariant remains a legacy marker annotation.
+                if (check(TokenType.LPAREN)) {
+                    invariants.add(parseSpecCondition("@invariant"));
+                }
+                contractAnnotations.add(ContractAnnotation.INVARIANT);
+            } else if (match(TokenType.CONTRACT, TokenType.STORAGE, TokenType.VIEW, TokenType.PURE,
+                             TokenType.PAYABLE, TokenType.NONREENTRANT, TokenType.CONSTRUCTOR,
+                             TokenType.EVENT, TokenType.ERROR, TokenType.CHECKED, TokenType.UNCHECKED,
+                             TokenType.IMMUTABLE)) {
+                TokenType tokenType = previous().getType();
+                ContractAnnotation annotation = ContractAnnotation.fromTokenType(tokenType);
+                if (contractAnnotations.contains(annotation)) {
+                    throw error(previous(), "Duplicate contract annotation: " + annotation);
+                }
+                contractAnnotations.add(annotation);
+            } else {
+                break;
+            }
+        }
         
+        // Parse @Override annotation
         if (match(TokenType.OVERRIDE)) {
             modifiers.add(Modifier.OVERRIDE);
         }
         
+        // Parse regular modifiers
         while (match(TokenType.PUBLIC, TokenType.PRIVATE, TokenType.PROTECTED, TokenType.STATIC, TokenType.ABSTRACT, TokenType.FINAL)) {
             TokenType tokenType = previous().getType();
             Modifier modifier = Modifier.fromTokenType(tokenType);
@@ -1012,7 +1516,25 @@ public class Parser {
             modifiers.add(Modifier.PUBLIC);
         }
         
-        return modifiers;
+        return new ParsedModifiers(modifiers, contractAnnotations, requires, ensures, invariants);
+    }
+
+    /**
+     * Parse the parenthesised boolean condition of a design-by-contract
+     * annotation: {@code (expression)}.
+     */
+    private Expression parseSpecCondition(String annotation) {
+        consume(TokenType.LPAREN, "Expected '(' after " + annotation + " annotation.");
+        Expression condition = parseExpression();
+        consume(TokenType.RPAREN, "Expected ')' after " + annotation + " condition.");
+        return condition;
+    }
+    
+    /**
+     * Legacy method for backward compatibility - returns only modifiers, ignores contract annotations.
+     */
+    private Set<Modifier> parseModifiers() {
+        return parseAllModifiers().modifiers;
     }
     
     private List<TypeParameter> parseTypeParameters() {

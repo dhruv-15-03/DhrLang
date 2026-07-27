@@ -33,10 +33,15 @@ public class Lexer {
         keywords.put("return", TokenType.RETURN);
         keywords.put("true", TokenType.BOOLEAN);
         keywords.put("false", TokenType.BOOLEAN);
+        keywords.put("null", TokenType.NULL);
         keywords.put("if", TokenType.IF);
         keywords.put("else", TokenType.ELSE);
         keywords.put("while", TokenType.WHILE);
         keywords.put("for", TokenType.FOR);
+        keywords.put("switch", TokenType.SWITCH);
+        keywords.put("case", TokenType.CASE);
+        keywords.put("default", TokenType.DEFAULT);
+        keywords.put("do", TokenType.DO);
         keywords.put("break", TokenType.BREAK);
         keywords.put("continue", TokenType.CONTINUE);
         keywords.put("new",TokenType.NEW);
@@ -58,6 +63,33 @@ public class Lexer {
         keywords.put("static", TokenType.STATIC);
         keywords.put("abstract", TokenType.ABSTRACT);
         keywords.put("final", TokenType.FINAL);
+        
+        // Smart Contract Annotations (recognized with @ prefix)
+        keywords.put("@contract", TokenType.CONTRACT);
+        keywords.put("@storage", TokenType.STORAGE);
+        keywords.put("@view", TokenType.VIEW);
+        keywords.put("@pure", TokenType.PURE);
+        keywords.put("@payable", TokenType.PAYABLE);
+        keywords.put("@nonreentrant", TokenType.NONREENTRANT);
+        keywords.put("@constructor", TokenType.CONSTRUCTOR);
+        keywords.put("@event", TokenType.EVENT);
+        keywords.put("@error", TokenType.ERROR);
+        keywords.put("@checked", TokenType.CHECKED);
+        keywords.put("@unchecked", TokenType.UNCHECKED);
+        keywords.put("emit", TokenType.EMIT);
+        keywords.put("@immutable", TokenType.IMMUTABLE);
+        keywords.put("@invariant", TokenType.INVARIANT);
+        keywords.put("@requires", TokenType.REQUIRES);
+        keywords.put("@ensures", TokenType.ENSURES);
+        keywords.put("as", TokenType.AS);
+        
+        // Blockchain Types
+        keywords.put("Address", TokenType.ADDRESS);
+        keywords.put("uint256", TokenType.UINT256);
+        keywords.put("int256", TokenType.INT256);
+        keywords.put("bytes32", TokenType.BYTES32);
+        keywords.put("wei", TokenType.WEI);
+        keywords.put("mapping", TokenType.MAPPING);
     }
 
     public Lexer(String source) {
@@ -98,6 +130,7 @@ public class Lexer {
             case ',': addToken(TokenType.COMMA); break;
             case ';': addToken(TokenType.SEMICOLON); break;
             case '?': addToken(TokenType.QUESTION); break;
+            case ':': addToken(TokenType.COLON); break;
             case '+': 
                 if (match('+')) {
                     addToken(TokenType.INCREMENT);
@@ -134,32 +167,36 @@ public class Lexer {
 
             case '=': addToken(match('=') ? TokenType.EQUALITY : TokenType.ASSIGN); break;
             case '!': addToken(match('=') ? TokenType.NEQ : TokenType.NOT); break;
-            case '<': addToken(match('=') ? TokenType.LEQ : TokenType.LESS); break;
-            case '>': addToken(match('=') ? TokenType.GEQ : TokenType.GREATER); break;
+            case '<':
+                if (match('<')) {
+                    addToken(TokenType.LSHIFT);
+                } else {
+                    addToken(match('=') ? TokenType.LEQ : TokenType.LESS);
+                }
+                break;
+            case '>':
+                if (match('>')) {
+                    addToken(TokenType.RSHIFT);
+                } else {
+                    addToken(match('=') ? TokenType.GEQ : TokenType.GREATER);
+                }
+                break;
             case '&':
                 if (match('&')) {
                     addToken(TokenType.AND);
                 } else {
-                    if (errorReporter != null) {
-                        errorReporter.error(getCurrentLocation(), "Unexpected character: '&'. Did you mean '&&'?", 
-                                          "Use '&&' for logical AND operations in DhrLang");
-                    } else {
-                        System.err.println("[Line " + line + "] Unexpected character: '&'. Did you mean '&&'?");
-                    }
+                    addToken(TokenType.BIT_AND);
                 }
                 break;
             case '|':
                 if (match('|')) {
                     addToken(TokenType.OR);
                 } else {
-                    if (errorReporter != null) {
-                        errorReporter.error(getCurrentLocation(), "Unexpected character: '|'. Did you mean '||'?",
-                                          "Use '||' for logical OR operations in DhrLang");
-                    } else {
-                        System.err.println("[Line " + line + "] Unexpected character: '|'. Did you mean '||'?");
-                    }
+                    addToken(TokenType.BIT_OR);
                 }
                 break;
+            case '^': addToken(TokenType.BIT_XOR); break;
+            case '~': addToken(TokenType.BIT_NOT); break;
 
             case ' ':
             case '\r':
@@ -203,20 +240,45 @@ public class Lexer {
 
         String text = source.substring(start, current);
         
-        if (text.equals("@Override")) {
+        // Check for annotations (text starting with @)
+        TokenType type = keywords.get(text);
+        if (type != null) {
+            addToken(type, text);
+        } else if (text.equals("@Override")) {
             addToken(TokenType.OVERRIDE, text);
         } else {
-            TokenType type = keywords.getOrDefault(text, TokenType.IDENTIFIER);
-            addToken(type, text);
+            addToken(keywords.getOrDefault(text, TokenType.IDENTIFIER), text);
         }
     }
     private void number() {
+        // Check for hex literal: 0x or 0X
+        if (source.charAt(start) == '0' && current < source.length()
+                && (peek() == 'x' || peek() == 'X')) {
+            advance(); // consume 'x'
+            if (!isHexDigit(peek())) {
+                if (errorReporter != null) {
+                    errorReporter.error(getCurrentLocation(), "Invalid hex literal.",
+                                      "Hex literals must have at least one digit after '0x', e.g. 0xFF");
+                } else {
+                    System.err.println("[Line " + line + "] Invalid hex literal.");
+                }
+                return;
+            }
+            while (isHexDigit(peek())) advance();
+            String hexStr = source.substring(start + 2, current); // skip "0x"
+            addToken(TokenType.NUMBER, String.valueOf(Long.parseLong(hexStr, 16)));
+            return;
+        }
         while (isDigit(peek())) advance();
         if (peek() == '.' && isDigit(peekNext())) {
             advance();
             while (isDigit(peek())) advance();
         }
         addToken(TokenType.NUMBER, source.substring(start, current));
+    }
+
+    private boolean isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
     private char peekNext() {
         if (current + 1 >= source.length()) return '\0';
@@ -225,26 +287,113 @@ public class Lexer {
     private void string() {
         int stringStartLine = line;
         int stringStartLineStart = lineStart;
-        
-        while (peek() != '"' && !isAtEnd()) {
-            advance();
-        }
-        if (isAtEnd()) {
-            if (errorReporter != null) {
-                int stringStartColumn = start - stringStartLineStart + 1;
-                SourceLocation stringStart = new SourceLocation(null, stringStartLine, stringStartColumn, start, current);
-                errorReporter.error(stringStart, "Unterminated string.",
-                                  "Add a closing quote \" to complete the string literal");
-            } else {
-                System.err.println("[Line " + stringStartLine + "] Unterminated string.");
+        int contentStart = current; // just past opening quote
+        boolean hasInterpolation = false;
+
+        // Scan ahead to check for interpolation
+        int scanPos = current;
+        while (scanPos < source.length() && source.charAt(scanPos) != '"') {
+            if (scanPos + 1 < source.length() && source.charAt(scanPos) == '$' && source.charAt(scanPos + 1) == '{') {
+                hasInterpolation = true;
+                break;
             }
+            scanPos++;
+        }
+
+        if (!hasInterpolation) {
+            // Simple string, no interpolation
+            while (peek() != '"' && !isAtEnd()) {
+                advance();
+            }
+            if (isAtEnd()) {
+                reportUnterminatedString(stringStartLine, stringStartLineStart);
+                return;
+            }
+            advance();
+            String value = source.substring(start + 1, current - 1);
+            addToken(TokenType.STRING, value);
             return;
         }
 
-        advance();
+        // String with interpolation: emit as STRING + PLUS + expr + PLUS + STRING ...
+        boolean first = true;
+        while (!isAtEnd() && peek() != '"') {
+            if (peek() == '$' && peekNext() == '{') {
+                // Emit preceding text segment (may be empty)
+                String segment = source.substring(contentStart, current);
+                if (!segment.isEmpty() || first) {
+                    if (!first) {
+                        int startColumn = current - lineStart + 1;
+                        tokens.add(new Token(TokenType.PLUS, "+", line, startColumn, current, current));
+                    }
+                    int startColumn = contentStart - lineStart;
+                    tokens.add(new Token(TokenType.STRING, segment, line, startColumn, contentStart - 1, current));
+                    first = false;
+                }
+                advance(); // skip '$'
+                advance(); // skip '{'
+                // Add PLUS before the interpolated expression
+                if (!first || !source.substring(contentStart, current - 2).isEmpty()) {
+                    int startColumn = current - lineStart + 1;
+                    tokens.add(new Token(TokenType.PLUS, "+", line, startColumn, current, current));
+                }
+                // Lex the inner expression tokens, handling nested braces
+                int braceDepth = 1;
+                int exprStart = current;
+                // Save lexer state and lex the interpolation content
+                int savedStart = start;
+                while (!isAtEnd() && braceDepth > 0) {
+                    if (peek() == '{') braceDepth++;
+                    else if (peek() == '}') {
+                        braceDepth--;
+                        if (braceDepth == 0) break;
+                    }
+                    // Lex individual tokens inside the interpolation
+                    start = current;
+                    scanToken();
+                }
+                start = savedStart;
+                if (isAtEnd()) {
+                    reportUnterminatedString(stringStartLine, stringStartLineStart);
+                    return;
+                }
+                advance(); // skip closing '}'
+                contentStart = current;
+                first = false;
+            } else {
+                advance();
+            }
+        }
+        if (isAtEnd()) {
+            reportUnterminatedString(stringStartLine, stringStartLineStart);
+            return;
+        }
+        // Emit trailing text segment
+        String trailing = source.substring(contentStart, current);
+        if (!trailing.isEmpty()) {
+            if (!first) {
+                int startColumn = current - lineStart + 1;
+                tokens.add(new Token(TokenType.PLUS, "+", line, startColumn, current, current));
+            }
+            int startColumn = contentStart - lineStart;
+            tokens.add(new Token(TokenType.STRING, trailing, line, startColumn, contentStart - 1, current + 1));
+        } else if (first) {
+            // Empty string with no interpolation parts (shouldn't happen, but handle it)
+            int startColumn = start - lineStart + 1;
+            tokens.add(new Token(TokenType.STRING, "", line, startColumn, start, current + 1));
+        }
+        advance(); // skip closing quote
+    }
 
-        String value = source.substring(start + 1, current - 1);
-        addToken(TokenType.STRING, value);
+    private void reportUnterminatedString(int stringStartLine, int stringStartLineStart) {
+        if (errorReporter != null) {
+            int stringStartColumn = start - stringStartLineStart + 1;
+            SourceLocation stringStart = new SourceLocation(null, stringStartLine, stringStartColumn, start, current);
+            errorReporter.error(stringStart, "Unterminated string.",
+                              "Add a closing quote \" to complete the string literal");
+        } else {
+            System.err.println("[Line " + stringStartLine + "] Unterminated string.");
+        }
     }
 
     private void character() {

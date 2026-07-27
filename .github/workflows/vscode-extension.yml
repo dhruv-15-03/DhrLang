@@ -16,12 +16,12 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # v4.2.2
         
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # v4.1.0
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: vscode-extension/package-lock.json
           
@@ -45,77 +45,52 @@ jobs:
       - name: Update package version
         working-directory: vscode-extension
         run: |
-          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version --allow-same-version
           
       - name: Compile TypeScript
         working-directory: vscode-extension
         run: npm run compile
         
-      - name: Create extension icon
-        working-directory: vscode-extension
-        run: |
-          mkdir -p images
-          # Create a simple SVG icon for now
-          cat > images/icon.png << 'EOF'
-          <!-- This would be a proper PNG icon -->
-          EOF
-          
-          # Create simple file icons
-          cat > images/file-icon-light.svg << 'EOF'
-          <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <rect width="16" height="16" fill="#FF6B35" rx="2"/>
-            <text x="8" y="12" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">ध</text>
-          </svg>
-          EOF
-          
-          cat > images/file-icon-dark.svg << 'EOF'
-          <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <rect width="16" height="16" fill="#FF6B35" rx="2"/>
-            <text x="8" y="12" font-family="Arial, sans-serif" font-size="10" fill="white" text-anchor="middle">ध</text>
-          </svg>
-          EOF
-          
-          # Convert SVG to PNG for icon (placeholder - would need proper icon)
-          echo "Creating placeholder icon..."
-          # In real scenario, you'd have a proper icon file
-          touch images/icon.png
-          
       - name: Package extension
         working-directory: vscode-extension
         run: vsce package --no-yarn
         
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: vscode-v${{ steps.get_version.outputs.VERSION }}
           name: DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
           body: |
             # DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
             
-            ## Features
-            - 🎨 Syntax highlighting for .dhr files
-            - 📝 Code completion with Hindi keywords
-            - 🚀 Run and compile DhrLang programs (Ctrl+F5)
-            - 💡 Hover information and IntelliSense
-            - 🛠️ Customizable settings
+            ## Features (English-core token set)
+            - 🎨 Updated grammar for `num`, `duo`, `sab`, `kya`, `ek`, `kaam`
+            - 🧠 Snippets: main class, methods, loops, conditionals, printLine
+            - 🚀 Run & compile commands (Ctrl+F5 / Ctrl+Shift+B)
+            - � Hover + basic diagnostics surfacing compiler output
+            - ⚙️ Auto JAR detection & configurable settings
             
             ## Installation
-            1. Download the `.vsix` file from this release
-            2. Open VS Code
-            3. Go to Extensions → Install from VSIX
-            4. Select the downloaded file
-            
-            Or install from VS Code Marketplace: [DhrLang Support](https://marketplace.visualstudio.com/items?itemName=dhruv-15-03.dhrlang-vscode)
+            1. Download the `.vsix` from this release OR install from Marketplace (when published)
+            2. VS Code Command Palette: "Extensions: Install from VSIX..."
+            3. Select the downloaded file
+            4. Open a `.dhr` file to activate
             
             ## Requirements
-            - VS Code 1.74.0 or higher
-            - Java 17+ and DhrLang.jar
+            - VS Code 1.74.0+
+            - Java 17+
+            - `DhrLang.jar` accessible (auto-detected or configure setting)
             
             ## Quick Start
-            1. Create a new file with `.dhr` extension
-            2. Type `main` and press Tab
-            3. Write your DhrLang code
-            4. Press Ctrl+F5 to run
+            ```dhrlang
+            class Main {
+                static kaam main() { printLine("Hello, DhrLang!"); }
+            }
+            ```
+            Press Ctrl+F5 to run.
+            
+            ## Notes
+            Legacy Hindi keyword forms are no longer part of the advertised grammar; docs now reflect current language direction.
           draft: false
           prerelease: false
           files: |
@@ -123,15 +98,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-      # Uncomment when ready to publish to marketplace
-      # - name: Publish to VS Code Marketplace
-      #   working-directory: vscode-extension
-      #   run: vsce publish --no-yarn
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to VS Code Marketplace
+        working-directory: vscode-extension
+        run: vsce publish --no-yarn
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
       
       - name: Upload extension artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # v4.4.3
         with:
           name: dhrlang-vscode-extension
           path: vscode-extension/*.vsix

@@ -83,6 +83,8 @@ public final class RuntimeTestUtil {
             return new Result(outBuf.toString().trim(), errBuf.toString(), compileError, false);
         } catch (Exception ex) {
             return new Result(outBuf.toString().trim(), errBuf.toString() + "\nEXCEPTION:" + ex.getMessage(), true, true);
+        } catch (StackOverflowError soe) {
+            return new Result(outBuf.toString().trim(), errBuf.toString() + "\nStack overflow in interpreter", false, true, "Stack overflow", "SYSTEM");
         } finally {
             System.setOut(origOut); System.setErr(origErr);
         }

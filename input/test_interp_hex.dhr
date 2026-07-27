@@ -1,0 +1,11 @@
+class Main {
+    static kaam main() {
+        sab name = "World";
+        sab greeting = "Hello ${name}!";
+        printLine(greeting);
+        num hex = 0xFF;
+        printLine(hex);
+        num x = 0x10;
+        printLine(x);
+    }
+}
