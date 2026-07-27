@@ -16,10 +16,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # v4.2.2
+        uses: actions/checkout@v7 # v4.2.2
         
       - name: Setup Node.js
-        uses: actions/setup-node@v4 # v4.1.0
+        uses: actions/setup-node@v7 # v4.1.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -56,7 +56,7 @@ jobs:
         run: vsce package --no-yarn
         
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: vscode-v${{ steps.get_version.outputs.VERSION }}
           name: DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
@@ -105,7 +105,7 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
       
       - name: Upload extension artifact
-        uses: actions/upload-artifact@v4 # v4.4.3
+        uses: actions/upload-artifact@v7 # v4.4.3
         with:
           name: dhrlang-vscode-extension
           path: vscode-extension/*.vsix
