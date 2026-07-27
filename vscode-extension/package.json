@@ -2,7 +2,7 @@
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Full IDE support for DhrLang (num/duo/sab/kya/kaam): syntax highlighting, snippets, run/compile helpers, and a real Language Server (go-to-definition, hover, rename, find references, scope-aware completion, diagnostics)",
-  "version": "3.1.0",
+  "version": "4.0.1",
   "publisher": "EnggWithDhruv",
   "icon": "images/icon.png",
   "engines": {
