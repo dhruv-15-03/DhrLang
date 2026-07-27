@@ -12,7 +12,7 @@ plugins {
 }
 
 group = 'com.dhrlang'
-version = '4.0.0'
+version = '4.0.1'
 description = 'DhrLang Programming Language - Modern static language (num/duo/sab/kya/kaam) with Hindi-inspired roots'
 
 application {
@@ -623,5 +623,4 @@ tasks.register('benchCompare') {
         println "[benchCompare] No regressions (>50% slowdown) detected"
     }
 }
-
 

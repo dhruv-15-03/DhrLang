@@ -6,6 +6,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-07-27
+
+### Fixed
+- Aligned the bundled VS Code extension version with the DhrLang release so the v4.0.1
+  release publishes `dhrlang-vscode-4.0.1.vsix` instead of carrying a stale 3.x asset.
+- Repaired the release-to-distribution workflow handoff and Docker JAR lookup so tagged
+  releases can build the downstream distribution packages from the published JAR.
+
 ## [4.0.0] - 2026-07-01
 
 ### Changed (BREAKING)
@@ -715,4 +723,3 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Fixed
 - Regression in undefined-variable hint preserved for static contexts while enabling implicit field access in instance methods.
 - Improved static dependency analysis to catch forward references inside nested expressions and multi-dimensional initializers.
-

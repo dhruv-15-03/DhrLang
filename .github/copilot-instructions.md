@@ -2,4 +2,5 @@
 
 ## Commit policy (grounded instruction)
 
-- **Do not commit anything via `v-dhruv` in this repository.** Never create git commits authored or co-authored by `v-dhruv`. If a change needs committing, leave it staged/unstaged for the user to commit under a different identity, or ask which identity to use.
+- **Only `dhruv-15-03` may author repository commits.** Before any commit or remote write,
+  verify that the active GitHub and Git identities belong to `dhruv-15-03`; otherwise stop.

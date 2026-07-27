@@ -4,6 +4,12 @@ All notable changes to the DhrLang VS Code extension are documented in this file
 
 The format is based on Keep a Changelog and the extension follows Semantic Versioning.
 
+## [4.0.1] - 2026-07-27
+
+### Changed
+- Aligned the VSIX version with the DhrLang release version so GitHub release assets are
+  immediately identifiable as belonging to the same release.
+
 ## [3.1.0] - 2026-07-12
 
 ### Added
