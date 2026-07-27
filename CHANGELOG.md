@@ -13,6 +13,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
   release publishes `dhrlang-vscode-4.0.1.vsix` instead of carrying a stale 3.x asset.
 - Repaired the release-to-distribution workflow handoff and Docker JAR lookup so tagged
   releases can build the downstream distribution packages from the published JAR.
+- Grouped weekly Dependabot updates by ecosystem to prevent stale per-dependency PR walls.
 
 ## [4.0.0] - 2026-07-01
 
