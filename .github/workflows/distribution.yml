@@ -62,7 +62,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         
       - name: Get version and download info
         id: release_info
@@ -158,7 +158,7 @@ jobs:
           EOF
           
       - name: Upload Homebrew tap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: homebrew-tap
           path: homebrew-tap/
@@ -169,7 +169,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         
       - name: Get version
         id: version
@@ -257,7 +257,7 @@ jobs:
           '@ | Out-File -FilePath "chocolatey-package\tools\chocolateyinstall.ps1" -Encoding UTF8
           
       - name: Upload Chocolatey package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: chocolatey-package
           path: chocolatey-package/
@@ -268,7 +268,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         
       - name: Get version
         id: version
@@ -296,10 +296,10 @@ jobs:
           wget -O DhrLang.jar "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/DhrLang.jar"
           
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         if: steps.dockerhub.outputs.push == 'true'
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -330,7 +330,7 @@ jobs:
           EOF
           
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ steps.dockerhub.outputs.push == 'true' }}
@@ -404,7 +404,7 @@ jobs:
           EOF
           
       - name: Upload Docker package info
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-package
           path: docker-package/
@@ -415,7 +415,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         
       - name: Get version
         id: version
@@ -516,7 +516,7 @@ jobs:
           EOF
           
       - name: Upload Snap package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snap-package
           path: snap-package/
