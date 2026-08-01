@@ -418,7 +418,7 @@ tasks.register('qualitySummary') {
         if(jacocoXml.exists()) {
             // Read text and remove DOCTYPE to avoid parser security restriction
             def text = jacocoXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
-            def xml = new XmlParser(false,false).parseText(text)
+            def xml = new groovy.xml.XmlParser(false,false).parseText(text)
             def counter = xml.counter.find { it.'@type'.toString() == 'INSTRUCTION' }
             if(counter) {
                 def cov = (counter.'@covered'.toString().toBigDecimal())
@@ -431,7 +431,7 @@ tasks.register('qualitySummary') {
         def mutationScore = 'n/a'
         if(mutXml.exists()) {
             def mtext = mutXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
-            def mxml = new XmlParser(false,false).parseText(mtext)
+            def mxml = new groovy.xml.XmlParser(false,false).parseText(mtext)
             def muts = mxml.mutation
             def total = muts.size()
             def killed = muts.findAll { it.'@status'.toString() in ['KILLED','TIMED_OUT','MEMORY_ERROR','RUN_ERROR'] }.size()
@@ -546,7 +546,7 @@ tasks.register('generateCoverageBadge') {
         def jacocoXml = file("build/reports/jacoco/test/jacocoTestReport.xml")
         if(!jacocoXml.exists()) { println "[coverageBadge] Jacoco report missing"; return }
         def text = jacocoXml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
-        def xml = new XmlParser(false,false).parseText(text)
+        def xml = new groovy.xml.XmlParser(false,false).parseText(text)
         def counter = xml.counter.find { it.'@type'.toString() == 'INSTRUCTION' }
         if(!counter){ println "[coverageBadge] Instruction counter missing"; return }
         def cov = (counter.'@covered'.toString().toBigDecimal())
@@ -572,7 +572,7 @@ tasks.register('generateMutationBadge') {
         def xml = file('build/reports/pitest/mutations.xml')
         if(!xml.exists()) { println "[mutationBadge] No PIT report found"; return }
         def text = xml.getText('UTF-8').replaceAll(/<!DOCTYPE[^>]*>/,'')
-        def parsed = new XmlParser(false,false).parseText(text)
+        def parsed = new groovy.xml.XmlParser(false,false).parseText(text)
         def muts = parsed.mutation
         int total = muts.size(); if(total==0){ println "[mutationBadge] No mutations"; return }
         int killed = muts.findAll { it.'@status'.toString() in ['KILLED','TIMED_OUT','MEMORY_ERROR','RUN_ERROR'] }.size()
