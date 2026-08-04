@@ -27,12 +27,12 @@ jobs:
       uses: actions/checkout@v7
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4.37.3
+      uses: github/codeql-action/init@v4.37.4
       with:
         languages: ${{ matrix.language }}
 
     - name: Setup Java
-      uses: actions/setup-java@v5.6.0
+      uses: actions/setup-java@v5.7.0
       with:
         distribution: 'temurin'
         java-version: '17'
@@ -43,7 +43,7 @@ jobs:
         arguments: compileJava -x test -x jacocoTestCoverageVerification
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4.37.3
+      uses: github/codeql-action/analyze@v4.37.4
       continue-on-error: true # Avoid failing CI if repository code scanning is disabled
       with:
         category: "/language:${{matrix.language}}"
