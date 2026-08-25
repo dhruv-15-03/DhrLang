@@ -93,6 +93,9 @@ public class BytecodeVM {
             }
             // Read class definitions
             int classCount = in.readInt();
+            if(classCount < 0) throw new IllegalArgumentException("Invalid class count: "+classCount);
+            int maxClasses = Integer.getInteger("dhrlang.bytecode.maxClasses", untrusted ? 2_000 : 10_000);
+            if(classCount > maxClasses) throw new IllegalArgumentException("Too many classes: "+classCount+" (max: "+maxClasses+")");
             BcClassDef[] classDefs = new BcClassDef[classCount];
             java.util.Map<String,BcClassDef> classTable = new java.util.HashMap<>();
             for(int c=0; c<classCount; c++){
