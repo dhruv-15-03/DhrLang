@@ -4,7 +4,7 @@ plugins {
     id 'jacoco'
     id 'maven-publish'
     id 'signing'
-    id 'com.github.spotbugs' version '6.5.10'
+    id 'com.github.spotbugs' version '6.5.11'
     id 'checkstyle'
     id 'pmd'
     // GradleUp Shadow is the maintained successor to com.github.johnrengelman.shadow,
@@ -33,11 +33,11 @@ dependencies {
     testImplementation 'org.mockito:mockito-junit-jupiter:5.23.0'
     
     // JSON & schema validation for diagnostics contract test
-    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.22.1'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.22.2'
     testImplementation 'com.networknt:json-schema-validator:1.4.0'
     
     // Code quality tools
-    spotbugs 'com.github.spotbugs:spotbugs:4.10.3'
+    spotbugs 'com.github.spotbugs:spotbugs:4.10.4'
     spotbugsPlugins 'com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0'
     
     // Documentation
