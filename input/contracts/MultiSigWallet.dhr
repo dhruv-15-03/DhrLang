@@ -12,19 +12,24 @@ class MultiSigWallet {
     @storage num requiredApprovals;
     @storage num ownerCount;
     @storage num txCount;
+    @storage num maxTransactions;
     @storage Address creator;
 
     // ── Constructor ──────────────────────────────────────────────
     @constructor
-    kaam init(num _requiredApprovals, num _ownerCount) {
+    kaam init(num _requiredApprovals, num _ownerCount, num _maxTransactions) {
         if (_requiredApprovals <= 0) {
             throw "Required approvals must be positive";
         }
         if (_ownerCount < _requiredApprovals) {
             throw "Owner count must be >= required approvals";
         }
+        if (_maxTransactions <= 0) {
+            throw "Max transactions must be positive";
+        }
         requiredApprovals = _requiredApprovals;
         ownerCount = _ownerCount;
+        maxTransactions = _maxTransactions;
         txCount = 0;
         creator = msg.sender;
     }
@@ -49,6 +54,10 @@ class MultiSigWallet {
     kaam submitTransaction(Address to, num value) {
         if (value < 0) {
             throw "Value must be non-negative";
+        }
+        // Bound the queue so the counter cannot wrap.
+        if (txCount >= maxTransactions) {
+            throw "Transaction limit reached";
         }
         txCount = txCount + 1;
     }
