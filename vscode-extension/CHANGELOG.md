@@ -4,6 +4,23 @@ All notable changes to the DhrLang VS Code extension are documented in this file
 
 The format is based on Keep a Changelog and the extension follows Semantic Versioning.
 
+## [4.0.2] - 2026-09-05
+
+### Fixed
+- Pinned `typeRoots` in `tsconfig.json` to the extension's own
+  `node_modules/@types` and declared the two type packages actually used.
+  `tsc` walks parent directories looking for `@types`, so packages installed
+  above the checkout were pulled into the build and failed the local compile
+  with errors from `@types/jest` and `@types/react-dom`, neither of which this
+  extension depends on. CI never reproduced it, because a fresh runner has
+  nothing above the checkout, so the build was green in Actions and broken on a
+  developer machine.
+
+### Changed
+- Published to the VS Code Marketplace again. The release workflow triggers on
+  `vscode-v*` tags and no such tag had been pushed since 3.x, so the Marketplace
+  served 3.0.1 while this package was at 4.0.1.
+
 ## [4.0.1] - 2026-07-27
 
 ### Changed

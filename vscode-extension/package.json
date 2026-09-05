@@ -2,7 +2,7 @@
   "name": "dhrlang-vscode",
   "displayName": "DhrLang Support",
   "description": "Full IDE support for DhrLang (num/duo/sab/kya/kaam): syntax highlighting, snippets, run/compile helpers, and a real Language Server (go-to-definition, hover, rename, find references, scope-aware completion, diagnostics)",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "publisher": "EnggWithDhruv",
   "icon": "images/icon.png",
   "engines": {
@@ -158,12 +158,12 @@
         "dhrlang.enableAutoCompletion": {
           "type": "boolean",
           "default": true,
-          "description": "Enable fallback keyword auto-completion when the DhrLang Language Server can't start (no Java/jar found). Has no effect once the Language Server is running — it provides scope-aware completion instead."
+          "description": "Enable fallback keyword auto-completion when the DhrLang Language Server can't start (no Java/jar found). Has no effect once the Language Server is running â€” it provides scope-aware completion instead."
         },
         "dhrlang.enableErrorSquiggles": {
           "type": "boolean",
           "default": true,
-          "description": "Enable fallback error highlighting when the DhrLang Language Server can't start (no Java/jar found). Has no effect once the Language Server is running — it publishes diagnostics instead."
+          "description": "Enable fallback error highlighting when the DhrLang Language Server can't start (no Java/jar found). Has no effect once the Language Server is running â€” it publishes diagnostics instead."
         },
         "dhrlang.autoDetectJar": {
           "type": "boolean",

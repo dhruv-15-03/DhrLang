@@ -14,8 +14,10 @@ analysis while retaining culturally inspired naming roots.
 It runs on the JVM, ships three execution backends (AST, IR, bytecode), an LSP server,
 and an experimental EVM (smart-contract) compiler target.
 
-> **Current release: v4.0.1** - this patch aligns the bundled VS Code extension with
-> the language release. **v4.0.0 is a breaking release** (checked arithmetic by default);
+> **Current release: v4.0.2** - bounds every accumulating field in the reference
+> contracts so they pass the project's own security audit, and restores
+> Marketplace publishing for the VS Code extension. **v4.0.0 is a breaking
+> release** (checked arithmetic by default);
 > see the migration note in [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick Links

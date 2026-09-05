@@ -6,6 +6,52 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-09-05
+
+### Security
+- Bounded every accumulating field in the reference contracts under
+  `input/contracts/`. DhrLang's own `ArithmeticOverflowDetector` rated six
+  additions across them HIGH, and `contract-audit.yml` was publishing those
+  findings to the repository's Security tab. The findings were correct: each
+  function guarded its operand and never its result. `ERC20Token` and
+  `ERC721NFT` now take a `maxSupply`, `MultiSigWallet` a `maxTransactions`, and
+  `StakingVault` a `maxTotalStaked` and `maxStakers`, each validated in the
+  constructor. HIGH `ARITH-*` findings: 6 to 0.
+
+  Guards are written as `acc > MAX - operand` rather than `acc + operand > MAX`,
+  because the second form performs the very addition it is meant to protect and
+  overflows before the comparison can reject it. Where the subtraction could
+  itself underflow, the operand is bounded first.
+
+### Fixed
+- `vscode-extension/tsconfig.json` pinned `typeRoots` to the extension's own
+  `node_modules/@types`. `tsc` walks parent directories looking for `@types`, so
+  packages installed above the checkout leaked into the build and failed the
+  local compile with errors from `@types/jest` and `@types/react-dom`, neither of
+  which the extension depends on. CI never reproduced it, because a fresh runner
+  has nothing above the checkout.
+- Corrected 35 stale `DhrLang-3.x.x.jar` references across `docs/GETTING_STARTED.md`
+  and `BLOCKCHAIN_TUTORIAL.md`. The tutorial alone cited four different jar
+  versions (3.0.0, 3.6.0, 3.8.0, 3.13.0), so copied commands did not run.
+- The tutorial's `MyToken` example taught the unbounded `totalSupply + amount`
+  pattern that the analyser flags. It now matches the shipped contracts.
+
+### Changed
+- The VS Code extension is published to the Marketplace again. The publish
+  workflow triggers on `vscode-v*` tags and no such tag had been pushed since
+  3.x, so the Marketplace served 3.0.1 while the repository was on 4.0.1.
+- Dependencies: Gradle wrapper 8.13 to 9.7.0 with the build migrated to Gradle 9,
+  JUnit Jupiter, SpotBugs, Jackson, and the grouped GitHub Actions updates.
+
+### Known issues
+- `InvariantChecker` reports `INV-NON_NEGATIVE` on `ERC20Token.burn()` even
+  though the function already carries the exact guard the message recommends.
+  `checkValueAgainstInvariant` flags any subtraction from a non-negative field
+  without inspecting preceding guards; the source notes this with
+  `// For now, warn if subtraction has no preceding guard`. Fixing it means
+  teaching `InvariantChecker` the guard collection that
+  `ArithmeticOverflowDetector` already implements.
+
 ## [4.0.1] - 2026-07-27
 
 ### Fixed

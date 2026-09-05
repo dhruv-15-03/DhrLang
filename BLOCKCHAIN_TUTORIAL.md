@@ -1,4 +1,4 @@
-# DhrLang Blockchain Tutorial: Write â†’ Compile â†’ Deploy â†’ Verify
+# DhrLang Blockchain Tutorial: Write Ã¢â€ â€™ Compile Ã¢â€ â€™ Deploy Ã¢â€ â€™ Verify
 
 > **End-to-end guide** for building, deploying, and verifying smart contracts using DhrLang.
 
@@ -7,12 +7,12 @@
 ## Prerequisites
 
 - Java 17+ installed
-- DhrLang 3.0.0 JAR (`DhrLang-3.0.0.jar`)
+- DhrLang 4.0.2 JAR (`DhrLang-4.0.2.jar`)
 - (Optional) Foundry toolkit for local testing: https://book.getfoundry.sh/
 
 ```bash
-java -jar DhrLang-3.0.0.jar --version
-# â†’ DhrLang version 3.0.0
+java -jar DhrLang-4.0.2.jar --version
+# Ã¢â€ â€™ DhrLang version 4.0.2
 ```
 
 ---
@@ -27,13 +27,21 @@ class MyToken {
     @storage sab name;
     @storage sab symbol;
     @storage num totalSupply;
+    @storage num maxSupply;
     @storage Address owner;
 
     @constructor
-    kaam init(sab _name, sab _symbol, num _initialSupply) {
+    kaam init(sab _name, sab _symbol, num _initialSupply, num _maxSupply) {
+        if (_maxSupply <= 0) {
+            throw "Max supply must be positive";
+        }
+        if (_initialSupply > _maxSupply) {
+            throw "Initial supply exceeds max supply";
+        }
         name = _name;
         symbol = _symbol;
         owner = msg.sender;
+        maxSupply = _maxSupply;
         totalSupply = _initialSupply;
     }
 
@@ -50,6 +58,19 @@ class MyToken {
     kaam mint(Address to, num amount) {
         if (msg.sender != owner) {
             throw "Only owner can mint";
+        }
+        if (amount <= 0) {
+            throw "Amount must be positive";
+        }
+        // Bound `amount` first so the subtraction below cannot underflow, then
+        // compare the accumulator directly. Writing this as
+        // `totalSupply + amount > maxSupply` would perform the very addition
+        // the guard exists to prevent.
+        if (amount > maxSupply) {
+            throw "Amount exceeds max supply";
+        }
+        if (totalSupply > maxSupply - amount) {
+            throw "Mint would exceed max supply";
         }
         totalSupply = totalSupply + amount;
     }
@@ -69,22 +90,22 @@ class MyToken {
 ```
 
 Key annotations:
-- `@contract` — marks the class as a smart contract
-- `@storage` — fields persisted on-chain (EVM storage slots)
-- `@constructor` — runs once at deployment
-- `@view` — read-only (no gas for external calls)
-- `@nonreentrant` — compiler enforces reentrancy protection
-- `@event` — emits EVM log events; mark params `indexed` to make them filterable topics
-- `@error` — declares a gas-efficient custom error; raise it with `revert(ErrName(args))`
+- `@contract` â€” marks the class as a smart contract
+- `@storage` â€” fields persisted on-chain (EVM storage slots)
+- `@constructor` â€” runs once at deployment
+- `@view` â€” read-only (no gas for external calls)
+- `@nonreentrant` â€” compiler enforces reentrancy protection
+- `@event` â€” emits EVM log events; mark params `indexed` to make them filterable topics
+- `@error` â€” declares a gas-efficient custom error; raise it with `revert(ErrName(args))`
   or `require(cond, ErrName(args))`
-- `@checked` / `@unchecked` — select overflow behaviour for `+`, `-`, `*` on `num` in a method.
-  `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2²⁵⁶. **As of v4.0.0
+- `@checked` / `@unchecked` â€” select overflow behaviour for `+`, `-`, `*` on `num` in a method.
+  `@checked` reverts on overflow/underflow; `@unchecked` wraps modulo 2Â²âµâ¶. **As of v4.0.0
   arithmetic is checked by default** (Solidity 0.8+ model); add `@unchecked` to opt back into
   wrapping where it is intentional.
-- `@requires(expr)` / `@ensures(expr)` — design-by-contract pre/postconditions on a method.
+- `@requires(expr)` / `@ensures(expr)` â€” design-by-contract pre/postconditions on a method.
   `@requires` is checked at entry (reverts `precondition failed`); `@ensures` is checked at
   every return (reverts `postcondition failed`) and may reference `result`, the return value.
-- `@invariant(expr)` — a contract-level invariant (declared next to `@contract`), re-checked
+- `@invariant(expr)` â€” a contract-level invariant (declared next to `@contract`), re-checked
   after every state-mutating method and reverting `invariant violated`.
 
 ### Transaction context globals
@@ -108,7 +129,7 @@ or using bare `msg.data`, is a type error. These are transaction-context reads, 
 ### Arithmetic safety example
 
 As of **v4.0.0**, `num` arithmetic (`+`, `-`, `*`) **reverts on overflow/underflow by
-default** — you no longer need `@checked` for safe math. Use `@unchecked` to opt back
+default** â€” you no longer need `@checked` for safe math. Use `@unchecked` to opt back
 into wrapping where it is intentional:
 
 ```dhrlang
@@ -122,7 +143,7 @@ class Vault {
         balance = balance + amount;
     }
 
-    // Opt out for hot paths where wrapping modulo 2²⁵⁶ is intentional.
+    // Opt out for hot paths where wrapping modulo 2Â²âµâ¶ is intentional.
     @unchecked
     kaam wrappingAdd(num a, num b) {
         balance = a + b;
@@ -162,7 +183,7 @@ class Bank {
 ```
 
 > A typo'd name inside a spec (e.g. `@requires(amunt > 0)`) is rejected at compile time
-> with **DHR-E516** — on the EVM an unresolved identifier would silently compile to `0`.
+> with **DHR-E516** â€” on the EVM an unresolved identifier would silently compile to `0`.
 
 ### Fuzz your specs (`contract fuzz`)
 
@@ -170,9 +191,9 @@ Specs are only useful if they actually hold. The fuzzer searches for an input th
 *falsifies* an `@ensures` or `@invariant`, so you can catch a logic bug before you deploy:
 
 ```bash
-java -jar DhrLang-3.6.0.jar contract fuzz MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract fuzz MyToken.dhr
 # reproducible run, more iterations:
-java -jar DhrLang-3.6.0.jar contract fuzz --runs=512 --seed=42 MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract fuzz --runs=512 --seed=42 MyToken.dhr
 ```
 
 It runs each function over a simulated EVM state (uint256 wrapping arithmetic, `@checked`
@@ -180,12 +201,12 @@ overflow reverts, storage and mappings default to `0`) and prints a per-function
 If a spec is violated it reports a **minimized counterexample**:
 
 ```
-  Buggy::set — 256 runs: 0 ok, 256 violations, 0 reverts, 0 skipped, 0 errors
+  Buggy::set â€” 256 runs: 0 ok, 256 violations, 0 reverts, 0 skipped, 0 errors
 
 Failing inputs:
-  ✗ Buggy::set(0, 0) → invariant violated: @invariant(total == a + b)
+  âœ— Buggy::set(0, 0) â†’ invariant violated: @invariant(total == a + b)
 
-Result: ISSUES FOUND ✗
+Result: ISSUES FOUND âœ—
 ```
 
 The fuzzer is **sound, not complete**: it only flags a violation on a faithful execution.
@@ -203,9 +224,9 @@ into a linear-arithmetic form - then runs a **Fourier-Motzkin** decision procedu
 discharge each `@ensures`/`@invariant` as `PROVED`, `REFUTED`, or `UNKNOWN`:
 
 ```bash
-java -jar DhrLang-3.13.0.jar contract prove MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract prove MyToken.dhr
 # widen the counterexample search radius (default 8); JSON for CI:
-java -jar DhrLang-3.13.0.jar contract prove --bound=12 --json MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract prove --bound=12 --json MyToken.dhr
 ```
 
 ```
@@ -237,13 +258,13 @@ you can browse and scaffold straight from the CLI:
 
 ```bash
 # Browse the catalog:
-java -jar DhrLang-3.8.0.jar contract stdlib list
+java -jar DhrLang-4.0.2.jar contract stdlib list
 
 # Read a template's source:
-java -jar DhrLang-3.8.0.jar contract stdlib show ERC20
+java -jar DhrLang-4.0.2.jar contract stdlib show ERC20
 
 # Scaffold a ready-to-edit file (optionally renaming the contract):
-java -jar DhrLang-3.8.0.jar contract stdlib new Ownable --name=MyToken --output=input/contracts
+java -jar DhrLang-4.0.2.jar contract stdlib new Ownable --name=MyToken --output=input/contracts
 ```
 
 | Template | What you get |
@@ -267,51 +288,51 @@ honest starting points whose per-account bookkeeping you fill in. The owner-guar
 ## Step 2: Compile to EVM Bytecode
 
 ```bash
-java -jar DhrLang-3.0.0.jar contract compile MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract compile MyToken.dhr
 ```
 
 Output:
 ```
-1 contract(s) compiled â†’ /path/to/build/evm
+1 contract(s) compiled Ã¢â€ â€™ /path/to/build/evm
 ```
 
 Generated artifacts in `build/evm/`:
-- `MyToken.bin` â€” creation bytecode (deployed to chain)
-- `MyToken.runtime.bin` â€” runtime bytecode (stored on-chain)
-- `MyToken.abi.json` â€” ABI for tools (ethers.js, Foundry, etc.)
+- `MyToken.bin` Ã¢â‚¬â€ creation bytecode (deployed to chain)
+- `MyToken.runtime.bin` Ã¢â‚¬â€ runtime bytecode (stored on-chain)
+- `MyToken.abi.json` Ã¢â‚¬â€ ABI for tools (ethers.js, Foundry, etc.)
 
 ---
 
 ## Step 3: Estimate Gas Costs
 
 ```bash
-java -jar DhrLang-3.0.0.jar contract gas MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract gas MyToken.dhr
 ```
 
 Output:
 ```
-â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘                    GAS ESTIMATION REPORT                    â•‘
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
-â•‘  Bytecode size:              342 bytes                      â•‘
-â•‘  Storage slots:                4                            â•‘
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
-â•‘  Gas Breakdown:                                             â•‘
-â•‘    Intrinsic (tx base):        21,000 gas                   â•‘
-â•‘    Calldata:                    4,872 gas                   â•‘
-â•‘    Contract creation:          32,000 gas                   â•‘
-â•‘    Code deposit:               68,400 gas                   â•‘
-â•‘    Constructor execution:      90,000 gas                   â•‘
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
-â•‘  TOTAL ESTIMATED GAS:         216,272                       â•‘
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
-â•‘  Cost at 30 gwei:            0.006488 ETH (~$16.22 @ $2500) â•‘
-â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+Ã¢â€¢â€Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢â€”
+Ã¢â€¢â€˜                    GAS ESTIMATION REPORT                    Ã¢â€¢â€˜
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
+Ã¢â€¢â€˜  Bytecode size:              342 bytes                      Ã¢â€¢â€˜
+Ã¢â€¢â€˜  Storage slots:                4                            Ã¢â€¢â€˜
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
+Ã¢â€¢â€˜  Gas Breakdown:                                             Ã¢â€¢â€˜
+Ã¢â€¢â€˜    Intrinsic (tx base):        21,000 gas                   Ã¢â€¢â€˜
+Ã¢â€¢â€˜    Calldata:                    4,872 gas                   Ã¢â€¢â€˜
+Ã¢â€¢â€˜    Contract creation:          32,000 gas                   Ã¢â€¢â€˜
+Ã¢â€¢â€˜    Code deposit:               68,400 gas                   Ã¢â€¢â€˜
+Ã¢â€¢â€˜    Constructor execution:      90,000 gas                   Ã¢â€¢â€˜
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
+Ã¢â€¢â€˜  TOTAL ESTIMATED GAS:         216,272                       Ã¢â€¢â€˜
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
+Ã¢â€¢â€˜  Cost at 30 gwei:            0.006488 ETH (~$16.22 @ $2500) Ã¢â€¢â€˜
+Ã¢â€¢Å¡Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 ```
 
 For JSON output (CI/tools):
 ```bash
-java -jar DhrLang-3.0.0.jar contract gas --json MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract gas --json MyToken.dhr
 ```
 
 ---
@@ -322,21 +343,21 @@ Start a local Ethereum node:
 ```bash
 # Using Foundry's Anvil
 anvil
-# â†’ Listening on 127.0.0.1:8545
-# â†’ Private Key: 0xac0974bec...
+# Ã¢â€ â€™ Listening on 127.0.0.1:8545
+# Ã¢â€ â€™ Private Key: 0xac0974bec...
 ```
 
 Deploy locally:
 ```bash
-java -jar DhrLang-3.0.0.jar contract deploy --network=local MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=local MyToken.dhr
 ```
 
 Or generate a deploy script:
 ```bash
-java -jar DhrLang-3.0.0.jar contract deploy --network=local --dry-run --deploy-format=ethers MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=local --dry-run --deploy-format=ethers MyToken.dhr
 ```
 
-This generates `build/evm/Deploy.deploy.js` â€” run it with:
+This generates `build/evm/Deploy.deploy.js` Ã¢â‚¬â€ run it with:
 ```bash
 RPC_URL=http://127.0.0.1:8545 \
 PRIVATE_KEY=0xac0974bec... \
@@ -354,18 +375,18 @@ export DHRLANG_PRIVATE_KEY=0xYourPrivateKeyHere
 
 **Option B: Encrypted keystore** (recommended for production)
 ```bash
-java -jar DhrLang-3.0.0.jar contract wallet create
+java -jar DhrLang-4.0.2.jar contract wallet create
 # Enter private key (hex): ****
 # Enter keystore password: ****
 # Confirm password: ****
-# â†’ Keystore created at ~/.dhrlang/keystore.enc
+# Ã¢â€ â€™ Keystore created at ~/.dhrlang/keystore.enc
 ```
 
 Show your wallet address:
 ```bash
-java -jar DhrLang-3.0.0.jar contract wallet show
-# â†’ Address: 0x1234...abcd
-# â†’ Key source: KEYSTORE_FILE
+java -jar DhrLang-4.0.2.jar contract wallet show
+# Ã¢â€ â€™ Address: 0x1234...abcd
+# Ã¢â€ â€™ Key source: KEYSTORE_FILE
 ```
 
 ---
@@ -375,28 +396,28 @@ java -jar DhrLang-3.0.0.jar contract wallet show
 ```bash
 # Get Sepolia ETH from a faucet: https://sepoliafaucet.com
 
-java -jar DhrLang-3.0.0.jar contract deploy --network=sepolia MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=sepolia MyToken.dhr
 ```
 
 Output:
 ```
-â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘              DhrLang Contract Deployment                     â•‘
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+Ã¢â€¢â€Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢â€”
+Ã¢â€¢â€˜              DhrLang Contract Deployment                     Ã¢â€¢â€˜
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
   Network:    Sepolia Testnet (chainId: 11155111)
   Contracts:  1
   MyToken: ~216,272 gas
   Deployer:   0x1234...abcd
   Key source: ENVIRONMENT_VARIABLE
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
   Building tx for MyToken...
   Signed: 0x02f9...
   Raw signed tx written to build/evm/MyToken.signed.tx
-â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+Ã¢â€¢Â Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â£
   Next steps:
     1. Broadcast: cast send --raw <signed.tx> --rpc-url https://sepolia.infura.io/v3/{API_KEY}
     2. Verify:    dhrlang contract verify --address=<deployed> --network=sepolia MyToken.dhr
-â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+Ã¢â€¢Å¡Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 ```
 
 Broadcast using Foundry:
@@ -426,7 +447,7 @@ deployer; local deploys default to Anvil account #0, so a fresh local deploy is
 predicted at the canonical `0x5fbd...0aa3`:
 
 ```bash
-java -jar DhrLang-3.0.0.jar contract deploy --network=local --dry-run MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=local --dry-run MyToken.dhr
 #   MyToken -> 0x5fbdb2315678afecb367f032d93f642f64180aa3 (predicted, nonce 0)
 ```
 
@@ -436,7 +457,7 @@ manual follow-up, when no explorer API key is set):
 
 ```bash
 export DHRLANG_ETHERSCAN_API_KEY=your_api_key
-java -jar DhrLang-3.0.0.jar contract deploy --network=sepolia --verify MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=sepolia --verify MyToken.dhr
 ```
 
 ---
@@ -446,7 +467,7 @@ java -jar DhrLang-3.0.0.jar contract deploy --network=sepolia --verify MyToken.d
 ```bash
 export DHRLANG_ETHERSCAN_API_KEY=your_api_key
 
-java -jar DhrLang-3.0.0.jar contract verify \
+java -jar DhrLang-4.0.2.jar contract verify \
     --address=0xDeployedContractAddress \
     --network=sepolia \
     MyToken.dhr
@@ -455,7 +476,7 @@ java -jar DhrLang-3.0.0.jar contract verify \
 Output:
 ```
 Verifying MyToken at 0xDeployed... on Sepolia Testnet...
-  âœ“ Contract verified successfully!
+  Ã¢Å“â€œ Contract verified successfully!
   View: https://sepolia.etherscan.io/address/0xDeployed#code
 ```
 
@@ -466,7 +487,7 @@ Verifying MyToken at 0xDeployed... on Sepolia Testnet...
 Run the built-in security auditor before deploying to mainnet:
 
 ```bash
-java -jar DhrLang-3.6.0.jar --audit MyToken.dhr
+java -jar DhrLang-4.0.2.jar --audit MyToken.dhr
 ```
 
 This checks for:
@@ -484,9 +505,9 @@ audit **and** the L3 spec fuzzer, folds any invariant/postcondition counterexamp
 (`100 - risk`) and an **A-F grade**:
 
 ```bash
-java -jar DhrLang-3.6.0.jar contract safety MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract safety MyToken.dhr
 # report-only (don't fail the build):
-java -jar DhrLang-3.6.0.jar contract safety --fail-on=none MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract safety --fail-on=none MyToken.dhr
 ```
 
 It also writes `safety.sarif` (ingestible by GitHub Code Scanning) and `safety-report.md`
@@ -502,10 +523,10 @@ When ready for production:
 
 ```bash
 # Dry run first!
-java -jar DhrLang-3.0.0.jar contract deploy --network=mainnet --dry-run MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=mainnet --dry-run MyToken.dhr
 
 # Real deployment
-java -jar DhrLang-3.0.0.jar contract deploy --network=mainnet MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract deploy --network=mainnet MyToken.dhr
 ```
 
 ---
@@ -518,10 +539,10 @@ so a DhrLang contract drops in without hand-copying ABIs or bytecode:
 
 ```bash
 # Emit all three targets into build/contracts/ (default):
-java -jar DhrLang-3.7.0.jar contract export MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract export MyToken.dhr
 
 # Pick a single target and destination:
-java -jar DhrLang-3.7.0.jar contract export --format=ts --output=app/src/contracts MyToken.dhr
+java -jar DhrLang-4.0.2.jar contract export --format=ts --output=app/src/contracts MyToken.dhr
 ```
 
 `--format=all` (default) writes, per contract:
@@ -596,7 +617,7 @@ intentionally rejected by `userop`; use the default `--version=0.6`.
 ## Supported Networks
 
 ```bash
-java -jar DhrLang-3.0.0.jar contract networks
+java -jar DhrLang-4.0.2.jar contract networks
 ```
 
 | Network | Chain ID | Type | CLI Name |
@@ -656,27 +677,52 @@ java -jar DhrLang-3.0.0.jar contract networks
 
 ## Sample Contracts
 
-Ready-to-use contracts in `input/contracts/`:
+Reference contracts in `input/contracts/`. Every constructor takes an explicit
+upper bound for each accumulating field, so the totals cannot wrap:
 
-| File | Description |
-|------|-------------|
-| `ERC20Token.dhr` | Standard fungible token (ERC-20) |
-| `ERC721NFT.dhr` | Non-fungible token (ERC-721) |
-| `MultiSigWallet.dhr` | M-of-N multi-signature wallet |
-| `StakingVault.dhr` | Token staking with rewards |
+| File | Description | Bounded by |
+|------|-------------|------------|
+| `ERC20Token.dhr` | Standard fungible token (ERC-20) | `maxSupply` |
+| `ERC721NFT.dhr` | Non-fungible token (ERC-721) | `maxSupply` |
+| `MultiSigWallet.dhr` | M-of-N multi-signature wallet | `maxTransactions` |
+| `StakingVault.dhr` | Token staking with rewards | `maxTotalStaked`, `maxStakers` |
+
+The guards are written as
+
+```dhrlang
+if (totalSupply > maxSupply - amount) { throw "Mint would exceed max supply"; }
+```
+
+rather than the more obvious
+
+```dhrlang
+if (totalSupply + amount > maxSupply) { ... }   // wrong
+```
+
+because the second form performs the very addition it is meant to protect, and
+on a 256-bit target it overflows before the comparison can reject it. Where the
+subtraction could itself underflow, the operand is bounded first.
+
+These contracts are audited on every push by
+[`contract-audit.yml`](.github/workflows/contract-audit.yml), which uploads the
+results to the repository's Security tab. Run the same audit yourself:
+
+```bash
+java -jar DhrLang-4.0.2.jar --audit input/contracts/ERC20Token.dhr
+```
 
 ---
 
 ## Troubleshooting
 
 **"No @contract classes found"**
-â†’ Add `@contract` annotation above your class: `@contract class MyToken { ... }`
+Ã¢â€ â€™ Add `@contract` annotation above your class: `@contract class MyToken { ... }`
 
 **"Wallet error: Environment variable DHRLANG_PRIVATE_KEY is not set"**
-â†’ Set your key: `export DHRLANG_PRIVATE_KEY=0x...` or use `contract wallet create`
+Ã¢â€ â€™ Set your key: `export DHRLANG_PRIVATE_KEY=0x...` or use `contract wallet create`
 
 **"Unknown network"**
-â†’ Run `contract networks` to see valid names. Use `--network=sepolia` format.
+Ã¢â€ â€™ Run `contract networks` to see valid names. Use `--network=sepolia` format.
 
 **"Verification failed"**
-â†’ Ensure `DHRLANG_ETHERSCAN_API_KEY` is set. Get a free key at https://etherscan.io/apis
+Ã¢â€ â€™ Ensure `DHRLANG_ETHERSCAN_API_KEY` is set. Get a free key at https://etherscan.io/apis
