@@ -293,52 +293,79 @@ public class InvariantChecker {
 
     private void checkInvariantPreservation(FunctionDecl fn, Invariant inv,
                                              List<Statement> stmts, Set<String> storageFields) {
-        // Walk all assignments to the invariant field and check patterns
+        // `stmts` is the function body, which is also where guard preambles live,
+        // so it doubles as the scope searched for bounds checks.
         for (Statement stmt : stmts) {
-            checkStatementForViolation(fn, inv, stmt, storageFields);
+            checkStatementForViolation(fn, inv, stmt, storageFields, stmts);
         }
     }
 
     private void checkStatementForViolation(FunctionDecl fn, Invariant inv,
-                                             Statement stmt, Set<String> storageFields) {
+                                             Statement stmt, Set<String> storageFields,
+                                             List<Statement> guardScope) {
         if (stmt instanceof ExpressionStmt es) {
-            checkExprForViolation(fn, inv, es.getExpression());
+            checkExprForViolation(fn, inv, es.getExpression(), guardScope);
         } else if (stmt instanceof IfStmt ifStmt) {
-            checkStatementForViolation(fn, inv, ifStmt.getThenBranch(), storageFields);
+            checkStatementForViolation(fn, inv, ifStmt.getThenBranch(), storageFields, guardScope);
             if (ifStmt.getElseBranch() != null) {
-                checkStatementForViolation(fn, inv, ifStmt.getElseBranch(), storageFields);
+                checkStatementForViolation(fn, inv, ifStmt.getElseBranch(), storageFields, guardScope);
             }
         } else if (stmt instanceof WhileStmt whileStmt) {
-            checkStatementForViolation(fn, inv, whileStmt.getBody(), storageFields);
+            checkStatementForViolation(fn, inv, whileStmt.getBody(), storageFields, guardScope);
         } else if (stmt instanceof Block block) {
             for (Statement s : block.getStatements()) {
-                checkStatementForViolation(fn, inv, s, storageFields);
+                checkStatementForViolation(fn, inv, s, storageFields, guardScope);
             }
         }
     }
 
-    private void checkExprForViolation(FunctionDecl fn, Invariant inv, Expression expr) {
+    private void checkExprForViolation(FunctionDecl fn, Invariant inv, Expression expr,
+                                        List<Statement> guardScope) {
         if (expr instanceof AssignmentExpr assign) {
-            String target = null;
-            if (true) {
-                target = assign.getName().getLexeme();
-            }
+            String target = assign.getName().getLexeme();
             if (!inv.getFieldName().equals(target)) return;
 
-            Expression value = assign.getValue();
-            checkValueAgainstInvariant(fn, inv, value);
+            checkValueAgainstInvariant(fn, inv, assign.getValue(), guardScope);
         }
     }
 
-    private void checkValueAgainstInvariant(FunctionDecl fn, Invariant inv, Expression value) {
+    /**
+     * Decide whether {@code field = <left> - <right>} is bounded by a preceding
+     * check, and therefore cannot drive the field negative.
+     *
+     * <p>A subtraction is only safe when something already established that the
+     * subtrahend does not exceed the minuend. That demands a guard comparing the
+     * two <em>against each other</em>; a guard that merely mentions one of them
+     * (say {@code if (amount <= 0)}) proves nothing about their relationship.
+     * When the subtrahend is not a simple variable there is no name to relate,
+     * so the weaker test — the field itself appears in some bounds check — is
+     * used instead.</p>
+     */
+    private boolean isSubtractionGuarded(Invariant inv, BinaryExpr subtraction,
+                                          List<Statement> guardScope) {
+        String subtrahend = GuardAnalysis.simpleName(subtraction.getRight());
+        if (subtrahend != null) {
+            String minuend = GuardAnalysis.simpleName(subtraction.getLeft());
+            if (minuend == null) {
+                minuend = inv.getFieldName();
+            }
+            return GuardAnalysis.hasRelationalGuard(guardScope, minuend, subtrahend)
+                    || GuardAnalysis.hasRelationalGuard(guardScope, inv.getFieldName(), subtrahend);
+        }
+        return GuardAnalysis.collectGuardedVariables(guardScope).contains(inv.getFieldName());
+    }
+
+    private void checkValueAgainstInvariant(FunctionDecl fn, Invariant inv, Expression value,
+                                             List<Statement> guardScope) {
         switch (inv.getKind()) {
             case NON_NEGATIVE -> {
-                // Check if the value is a subtraction that could go negative
+                // field = field - amount → can go negative unless amount was
+                // already bounded by field. Report only when no such guard exists;
+                // reporting unconditionally made every correctly-guarded burn()
+                // look like a defect.
                 if (value instanceof BinaryExpr bin
-                        && bin.getOperator().getType() == dhrlang.lexer.TokenType.MINUS) {
-                    // field = field - amount → could violate if amount > field
-                    // Check if there's a guard: if (amount > field) throw
-                    // For now, warn if subtraction has no preceding guard
+                        && bin.getOperator().getType() == dhrlang.lexer.TokenType.MINUS
+                        && !isSubtractionGuarded(inv, bin, guardScope)) {
                     violations.add(new Violation(inv, fn.getName(),
                             "Subtraction on '" + inv.getFieldName()
                                     + "' could produce a negative value. "

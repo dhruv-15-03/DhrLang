@@ -142,49 +142,14 @@ public class ArithmeticOverflowDetector {
     /**
      * Detect variables that are guarded by preceding if/require checks.
      * e.g., {@code if (amount > balance) throw "...";} guards `balance` for subtraction.
+     *
+     * <p>Delegates to {@link GuardAnalysis}, which is shared with
+     * {@link InvariantChecker} so both detectors agree on what counts as a
+     * guard. See that class for the two deliberate limitations — notably that
+     * only <em>direct</em> operands of a comparison are recognised.</p>
      */
     private Set<String> collectGuardedVariables(List<Statement> stmts) {
-        Set<String> guarded = new HashSet<>();
-
-        for (Statement stmt : stmts) {
-            if (stmt instanceof IfStmt ifStmt) {
-                Expression cond = ifStmt.getCondition();
-                // Check for patterns: if (x > y) throw / if (x <= 0) throw
-                collectGuardsFromCondition(cond, guarded);
-            } else if (stmt instanceof ExpressionStmt es) {
-                Expression expr = es.getExpression();
-                // Check for require(amount <= balance, "msg")
-                if (expr instanceof CallExpr call
-                        && call.getCallee() instanceof VariableExpr ve
-                        && "require".equals(ve.getName().getLexeme())) {
-                    if (!call.getArguments().isEmpty()) {
-                        collectGuardsFromCondition(call.getArguments().get(0), guarded);
-                    }
-                }
-            }
-        }
-
-        return guarded;
-    }
-
-    private void collectGuardsFromCondition(Expression cond, Set<String> guarded) {
-        if (cond instanceof BinaryExpr bin) {
-            var op = bin.getOperator().getType();
-            // if (amount > field) throw → field is guarded for subtraction
-            // if (field >= amount) → field is guarded
-            if (op == dhrlang.lexer.TokenType.GREATER || op == dhrlang.lexer.TokenType.GEQ
-                    || op == dhrlang.lexer.TokenType.LESS || op == dhrlang.lexer.TokenType.LEQ
-                    || op == dhrlang.lexer.TokenType.NEQ) {
-                extractVariableNames(bin.getLeft(), guarded);
-                extractVariableNames(bin.getRight(), guarded);
-            }
-        }
-    }
-
-    private void extractVariableNames(Expression expr, Set<String> names) {
-        if (expr instanceof VariableExpr ve) {
-            names.add(ve.getName().getLexeme());
-        }
+        return GuardAnalysis.collectGuardedVariables(stmts);
     }
 
     // ── Statement Analysis ───────────────────────────────────────────────
