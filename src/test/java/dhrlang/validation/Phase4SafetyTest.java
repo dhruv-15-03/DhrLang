@@ -112,6 +112,217 @@ class Phase4SafetyTest {
             List<InvariantChecker.Violation> violations = checker.getViolations();
             assertNotNull(violations);
         }
+
+        // ── Guard recognition for NON_NEGATIVE ───────────────────────
+
+        private long nonNegativeViolations(String source) {
+            ClassDecl cls = parseContract(source);
+            assertNotNull(cls);
+            return new InvariantChecker().check(cls).stream()
+                    .filter(v -> v.getInvariant().getKind()
+                            == InvariantChecker.Invariant.Kind.NON_NEGATIVE)
+                    .count();
+        }
+
+        @Test
+        @DisplayName("Subtraction bounded by an if-guard is not reported")
+        void guardedSubtractionIsAccepted() {
+            // This is the exact shape of ERC20Token.burn(), which the checker
+            // used to flag while simultaneously recommending the guard it has.
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (amount <= 0) {
+                            throw "Amount must be positive";
+                        }
+                        if (amount > totalSupply) {
+                            throw "Insufficient supply";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("Guard written with operands reversed is still recognised")
+        void reversedGuardIsAccepted() {
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (totalSupply < amount) {
+                            throw "Insufficient supply";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("require(...) form is recognised as a guard")
+        void requireGuardIsAccepted() {
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        require(amount <= totalSupply, "Insufficient supply");
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("Unguarded subtraction is still reported")
+        void unguardedSubtractionIsStillReported() {
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """) > 0, "An unbounded subtraction must remain a violation");
+        }
+
+        @Test
+        @DisplayName("Unrelated sanity check does not count as a bounds check")
+        void unrelatedGuardDoesNotSuppress() {
+            // `amount <= 0` constrains amount but says nothing about how it
+            // compares to totalSupply, so the subtraction can still underflow.
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (amount <= 0) {
+                            throw "Amount must be positive";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """) > 0, "A guard unrelated to the field must not suppress the report");
+        }
+
+        @Test
+        @DisplayName("Direct negative assignment is still reported")
+        void negativeAssignmentIsStillReported() {
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam wipe() {
+                        totalSupply = -1;
+                    }
+                }
+                """) > 0, "Assigning a negative literal must remain a violation");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  GuardAnalysis Tests
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("GuardAnalysis")
+    class GuardAnalysisTests {
+
+        private List<dhrlang.ast.Statement> bodyOf(String source) {
+            ClassDecl cls = parseContract(source);
+            assertNotNull(cls);
+            return cls.getFunctions().get(0).getBody().getStatements();
+        }
+
+        @Test
+        @DisplayName("Comparison operands are collected as guarded")
+        void collectsGuardedVariables() {
+            var stmts = bodyOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount > balance) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            var guarded = GuardAnalysis.collectGuardedVariables(stmts);
+            assertTrue(guarded.contains("amount"));
+            assertTrue(guarded.contains("balance"));
+        }
+
+        @Test
+        @DisplayName("hasRelationalGuard requires both names in one comparison")
+        void relationalGuardNeedsBothNames() {
+            var related = bodyOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount > balance) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            assertTrue(GuardAnalysis.hasRelationalGuard(related, "balance", "amount"));
+            assertTrue(GuardAnalysis.hasRelationalGuard(related, "amount", "balance"));
+
+            var unrelated = bodyOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount <= 0) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            assertFalse(GuardAnalysis.hasRelationalGuard(unrelated, "balance", "amount"));
+        }
+
+        @Test
+        @DisplayName("Operands nested inside a sub-expression are NOT recognised")
+        void nestedOperandsAreNotRecognised() {
+            // Documents a real constraint rather than an aspiration: a guard must
+            // name the field directly. `maxSupply - totalSupply` hides totalSupply
+            // inside a BinaryExpr, so it does not register. Contract authors who
+            // write the bound the other way round will not be credited for it.
+            var stmts = bodyOf("""
+                @contract
+                class C {
+                    @storage num totalSupply;
+                    @storage num maxSupply;
+                    kaam f(num amount) {
+                        if (amount > maxSupply - totalSupply) {
+                            throw "no";
+                        }
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """);
+            var guarded = GuardAnalysis.collectGuardedVariables(stmts);
+            assertTrue(guarded.contains("amount"), "direct operand is recognised");
+            assertFalse(guarded.contains("totalSupply"), "nested operand is not recognised");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
