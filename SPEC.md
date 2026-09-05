@@ -6,12 +6,12 @@
 
 # DhrLang Language Specification
 
-Version: 4.0.1 (Smart contracts, EVM backend, AI agent orchestration, data pipelines)
-Stability: Stable – subject to semantic versioning.
-Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin façade managing environments & call depth. As of v1.1.3 (Nov 2025), IR and bytecode execution backends are available via `--backend=ir|bytecode` flags. As of v1.2.0 (Jan 2026), all errors include unique DHR-EXXX codes with actionable hints.
+Version: 4.0.2 (Smart contracts, EVM backend, AI agent orchestration, data pipelines)
+Stability: Stable â€“ subject to semantic versioning.
+Implementation Note: As of refactor 2025-08, all evaluation logic resides in a dedicated Evaluator component; the Interpreter is a thin faÃ§ade managing environments & call depth. As of v1.1.3 (Nov 2025), IR and bytecode execution backends are available via `--backend=ir|bytecode` flags. As of v1.2.0 (Jan 2026), all errors include unique DHR-EXXX codes with actionable hints.
 
 ## 0. Overview (Informative)
-DhrLang is a statically checked, interpreted, object‑oriented language with:
+DhrLang is a statically checked, interpreted, objectâ€‘oriented language with:
 - Single inheritance (classes) & multiple interface implementation
 - Primitive + reference types, arrays, basic generics (syntactic; limited enforcement in 0.1)
 - Structured control flow, exceptions (with typed catches), static members, increment/decrement, basic standard library
@@ -22,7 +22,7 @@ This spec targets the current implementation; future enhancements (full bytecode
 ## 1. Lexical Structure (Normative)
 
 ### 1.1 Character Set
-Source is UTF‑8. Tokens outside ASCII (letters, digits, underscore) are currently rejected unless part of string or char literals. (FUTURE: Unicode identifiers.)
+Source is UTFâ€‘8. Tokens outside ASCII (letters, digits, underscore) are currently rejected unless part of string or char literals. (FUTURE: Unicode identifiers.)
 
 ### 1.2 Lines & Whitespace
 Whitespace (space, tab, carriage return, newline) separates tokens but is otherwise insignificant except inside string/char literals.
@@ -48,10 +48,10 @@ Override
 Keywords cannot be used as identifiers. `Override` is treated like an annotation keyword (see 6.6).
 
 ### 1.6 Literals
-- Integer: `[0-9]+` (base 10) → type `num` (64‑bit signed). No underscores, no hex/ octal yet.
-- Floating: `[0-9]+\.[0-9]+` → type `duo` (64‑bit IEEE double). No exponent form yet.
-- Boolean: `true` / `false` → type `kya`.
-- Char: `'a'`, `'\n'` (single char or backslash escape; current escapes recognized: `\n`, `\t`, `\r`, `\'`, `\"`, `\\`). Invalid or multi‑char forms raise a lexical error.
+- Integer: `[0-9]+` (base 10) â†’ type `num` (64â€‘bit signed). No underscores, no hex/ octal yet.
+- Floating: `[0-9]+\.[0-9]+` â†’ type `duo` (64â€‘bit IEEE double). No exponent form yet.
+- Boolean: `true` / `false` â†’ type `kya`.
+- Char: `'a'`, `'\n'` (single char or backslash escape; current escapes recognized: `\n`, `\t`, `\r`, `\'`, `\"`, `\\`). Invalid or multiâ€‘char forms raise a lexical error.
 - String: `"..."` with backslash escapes (same set as char). No multiline raw strings yet.
 - Null literal: `null` is NOT a keyword; absence uses `null` reference value implicitly. (FUTURE: explicit `null` token.)
 
@@ -64,7 +64,7 @@ Keywords cannot be used as identifiers. `Override` is treated like an annotation
 ```
 
 ### 1.8 Tokenization Rules
-Maximal munch: longest valid token chosen. Two‐char operators (`==`, `!=`, `<=`, `>=`, `&&`, `||`, `++`, `--`) supersede single char.
+Maximal munch: longest valid token chosen. Twoâ€char operators (`==`, `!=`, `<=`, `>=`, `&&`, `||`, `++`, `--`) supersede single char.
 Unrecognized characters produce a lexical error with hint when possible (e.g. single `&`).
 
 ## 2. Grammar (Normative)
@@ -175,42 +175,42 @@ modifiers      ::= modifier+ ;
 modifier       ::= 'public' | 'private' | 'protected' | 'static' | 'abstract' | 'final' | 'Override' ;
 ```
 
-NOTE: Implementation currently permits certain generic forms but does not fully enforce all constraints (see §7.5, §12).
+NOTE: Implementation currently permits certain generic forms but does not fully enforce all constraints (see Â§7.5, Â§12).
 
 ## 3. Operator Precedence & Associativity (Normative)
 From highest to lowest:
-1. Postfix increment/decrement (expr++ / expr--), member access `.`, call `()`, index `[]` (left‑assoc except postfix inc/dec which are non‑assoc)
-2. Prefix unary: `! - ++ --` (right‑assoc)
+1. Postfix increment/decrement (expr++ / expr--), member access `.`, call `()`, index `[]` (leftâ€‘assoc except postfix inc/dec which are nonâ€‘assoc)
+2. Prefix unary: `! - ++ --` (rightâ€‘assoc)
 3. Multiplicative: `* / %` (left)
 4. Additive: `+ -` (left)
 5. Comparison: `< <= > >=` (left)
 6. Equality: `== !=` (left)
-7. Logical AND: `&&` (left, short‑circuit)
-8. Logical OR: `||` (left, short‑circuit)
-9. Assignment: `=` (right‑assoc)
+7. Logical AND: `&&` (left, shortâ€‘circuit)
+8. Logical OR: `||` (left, shortâ€‘circuit)
+9. Assignment: `=` (rightâ€‘assoc)
 
 ## 4. Types (Normative)
 
 ### 4.1 Primitive Types
 | Name | Meaning | Runtime Representation |
 |------|---------|------------------------|
-| num  | 64‑bit signed integer | java.lang.Long |
-| duo  | 64‑bit floating point | java.lang.Double |
-| ek   | 16‑bit Unicode char   | java.lang.Character (char at runtime) |
-| sab  | String UTF‑16          | java.lang.String |
+| num  | 64â€‘bit signed integer | java.lang.Long |
+| duo  | 64â€‘bit floating point | java.lang.Double |
+| ek   | 16â€‘bit Unicode char   | java.lang.Character (char at runtime) |
+| sab  | String UTFâ€‘16          | java.lang.String |
 | kya  | Boolean                | java.lang.Boolean |
 | kaam | Void (no value)        | Java null (used only as method return) |
 
 ### 4.2 Reference Types
-Classes, interfaces, arrays, and parameterized forms (syntactic generics). All non‑primitive except `kaam` may be `null`.
+Classes, interfaces, arrays, and parameterized forms (syntactic generics). All nonâ€‘primitive except `kaam` may be `null`.
 
 ### 4.3 Arrays
 Type `T[]` where `T` is any type (primitive or reference). Arrays are covariant at runtime (Java array semantics). (FUTURE: specify invariance for safety.)
 
 Multi-dimensional arrays (`T[][]`, `T[m][n]`, etc.) are fully supported across parser, typechecker, and evaluator. Allocation and access semantics:
-- Allocation: `new T[d1][d2]...[dk]` creates a k‑dimensional array; each dimension size expression must be `num (Long)` and non‑negative. Overly large sizes are rejected.
+- Allocation: `new T[d1][d2]...[dk]` creates a kâ€‘dimensional array; each dimension size expression must be `num (Long)` and nonâ€‘negative. Overly large sizes are rejected.
 - Jagged arrays: Inner dimensions may be unspecified or allocated to different lengths later (e.g., `new T[2][]; arr[0] = new T[3];`).
-- Defaults: Elements are initialized to type defaults recursively: numbers→0, duo→0.0, kya→false, references→null.
+- Defaults: Elements are initialized to type defaults recursively: numbersâ†’0, duoâ†’0.0, kyaâ†’false, referencesâ†’null.
 - Access: Indexing `arr[i]` is bounds-checked for each dimension; negative or `i >= length` raises an index error.
 
 Examples:
@@ -253,11 +253,11 @@ A class declares fields & methods. Fields can be static; methods can be static/a
 `extends SuperClass` optional; absence means implicit root base (no Object injection yet). Single inheritance only.
 
 ### 6.3 Interfaces
-Multiple `implements` allowed. Each interface method must be provided by a concrete (non‑abstract) class unless class is abstract.
+Multiple `implements` allowed. Each interface method must be provided by a concrete (nonâ€‘abstract) class unless class is abstract.
 
 ### 6.4 Static Members
 Accessible via `ClassName.member`. Static fields are initialized as follows:
-- All static fields start at their type's default value (§4.1 or null).
+- All static fields start at their type's default value (Â§4.1 or null).
 - Then, for each class independently, static field initializers are evaluated in source order.
 
 Static initializer constraints (Normative):
@@ -346,31 +346,31 @@ If class has any abstract methods or explicitly declares `abstract`, it cannot b
 5. Entry point validation (`static kaam main()` with zero params)
 
 ### 7.2 Assignment Compatibility
-Primitive: exact type for now (no implicit num ↔ duo except explicit arithmetic combining which yields duo if either operand duo). (FUTURE: numeric promotions.)
+Primitive: exact type for now (no implicit num â†” duo except explicit arithmetic combining which yields duo if either operand duo). (FUTURE: numeric promotions.)
 Reference: same type string or (FUTURE) subclass/interface assignment; currently minimal subclass validation for fields; generics not variance checked.
 
 ### 7.3 Expressions
 Binary operators require numeric operands for arithmetic/comparison except:
 - `+` with sab (string) concatenates (stringify) otherwise numeric addition.
 - `==` / `!=` allow any type (reference equality semantics for objects / value equality for primitives) via Java `Objects.equals`.
-Logical operators require kya (boolean) and short‑circuit.
+Logical operators require kya (boolean) and shortâ€‘circuit.
 
 ### 7.4 Return Checking
-If a non‑`kaam` method has paths without `return`, runtime may yield null; the checker SHOULD (future) flag missing returns.
+If a nonâ€‘`kaam` method has paths without `return`, runtime may yield null; the checker SHOULD (future) flag missing returns.
 
 ### 7.5 Generics Enforcement (Current)
 Arity mismatch for declared generic classes detected; bounds recorded but not fully validated across use sites. Wildcards largely unchecked.
 
 ### 7.6 Null Analysis (Partial)
-Tracker records some non‑null facts (infrastructure exists) but not fully exploited (FUTURE: flow lattice).
+Tracker records some nonâ€‘null facts (infrastructure exists) but not fully exploited (FUTURE: flow lattice).
 
 ## 8. Runtime & Evaluation (Normative)
-Tree‑walk interpreter executes AST directly:
+Treeâ€‘walk interpreter executes AST directly:
 1. Global environment populated with classes (as placeholders) & interfaces.
 2. Class metadata constructed (methods, static methods map, static field initialization).
 3. Entry point static main resolved & invoked.
 
-Evaluation order: left‑to‑right for arguments and binary operands. Assignment returns assigned value. Increment/decrement semantics:
+Evaluation order: leftâ€‘toâ€‘right for arguments and binary operands. Assignment returns assigned value. Increment/decrement semantics:
 - Prefix: update then yield new value.
 - Postfix: yield old value then update.
 
@@ -390,10 +390,10 @@ Throwing: `throw expression;` wraps primitives in runtime exception object if no
 Finally always executes except if runtime throws inside finally itself (propagated). `break`, `continue`, `return` rethrown through try after running finally.
 
 ### 9.1 Stringification and printing (Normative)
-When an exception value (a `DhrException` or subclass) is concatenated with a string or printed via `print/printLine`, its string form is the exception message only (i.e., `ex.getMessage()`). Exception type and source location are preserved in the runtime error record if the exception escapes to the top level, but user‑level printing within programs intentionally shows just the message.
+When an exception value (a `DhrException` or subclass) is concatenated with a string or printed via `print/printLine`, its string form is the exception message only (i.e., `ex.getMessage()`). Exception type and source location are preserved in the runtime error record if the exception escapes to the top level, but userâ€‘level printing within programs intentionally shows just the message.
 
 ## 10. Arrays (Normative)
-`new T[expr]`: expr must evaluate to num (Long) >=0; size > 1_000_000 rejected. Elements initialized to type default (§4.1 or null).
+`new T[expr]`: expr must evaluate to num (Long) >=0; size > 1_000_000 rejected. Elements initialized to type default (Â§4.1 or null).
 Indexing `arr[i]` bounds checked; negative or >= length raises index error.
 
 ## 11. Standard Library (Normative Summaries)
@@ -403,8 +403,8 @@ All provided as global native functions until namespacing (FUTURE). Selected cat
 Current: Type parameter environment with substitution is implemented for generics in fields and methods, including implicit field access in instance methods. Assignment rules treat raw vs parameterized mismatch as error. Wildcard capture and variance annotations are planned for future versions. Runtime remains erased with optional debug reification tags.
 
 ## 13. Diagnostics (Normative)
-Diagnostic record fields: `type (ERROR|WARNING)`, `code?`, `message`, `hint?`, `location(file?, line, column)`. De‑duplication by (type|line|col|code|message). Suppression directive:
-```// @suppress: CODE1 CODE2 ...```  applies to *next* non‑empty, non‑comment line. `ALL` suppresses all codes for file if placed at top.
+Diagnostic record fields: `type (ERROR|WARNING)`, `code?`, `message`, `hint?`, `location(file?, line, column)`. Deâ€‘duplication by (type|line|col|code|message). Suppression directive:
+```// @suppress: CODE1 CODE2 ...```  applies to *next* nonâ€‘empty, nonâ€‘comment line. `ALL` suppresses all codes for file if placed at top.
 
 ## 14. Conformance (Normative)
 A program conforms if:
@@ -416,7 +416,7 @@ A program conforms if:
 ## 15. Deviations & Known Limitations (Informative)
 - Generics are now enforced with type parameter substitution and diagnostics; generic arrays and deep type substitution are supported for fields and methods.
 - Multi-dimensional arrays are fully implemented and supported in all language components.
-- (Removed) Static forward reference ambiguity: Now enforced at compile-time per §6.4 (STATIC_FORWARD_REFERENCE, STATIC_INIT_CYCLE).
+- (Removed) Static forward reference ambiguity: Now enforced at compile-time per Â§6.4 (STATIC_FORWARD_REFERENCE, STATIC_INIT_CYCLE).
 - No method overloading; duplicate name rejected.
 - No package / module system; single global namespace.
 - No `null` literal token (implicit only).
@@ -426,9 +426,9 @@ A program conforms if:
 ## 16. Reserved for Future Features
 | Feature | Planned Section |
 |---------|-----------------|
-| Bytecode optimization & JIT | §17 (optimization work and potential JIT hooks) |
-| Modules / Imports | §18 |
-| Formatter / LSP | §19 |
+| Bytecode optimization & JIT | Â§17 (optimization work and potential JIT hooks) |
+| Modules / Imports | Â§18 |
+| Formatter / LSP | Â§19 |
 
 ## 17. IR & Bytecode Backends (Implemented as of v1.1.3)
 DhrLang includes IR and bytecode backends accessible via `--backend=ir` or `--backend=bytecode` CLI flags.
@@ -468,7 +468,7 @@ Each release MUST update `CHANGELOG.md` with Added / Changed / Fixed / Deprecate
 
 ## 19. Glossary
 - *Erasure*: Removal of generic parameter information at runtime.
-- *Assignability*: Relation allowing value of one type to be stored in variable of another per §7.2.
+- *Assignability*: Relation allowing value of one type to be stored in variable of another per Â§7.2.
 - *Conformance Test*: A test asserting spec compliance; MUST not rely on unspecified behavior.
 
 ## 20. Compliance Test Categories (Informative)

@@ -540,6 +540,55 @@ tasks.register('verifySpecVersion') {
 }
 check.dependsOn 'verifySpecVersion'
 
+// Guards the release history. project.version, CHANGELOG.md and the VS Code
+// extension must all agree, and every released version must be documented.
+//
+// This exists because the three drifted badly: BLOCKCHAIN_TUTORIAL.md cited four
+// different jar versions across its examples, GETTING_STARTED.md told users to
+// download a 3.0.0 jar the build no longer produces, and the Marketplace served
+// the extension at 3.0.1 while the repository sat at 4.0.1. Every one of those
+// was invisible until someone went looking. A rule nobody enforces is a rule
+// that silently stops being true.
+tasks.register('verifyReleaseConsistency') {
+    group = 'verification'
+    description = 'Verifies CHANGELOG.md documents project.version and lists each version once'
+    doLast {
+        def changelog = file('CHANGELOG.md')
+        if (!changelog.exists()) throw new GradleException('CHANGELOG.md not found')
+
+        def version = project.version.toString()
+        def headings = changelog.readLines().findAll { it =~ /^## \[\d+\.\d+\.\d+\]/ }
+        def versions = headings.collect { (it =~ /^## \[(\d+\.\d+\.\d+)\]/)[0][1] }
+
+        if (!versions.contains(version)) {
+            throw new GradleException(
+                "CHANGELOG.md has no '## [${version}]' entry. " +
+                'Every release must be documented before it ships.')
+        }
+
+        def duplicates = versions.countBy { it }.findAll { it.value > 1 }.keySet()
+        if (duplicates) {
+            throw new GradleException(
+                "CHANGELOG.md lists these versions more than once: ${duplicates.join(', ')}. " +
+                'A reader cannot tell which entry is authoritative.')
+        }
+
+        // The bundled extension ships with the language release; a mismatch is how
+        // the Marketplace ended up two majors behind the repository.
+        def pkg = file('vscode-extension/package.json')
+        if (pkg.exists()) {
+            def m = (pkg.getText('UTF-8') =~ /"version"\s*:\s*"([^"]+)"/)
+            if (m && m[0][1] != version) {
+                throw new GradleException(
+                    "vscode-extension/package.json is ${m[0][1]} but project.version is ${version}.")
+            }
+        }
+
+        println "[releaseConsistency] ${version} documented; ${versions.size()} versions, no duplicates"
+    }
+}
+check.dependsOn 'verifyReleaseConsistency'
+
 // Generate SVG coverage badge from Jacoco XML (Instruction coverage)
 tasks.register('generateCoverageBadge') {
     group = 'verification'

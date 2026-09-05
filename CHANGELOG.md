@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+`./gradlew verifyReleaseConsistency` runs as part of `check` and fails the build if
+`project.version` is missing from this file, if a version is listed twice, or if the
+bundled VS Code extension disagrees with the language version.
+
+## Release history
+
+Headline change per release. Full detail in the sections below.
+
+| Version | Date | What shipped |
+|---|---|---|
+| [4.0.2](#402---2026-09-05) | 2026-09-05 | Bounded the reference contracts so they pass the project's own audit; Marketplace publishing restored |
+| [4.0.1](#401---2026-07-27) | 2026-07-27 | Bundled extension aligned with the language release |
+| [4.0.0](#400---2026-07-01) | 2026-07-01 | **Breaking:** checked arithmetic by default |
+| [3.13.0](#3130---2026-06-30) | 2026-06-30 | `SpecProver` — static discharge of `@ensures` / `@invariant` |
+| [3.12.0](#3120---2026-06-29) | 2026-06-29 | |
+| [3.11.0](#3110---2026-06-28) | 2026-06-28 | |
+| [3.10.0](#3100---2026-06-27) | 2026-06-27 | |
+| [3.9.0](#390---2026-06-26) | 2026-06-26 | |
+| [3.8.0](#380---2026-06-25) | 2026-06-25 | Contract stdlib templates |
+| [3.6.0](#360---2026-06-23) | 2026-06-23 | Contract fuzzing (`SpecFuzzEngine`) |
+| [3.5.0](#350---2026-06-20) | 2026-06-20 | |
+| [3.3.0](#330---2026-06-18) | 2026-06-18 | |
+| [3.2.1](#321---2026-06-17) | 2026-06-17 | |
+| [3.2.0](#320---2026-06-17) | 2026-06-17 | |
+| [3.1.0](#310---2026-06-17) | 2026-06-17 | |
+| [3.0.0](#300---2026-04-25) | 2026-04-25 | EVM backend |
+| [2.0.0](#200---2026-03-05) | 2026-03-05 | |
+| [1.1.3](#113---2025-11-23) | 2025-11-23 | |
+| [1.0.0](#100---2025-09-23) | 2025-09-23 | First release |
+
+Versions suffixed `-dev` or `-extension` are development snapshots and
+extension-only changes; they were never cut as language tags.
+
 ## [Unreleased]
 
 ## [4.0.2] - 2026-09-05
@@ -72,14 +105,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
     contract with unannotated arithmetic changes (overflow guards are now emitted),
     so gas costs rise slightly and math that previously wrapped now reverts.
   - The static prover (`contract prove`) and spec fuzzer (`contract fuzz`) mirror the
-    new default, so they now reflect checked semantics for unannotated code — `prove`
+    new default, so they now reflect checked semantics for unannotated code â€” `prove`
     discharges `@ensures`/`@invariant` for unannotated functions without `@checked`.
 
-  **Migration** — to preserve the old wrapping behaviour, annotate the method with
+  **Migration** â€” to preserve the old wrapping behaviour, annotate the method with
   `@unchecked`:
 
   ```dhrlang
-  // v3.x behaviour (wrap modulo 2^256) — opt back in explicitly:
+  // v3.x behaviour (wrap modulo 2^256) â€” opt back in explicitly:
   @unchecked
   kaam wrappingAdd(num a, num b) {
       total = a + b;
@@ -93,17 +126,17 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ## [3.13.0] - 2026-06-30
 
 ### Added
-- **`dhrlang contract prove`** — experimental static proving (provable-safety
+- **`dhrlang contract prove`** â€” experimental static proving (provable-safety
   level **L2b**). Where `contract fuzz` *samples* inputs hunting for a
   counterexample, `prove` attempts a **universal proof** of each `@ensures`
   postcondition and `@invariant` over *all* inputs:
   - Symbolic execution with path forking on `if`/`@requires`, normalizing
     integer expressions into a linear-arithmetic IR (`LinearForm`).
-  - A hand-rolled **Fourier–Motzkin** elimination decision procedure discharges
+  - A hand-rolled **Fourierâ€“Motzkin** elimination decision procedure discharges
     each obligation, reporting `PROVED`, `REFUTED`, or `UNKNOWN`.
   - Every `REFUTED` obligation carries a **concrete counterexample**,
     cross-checked by the L3 `SpecFuzzEngine` so a refutation is never a false
-    alarm (e.g. `@ensures(result > a)` on `add` ⇒ `REFUTED a=0, b=0`).
+    alarm (e.g. `@ensures(result > a)` on `add` â‡’ `REFUTED a=0, b=0`).
   - Proving is **sound only under checked arithmetic**, so it is enabled for
     `@checked` functions; otherwise the obligation degrades to `UNKNOWN`
     (refutation still runs). Loops, mappings, and external calls are reported
@@ -115,7 +148,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Notes
 - Additive and non-breaking: a new `proving` package (`SpecProver`,
   `LinearForm`) and a new CLI subcommand; nothing in existing behavior changes.
-- Marked **experimental**: the prover is intentionally conservative — it only
+- Marked **experimental**: the prover is intentionally conservative â€” it only
   reports `PROVED` when a linear-arithmetic proof goes through, and never
   reports `REFUTED` without a witnessing concrete execution.
 
@@ -323,7 +356,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Specification fuzzing for smart contracts (`contract fuzz`), provable safety
   layer L3.** A new property-based fuzzer that searches for inputs which falsify a
   contract's declared `@ensures` postconditions and `@invariant` contract invariants.
-  - **`SpecFuzzEngine`** — a sound, concrete `uint256` evaluator that executes a
+  - **`SpecFuzzEngine`** â€” a sound, concrete `uint256` evaluator that executes a
     contract function over a simulated EVM state (`2^256` wrapping arithmetic,
     `@checked` overflow reverts, mapping/storage reads defaulting to zero) and then
     checks every applicable specification. It is deliberately **sound, not complete**:
@@ -347,17 +380,17 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Design-by-contract spec annotations, runtime-enforced on the EVM backend
   (provable safety, layer L2a).** Three new contract specification annotations that
   lower to revert checks in the compiled bytecode:
-  - **`@requires(expr)`** — a function precondition, evaluated at entry after the
+  - **`@requires(expr)`** â€” a function precondition, evaluated at entry after the
     parameters are decoded (so it can reference them). A false condition reverts with
     `precondition failed`. Multiple `@requires` on one function are AND-ed.
-  - **`@ensures(expr)`** — a function postcondition, evaluated at every `return` (and on
+  - **`@ensures(expr)`** â€” a function postcondition, evaluated at every `return` (and on
     the implicit void return). A false condition reverts with `postcondition failed`.
     Postconditions may reference the new **`result`** keyword, which binds to the
     function's scalar return value.
-  - **`@invariant(expr)`** — a contract-level invariant, declared next to `@contract`,
+  - **`@invariant(expr)`** â€” a contract-level invariant, declared next to `@contract`,
     re-checked after every state-mutating function and reverting with `invariant
     violated`. `@view`/`@pure` functions are exempt (they cannot mutate state).
-- **`DHR-E516` — unknown identifier in a spec expression.** `ContractValidator` now walks
+- **`DHR-E516` â€” unknown identifier in a spec expression.** `ContractValidator` now walks
   every `@requires`/`@ensures`/`@invariant` expression and rejects names that do not
   resolve to a parameter, a contract field, the `result` keyword (in `@ensures`), or a
   known builtin (`msg`/`block`/`tx`). This closes a footgun: on the EVM backend an
@@ -374,8 +407,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Added
 - **Two new security detectors (provable safety, layer L1).** `SecurityAnalyzer` now
   flags **reentrancy** (`SEC-REENTRANCY`, **SWC-107**): a storage write that happens
-  after an external call in the same function — the classic checks-effects-interactions
-  violation — recognising both value transfers (`this.transfer(...)`) and method calls on
+  after an external call in the same function â€” the classic checks-effects-interactions
+  violation â€” recognising both value transfers (`this.transfer(...)`) and method calls on
   an `Address`-typed storage field or parameter, and trusting `@nonreentrant` as an
   explicit guard. It also flags **`tx.origin` authorization** (`SEC-TX_ORIGIN`,
   **SWC-115**): `tx.origin` used in an equality check, which is phishable; use
@@ -392,7 +425,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Audit SARIF now passes GitHub's schema validation and actually ingests into Code
   Scanning.** Each result previously emitted a `fixes[]` entry that omitted the required
   `artifactChanges` property, so every SARIF upload was rejected with
-  `JOB_STATUS_CONFIGURATION_ERROR` — silently, because the upload step was
+  `JOB_STATUS_CONFIGURATION_ERROR` â€” silently, because the upload step was
   `continue-on-error`. The remediation advice is now folded into the result message and the
   rule's `help` text instead of an (invalid) fix, and the upload step no longer swallows
   validation failures. The `SarifFormatterTest` now asserts a fix is never emitted without
@@ -414,7 +447,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Fixed
 - **`--audit` no longer silently produces nothing on contracts that have errors.** The audit
   pipeline was gated behind a clean type-check, so any contract with a validation error (e.g.
-  `DHR-E550`) yielded no report or SARIF at all — exactly the contracts most worth scanning.
+  `DHR-E550`) yielded no report or SARIF at all â€” exactly the contracts most worth scanning.
   Audit is now treated as an analysis mode that runs after parsing regardless of semantic
   errors and exits `0`, surfacing those errors as findings instead of aborting.
 
@@ -423,7 +456,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Added
 - **Checked / wrapping arithmetic modes** (EVM backend): per-function `@checked` and
   `@unchecked` annotations select whether `+`, `-`, `*` on `num` revert on overflow/underflow
-  (`"arithmetic overflow"` / `"arithmetic underflow"`) or wrap modulo 2²⁵⁶. The compiler default
+  (`"arithmetic overflow"` / `"arithmetic underflow"`) or wrap modulo 2Â²âµâ¶. The compiler default
   is wrapping in this alpha and flips to checked-by-default in beta via a single constant
   (`CHECKED_ARITHMETIC_BY_DEFAULT`). Declaring both annotations on one method is rejected
   (`DHR-E515`).
@@ -452,19 +485,19 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Numeric `as` casts**: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
   numeric operands, not just strings. `duo as num` truncates toward zero, `num as duo` widens.
   Previously these failed at type-check, contradicting the v3.0.0 `as`-cast feature. Truncating
-  a division — `(7 / 2) as num` → `3` — is now the supported way to get integer division.
+  a division â€” `(7 / 2) as num` â†’ `3` â€” is now the supported way to get integer division.
 
 ## [3.0.0] - 2026-04-25
 
-### Added — Language Features
-- **Labeled break/continue**: `outer: for(...) { for(...) { break outer; } }` — jump to named outer loops
-- **`as` type cast syntax**: `expr as num`, `expr as sab`, `expr as duo` — desugars to toNum/toDuo/toString
+### Added â€” Language Features
+- **Labeled break/continue**: `outer: for(...) { for(...) { break outer; } }` â€” jump to named outer loops
+- **`as` type cast syntax**: `expr as num`, `expr as sab`, `expr as duo` â€” desugars to toNum/toDuo/toString
 - **Labeled loops**: `label: while(...)`, `label: for(...)`, `label: do {...}` with labeled break/continue
 - **Hex literals**: `0xFF`, `0xABCD` in all backends
 - **String interpolation**: `"Hello ${name}!"` desugars to concatenation
 - **Bitwise operators**: `&`, `|`, `^`, `~`, `<<`, `>>` across all backends + TypeChecker
 
-### Added — EVM Blockchain Production
+### Added â€” EVM Blockchain Production
 - **SafeMath overflow protection**: ADD reverts on overflow, SUB reverts on underflow, MUL verifies result/a == b
 - **Access control codegen**: Auto-stores msg.sender as owner at deploy; private functions emit onlyOwner check
 - **Reentrancy lock collision-safe**: Lock slot computed as keccak256("dhrlang.reentrancy.lock") instead of hardcoded 0xFFFF
@@ -475,7 +508,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Dynamic array ABI return encoding**: Proper offset+length+data layout for array returns
 - **Unsupported expressions now throw**: Instead of silently pushing 0, emitExpression throws IllegalStateException
 
-### Added — Tooling
+### Added â€” Tooling
 - **LSP server**: Full stdio-based LSP with diagnostics, completion, hover via `--lsp` CLI flag
 - **VS Code extension v3.0.0**: Updated grammar (do/switch/case/default/as/emit), new keyword highlighting
 
@@ -490,28 +523,28 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [2.0.0] - 2026-03-05
 
-### Added — Iteration 2: Smart Contract Safety Features
+### Added â€” Iteration 2: Smart Contract Safety Features
 - **ViewPureChecker** (SC-201): Static analysis enforcing `view` and `pure` function modifiers; detects state reads/writes in pure functions and state writes in view functions
 - **NonReentrantChecker** (SC-202): Reentrancy guard analysis with call-graph tracking, mutex validation, and cross-function reentrancy detection
 - **StatementClassifier** (SC-203): Classifies statements as state-reading, state-writing, pure computation, or external calls for safety analysis
 - **EffectOrderingAnalyzer** (SC-204): Checks-Effects-Interactions pattern enforcement; flags state writes after external calls
 - **StorageLayouter** (SC-205): Deterministic storage slot assignment with packing optimization for types < 32 bytes; supports structs, arrays, and mappings
 
-### Added — Iteration 3: EVM Backend
+### Added â€” Iteration 3: EVM Backend
 - **OpCode** (SC-301): Complete EVM opcode enum (150+ opcodes) covering arithmetic, comparison, bitwise, memory, storage, flow, logging, system, and push/dup/swap families
-- **EvmAssembler** (SC-302): Assembles opcode sequences into raw bytecode with label resolution, jump patching, and PUSH optimization (PUSH1–PUSH32)
+- **EvmAssembler** (SC-302): Assembles opcode sequences into raw bytecode with label resolution, jump patching, and PUSH optimization (PUSH1â€“PUSH32)
 - **FunctionSelector** (SC-303): Solidity-compatible 4-byte function selector generation using Keccak-256; supports selector collision detection and function dispatch tables
 - **AbiEncoder** (SC-304): ABI encoding/decoding for uint256, int256, bool, address, bytes32, string, dynamic bytes, and fixed/dynamic arrays with proper head/tail encoding
 - **BytecodeOptimizer** (SC-305): Peephole optimizer with constant folding, dead code elimination, push optimization, and duplicate swap reduction; multi-pass optimization pipeline
 
-### Added — Iteration 4: Interactive Debugging
+### Added â€” Iteration 4: Interactive Debugging
 - **BreakpointManager** (SC-401): Manages breakpoints by line, function name, or condition; supports enable/disable/toggle, hit counts, conditional expressions, and logpoints
 - **DebugSession** (SC-402): Full debug session lifecycle with step-over, step-into, step-out, continue, and run-to-cursor operations; maintains variable scopes, call stack, and watch expressions
 - **DebugRepl** (SC-403): Interactive debug REPL with command parsing for break, step, continue, print, watch, stack, locals, and variable evaluation
 - **WatchExpression** (SC-404): Live expression evaluation during debugging with history tracking, formatting options, and error resilience
 - **SourceMapGenerator** (SC-405): Generates source maps mapping bytecode offsets to source file/line/column with inline source embedding and JSON serialization
 
-### Added — Iteration 5: Testing & Verification Framework
+### Added â€” Iteration 5: Testing & Verification Framework
 - **ContractTestRunner** (SC-501): Test discovery and execution engine with setup/teardown lifecycle, assertion framework, expected-exception support, and timeout enforcement
 - **FuzzTester** (SC-502): Fuzz testing with random input generation for integers, strings, bytes, addresses, booleans, and arrays; configurable seed, iterations, and range constraints
 - **PropertyBasedTester** (SC-503): Property-based testing with shrinking support; generates random inputs, detects failures, and automatically minimizes failing test cases
@@ -521,14 +554,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **TestReporter** (SC-507): Multi-format test report generation (text, JSON, JUnit XML, HTML) with suite/case aggregation and timing information
 - **DiagnosticsSchemaValidation**: Enhanced JSON diagnostics schema validation tests
 
-### Added — Iteration 6: Production Deployment & Tooling
+### Added â€” Iteration 6: Production Deployment & Tooling
 - **AuditReportGenerator** (SC-601): Security audit report generation with finding severity levels, categorized checks, executive summary, and compliance scoring
 - **ContractDocGenerator** (SC-602): NatSpec-style documentation generation from annotated contracts with function signatures, parameter descriptions, and Markdown/HTML output
 - **DeploymentManager** (SC-603): Multi-network deployment orchestration supporting mainnet, testnets (Goerli, Sepolia, Mumbai), and custom networks; dry-run mode, gas estimation, and deployment receipt tracking
 - **L2ChainConfig** (SC-604): Layer-2 chain configuration for Optimism, Arbitrum, zkSync, Polygon, Base, Scroll, and StarkNet with gas adjustments, bridge addresses, and finality parameters
 - **ExampleContractTemplates** (SC-605): Production-ready contract templates for ERC-20, ERC-721, multi-sig wallet, and governance contracts with configurable parameters
 
-### Added — Iteration 7: AI Agent & Data Pipeline Framework
+### Added â€” Iteration 7: AI Agent & Data Pipeline Framework
 - **AgentAnnotations** (SC-701): Annotation system for AI agent definitions (`@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@timeout`, `@stream`) with validation, target checking, and conflict detection
 - **AgentRuntime** (SC-702): AI agent execution environment with tool registry, conversation memory, execution context, token tracking, multi-model support, and streaming callbacks
 - **AgentPlanner** (SC-703): Multi-step task planning with dependency resolution, topological execution ordering, parallel step detection, plan optimization, and execution with retry/timeout support
@@ -544,63 +577,63 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Iteration 5: ~120+ tests for testing/verification framework
 - Iteration 6: ~100+ tests for deployment and tooling
 - Iteration 7: ~217 tests for AI agent and data pipeline framework
-## [2.0.0] - 2026-01-28
+## [2.0.0-dev] - 2026-01-28
 
-### Major Release — 7 Iterations of New Features (1,034 tests, 0 failures)
+### Major Release â€” 7 Iterations of New Features (1,034 tests, 0 failures)
 
-### Added — Iteration 1: Enhanced Error Reporting
+### Added â€” Iteration 1: Enhanced Error Reporting
 - Unique error codes with DHR-EXXX/DHR-WXXX format for easy searchability
 - All errors now include line number, column, and error code
 - Contextual hints for every error type with actionable suggestions
 - Type-aware hints (e.g., suggesting 'sab' when 'string' is used)
-- Multi-Dimensional Array test suite (20+ cases covering 2D–4D arrays)
+- Multi-Dimensional Array test suite (20+ cases covering 2Dâ€“4D arrays)
 - FUTURE_ENHANCEMENTS.md with Agile sprint plans
 
-### Added — Iteration 2: Smart Contract Safety Features
-- **ViewPureChecker** — enforces `view`/`pure` function semantics and state-access rules
-- **NonReentrantChecker** — static reentrancy guard analysis with call-graph traversal
-- **StatementClassifier** — classifies statements as reads, writes, calls, or transfers
-- **EffectOrderingAnalyzer** — checks-effects-interactions pattern enforcement
-- **StorageLayouter** — EVM-compatible storage slot assignment with packing and alignment
+### Added â€” Iteration 2: Smart Contract Safety Features
+- **ViewPureChecker** â€” enforces `view`/`pure` function semantics and state-access rules
+- **NonReentrantChecker** â€” static reentrancy guard analysis with call-graph traversal
+- **StatementClassifier** â€” classifies statements as reads, writes, calls, or transfers
+- **EffectOrderingAnalyzer** â€” checks-effects-interactions pattern enforcement
+- **StorageLayouter** â€” EVM-compatible storage slot assignment with packing and alignment
 
-### Added — Iteration 3: EVM Backend
-- **OpCode** — complete EVM opcode enum with gas costs, stack effects, and categories
-- **EvmAssembler** — EVM bytecode assembly with label resolution and jump patching
-- **FunctionSelector** — Solidity-compatible 4-byte function selector generation (Keccak-256)
-- **AbiEncoder** — ABI encoding/decoding for uint256, address, bool, string, bytes, arrays, tuples
-- **BytecodeOptimizer** — peephole optimizations, dead code elimination, constant folding, jump threading
+### Added â€” Iteration 3: EVM Backend
+- **OpCode** â€” complete EVM opcode enum with gas costs, stack effects, and categories
+- **EvmAssembler** â€” EVM bytecode assembly with label resolution and jump patching
+- **FunctionSelector** â€” Solidity-compatible 4-byte function selector generation (Keccak-256)
+- **AbiEncoder** â€” ABI encoding/decoding for uint256, address, bool, string, bytes, arrays, tuples
+- **BytecodeOptimizer** â€” peephole optimizations, dead code elimination, constant folding, jump threading
 
-### Added — Iteration 4: Interactive Debugging
-- **BreakpointManager** — file/line/conditional/hit-count breakpoints with enable/disable
-- **DebugSession** — full debug session lifecycle with step-over, step-into, step-out, continue
-- **DebugRepl** — interactive debug REPL with expression evaluation and variable inspection
-- **WatchExpression** — watch expressions with change detection and conditional watches
-- **SourceMapGenerator** — bidirectional source map generation (source ↔ bytecode offset)
+### Added â€” Iteration 4: Interactive Debugging
+- **BreakpointManager** â€” file/line/conditional/hit-count breakpoints with enable/disable
+- **DebugSession** â€” full debug session lifecycle with step-over, step-into, step-out, continue
+- **DebugRepl** â€” interactive debug REPL with expression evaluation and variable inspection
+- **WatchExpression** â€” watch expressions with change detection and conditional watches
+- **SourceMapGenerator** â€” bidirectional source map generation (source â†” bytecode offset)
 
-### Added — Iteration 5: Testing & Verification Framework
-- **ContractTestRunner** — smart contract test discovery, execution, and lifecycle management
-- **FuzzTester** — coverage-guided fuzzing with boundary, mutation, and dictionary strategies
-- **PropertyBasedTester** — property-based testing with shrinking and reproducible seeds
-- **CoverageTracker** — line, branch, function, and contract-level coverage tracking
-- **MockFramework** — mock contract creation with call recording and return value stubbing
-- **GasProfiler** — per-function and per-opcode gas profiling with hotspot detection
-- **TestReporter** — multi-format test reporting (text, JSON, JUnit XML, HTML, Markdown)
-- **DiagnosticsSchemaValidation** — JSON schema validation for diagnostic output
+### Added â€” Iteration 5: Testing & Verification Framework
+- **ContractTestRunner** â€” smart contract test discovery, execution, and lifecycle management
+- **FuzzTester** â€” coverage-guided fuzzing with boundary, mutation, and dictionary strategies
+- **PropertyBasedTester** â€” property-based testing with shrinking and reproducible seeds
+- **CoverageTracker** â€” line, branch, function, and contract-level coverage tracking
+- **MockFramework** â€” mock contract creation with call recording and return value stubbing
+- **GasProfiler** â€” per-function and per-opcode gas profiling with hotspot detection
+- **TestReporter** â€” multi-format test reporting (text, JSON, JUnit XML, HTML, Markdown)
+- **DiagnosticsSchemaValidation** â€” JSON schema validation for diagnostic output
 
-### Added — Iteration 6: Production & Deployment Tooling
-- **AuditReportGenerator** — security audit reports with severity scoring and SARIF export
-- **ContractDocGenerator** — NatSpec-compatible documentation generation (HTML, Markdown, JSON)
-- **DeploymentManager** — multi-chain deployment with verification, proxy patterns, and gas estimation
-- **L2ChainConfig** — Layer-2 chain configuration (Optimism, Arbitrum, zkSync, Polygon, Base, etc.)
-- **ExampleContractTemplates** — production-ready templates (ERC-20, ERC-721, Governor, Vault, etc.)
+### Added â€” Iteration 6: Production & Deployment Tooling
+- **AuditReportGenerator** â€” security audit reports with severity scoring and SARIF export
+- **ContractDocGenerator** â€” NatSpec-compatible documentation generation (HTML, Markdown, JSON)
+- **DeploymentManager** â€” multi-chain deployment with verification, proxy patterns, and gas estimation
+- **L2ChainConfig** â€” Layer-2 chain configuration (Optimism, Arbitrum, zkSync, Polygon, Base, etc.)
+- **ExampleContractTemplates** â€” production-ready templates (ERC-20, ERC-721, Governor, Vault, etc.)
 
-### Added — Iteration 7: AI Agent & Data Pipeline Framework
-- **AgentAnnotations** — `@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@pipeline`, `@transform`, `@schema` annotations with full validation
-- **AgentRuntime** — AI agent execution engine with tool dispatch, memory management, and guardrails
-- **AgentPlanner** — multi-step planning with ReAct, chain-of-thought, and tree-of-thought strategies
-- **PipelineConfig** — data pipeline configuration with stages, connections, and validation
-- **PipelineExecutor** — streaming/batch pipeline execution with backpressure, windowing, and fault tolerance
-- **AgentPipelineIntegration** — intelligent pipelines combining AI agents with data processing
+### Added â€” Iteration 7: AI Agent & Data Pipeline Framework
+- **AgentAnnotations** â€” `@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@pipeline`, `@transform`, `@schema` annotations with full validation
+- **AgentRuntime** â€” AI agent execution engine with tool dispatch, memory management, and guardrails
+- **AgentPlanner** â€” multi-step planning with ReAct, chain-of-thought, and tree-of-thought strategies
+- **PipelineConfig** â€” data pipeline configuration with stages, connections, and validation
+- **PipelineExecutor** â€” streaming/batch pipeline execution with backpressure, windowing, and fault tolerance
+- **AgentPipelineIntegration** â€” intelligent pipelines combining AI agents with data processing
 
 ### Changed
 - ErrorCode enum restructured with unique code strings (DHR-E201, etc.)
@@ -683,7 +716,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Cleaned VS Code snippets: removed unsupported Hindi keyword bodies & switch; added entry class, printLine, init pattern.
 
 ### Removed
-- Snippet bilingual prefixes & legacy Hindi keyword constructs (मुख्य, प्रिंट, अगर, जबकि, के लिए, switch Hindi forms).
+- Snippet bilingual prefixes & legacy Hindi keyword constructs (à¤®à¥à¤–à¥à¤¯, à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ, à¤…à¤—à¤°, à¤œà¤¬à¤•à¤¿, à¤•à¥‡ à¤²à¤¿à¤, switch Hindi forms).
 - Legacy bilingual calculator example with Java interop and Hindi keywords.
 
 ### Added
@@ -737,9 +770,9 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Built-in function highlighting (printLine, substring, replace, arrayFill, arraySlice, arrayIndexOf, range, charAt).
 
 ### Removed
-- Legacy Hindi keyword completions and highlighting (अगर, जबकि, आदि) to prevent confusion with unsupported syntax in the compiler.
+- Legacy Hindi keyword completions and highlighting (à¤…à¤—à¤°, à¤œà¤¬à¤•à¤¿, à¤†à¤¦à¤¿) to prevent confusion with unsupported syntax in the compiler.
 
-## [1.1.2] - 2025-09-29
+## [1.1.2-extension] - 2025-09-29
 
 ### Changed
 - VS Code extension `package.json` metadata: clarified description to emphasize English-core tokens; pruned outdated Hindi-focused keywords.
