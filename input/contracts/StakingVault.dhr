@@ -11,20 +11,30 @@ class StakingVault {
     // ── Storage ──────────────────────────────────────────────────
     @storage Address owner;
     @storage num totalStaked;
+    @storage num maxTotalStaked;
     @storage num rewardRate;
     @storage num stakerCount;
+    @storage num maxStakers;
     @storage kya paused;
 
     // ── Constructor ──────────────────────────────────────────────
     @constructor
-    kaam init(num _rewardRate) {
+    kaam init(num _rewardRate, num _maxTotalStaked, num _maxStakers) {
         if (_rewardRate <= 0) {
             throw "Reward rate must be positive";
         }
+        if (_maxTotalStaked <= 0) {
+            throw "Max total staked must be positive";
+        }
+        if (_maxStakers <= 0) {
+            throw "Max stakers must be positive";
+        }
         owner = msg.sender;
         totalStaked = 0;
+        maxTotalStaked = _maxTotalStaked;
         rewardRate = _rewardRate;
         stakerCount = 0;
+        maxStakers = _maxStakers;
         paused = false;
     }
 
@@ -64,6 +74,17 @@ class StakingVault {
         }
         if (msg.value <= 0) {
             throw "Must stake a positive amount";
+        }
+        // Vault capacity guard. `msg.value` is bounded first so the subtraction
+        // cannot underflow, then the accumulator is compared directly.
+        if (msg.value > maxTotalStaked) {
+            throw "Stake exceeds vault capacity";
+        }
+        if (totalStaked > maxTotalStaked - msg.value) {
+            throw "Stake would exceed vault capacity";
+        }
+        if (stakerCount >= maxStakers) {
+            throw "Staker limit reached";
         }
         totalStaked = totalStaked + msg.value;
         stakerCount = stakerCount + 1;

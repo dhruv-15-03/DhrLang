@@ -14,15 +14,23 @@ class ERC20Token {
     @storage sab symbol;
     @storage num decimals;
     @storage num totalSupply;
+    @storage num maxSupply;
     @storage Address owner;
 
     // ── Constructor ──────────────────────────────────────────────
     @constructor
-    kaam init(sab _name, sab _symbol, num _decimals, num _initialSupply) {
+    kaam init(sab _name, sab _symbol, num _decimals, num _initialSupply, num _maxSupply) {
+        if (_maxSupply <= 0) {
+            throw "Max supply must be positive";
+        }
+        if (_initialSupply > _maxSupply) {
+            throw "Initial supply exceeds max supply";
+        }
         name = _name;
         symbol = _symbol;
         decimals = _decimals;
         owner = msg.sender;
+        maxSupply = _maxSupply;
         totalSupply = _initialSupply;
     }
 
@@ -59,6 +67,19 @@ class ERC20Token {
         }
         if (amount <= 0) {
             throw "Amount must be positive";
+        }
+        // Overflow guard. Bound `amount` first so `maxSupply - amount` cannot
+        // underflow, then compare the accumulator directly. Written as
+        //   totalSupply > maxSupply - amount
+        // rather than
+        //   totalSupply + amount > maxSupply
+        // because the second form performs the very addition it is meant to
+        // protect, and overflows before the comparison can reject it.
+        if (amount > maxSupply) {
+            throw "Amount exceeds max supply";
+        }
+        if (totalSupply > maxSupply - amount) {
+            throw "Mint would exceed max supply";
         }
         totalSupply = totalSupply + amount;
     }
