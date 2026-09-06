@@ -17,6 +17,14 @@ updates:
           - "minor"
           - "patch"
     labels: ["dependencies", "gradle"]
+    ignore:
+      # json-schema-validator 2.x/3.x rewrote the public API (JsonSchemaFactory
+      # builders, SchemaValidatorsConfig, ValidationMessage). PR #37 attempted
+      # 1.4.0 -> 3.0.7 and failed `test (17)` and `bench`. The migration is not
+      # worth the churn while 1.4.x carries no known advisories. Minor and patch
+      # updates within 1.x still flow normally.
+      - dependency-name: "com.networknt:json-schema-validator"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
