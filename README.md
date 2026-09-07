@@ -320,7 +320,7 @@ EVM (smart-contract) backend:
 - SafeMath overflow/underflow protection, auto-generated access control (`onlyOwner`),
   collision-safe reentrancy lock, peephole optimizer, gas/stack/memory tracking
 
-Quality: **1,287 tests, 0 failures**. Full details in [CHANGELOG.md](CHANGELOG.md).
+Quality: **1,491 tests, 0 failures**. Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
