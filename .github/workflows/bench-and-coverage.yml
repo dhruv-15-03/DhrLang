@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   bench:
     runs-on: ubuntu-latest
@@ -37,14 +40,11 @@ jobs:
           name: bench-results
           path: build/bench/bench-results.json
           if-no-files-found: warn
-      - name: Commit updated badges
-        if: github.ref == 'refs/heads/main'
-        run: |
-          CHANGED=0
-          git diff --quiet docs/badges/coverage.svg || CHANGED=1
-          git diff --quiet docs/badges/mutation.svg || CHANGED=1
-          if [ $CHANGED -eq 1 ]; then \
-            git config user.name "actions-bot"; git config user.email "actions@github.com"; \
-            git add docs/badges/coverage.svg docs/badges/mutation.svg; \
-            git commit -m "chore: update quality badges"; git push; \
-          else echo "No badge changes"; fi
+      - name: Upload updated badges for maintainer review
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-badges
+          path: |
+            docs/badges/coverage.svg
+            docs/badges/mutation.svg
+          if-no-files-found: error

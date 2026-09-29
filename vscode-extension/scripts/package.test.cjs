@@ -51,6 +51,13 @@ describe('Release package integrity', () => {
             return Object.values(config.jobs).flatMap(job => job.steps || []);
         }
 
+        it('uploads quality badges without authoring repository commits', async () => {
+            const quality = await workflow('bench-and-coverage.yml');
+            assert.equal(quality.permissions.contents, 'read');
+            assert.ok(allSteps(quality).some(step => step.with?.name === 'quality-badges'));
+            assert.ok(!allSteps(quality).some(step => /git\s+(?:commit|push)/.test(step.run || '')));
+        });
+
         it('has a single compiler-release publisher and runs the full CI check', async () => {
             const ci = await workflow('ci.yml');
             assert.ok(!allSteps(ci).some(step => step.uses?.startsWith('softprops/action-gh-release')));
