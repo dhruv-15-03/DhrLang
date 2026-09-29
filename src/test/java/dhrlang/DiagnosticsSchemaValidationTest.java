@@ -35,24 +35,10 @@ public class DiagnosticsSchemaValidationTest {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
         String javaExe = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-        File libs = new File("build/libs");
-        File jar = null;
-        if(libs.exists()){
-            File[] files = libs.listFiles();
-            if(files!=null){
-                for(File f : files) {
-                    String n = f.getName();
-                    if(n.endsWith(".jar") && !n.contains("sources") && !n.contains("javadoc")) { jar = f; break; }
-                }
-            }
-        }
-        String output;
-        if(jar!=null && jar.exists()){
-            output = run(javaExe, "-jar", jar.getAbsolutePath(), "--json", "--time", tmp.getAbsolutePath());
-        } else {
-            String cp = System.getProperty("java.class.path");
-            output = run(javaExe, "-cp", cp, "dhrlang.Main", "--json", "--time", tmp.getAbsolutePath());
-        }
+        String artifact = System.getProperty("dhrlang.test.jar");
+        assertNotNull(artifact, "Gradle must supply the packaged compiler");
+        assertTrue(new File(artifact).isFile(), "Missing compiler: " + artifact);
+        String output = run(javaExe, "-jar", artifact, "--json", "--time", tmp.getAbsolutePath());
 
         // Extract JSON: capture substring from first '{' to last '}'
         int first = output.indexOf('{');

@@ -51,15 +51,14 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ## ðŸ›  Installation
 
-### From Marketplace (Coming Soon)
-*Once published to the VS Code Marketplace:*
+### From Marketplace
 1. Open VS Code
 2. Extensions (Ctrl+Shift+X)
-3. Search: `DhrLang Support` (publisher: `dhruv-15-03`)
+3. Search: `DhrLang Support` (publisher: `EnggWithDhruv`)
 4. Install
 
 ### Manual (VSIX) - Recommended
-1. Download `dhrlang-vscode-1.1.8.vsix` from the [GitHub Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest) page.
+1. Download `dhrlang-vscode-<version>.vsix` from the [GitHub Releases](https://github.com/dhruv-15-03/DhrLang/releases/latest) page.
 2. Open VS Code.
 3. Press `Ctrl+Shift+P` (Command Palette).
 4. Type "Install from VSIX" and select **Extensions: Install from VSIX...**.
@@ -67,14 +66,19 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ## ðŸš§ Packaging / Updating the VSIX
 
-The repository currently contains an older `dhrlang-vscode-3.0.0.vsix`. Rebuild to match new version:
+Requires JDK 17 and Node.js 22+. From the repository root, run
+`.\gradlew.bat stageCompiler` (or `./gradlew stageCompiler` on Linux/macOS).
+Then, in `vscode-extension`, run `npm ci`, `npm run test:packaging`, and
+`npm run package`, stopping if any command fails.
 
-1. In `vscode-extension/` run (PowerShell):
-   - Install dependencies: `npm ci`
-   - (If not installed) `npm install -g @vscode/vsce`
-2. Compile: `npm run compile`
-3. Package: `vsce package` (produces `dhrlang-vscode-1.1.4.vsix`)
-4. (Optional) Publish: `vsce publish patch` (requires a Personal Access Token and verified publisher)
+The package script compiles the extension, embeds the exact staged compiler and
+verifies its dependencies, version, publisher, entry point, README, license and icon.
+It writes the VSIX, standalone JAR and SHA-256 manifest into `build/release/`.
+Use `npm run verify:package` to verify those files again.
+
+Marketplace publication consumes this same VSIX from the compiler's GitHub release;
+it never runs `vsce publish patch` or rebuilds another package under the same version.
+Follow [the release checklist](../RELEASE_CHECKLIST.md) for the tag order and checks.
 
 ## ðŸš€ Quick Start
 

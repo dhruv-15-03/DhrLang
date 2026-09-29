@@ -1,56 +1,18 @@
 #!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")"
 
-# DhrLang VS Code Extension Development Script
-
-set -e
-
-echo "🚀 DhrLang VS Code Extension Development Setup"
-echo "=============================================="
-
-# Navigate to extension directory
-cd "$(dirname "$0")/vscode-extension"
-
-# Check if Node.js is installed
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+ first."
-    echo "   Download from: https://nodejs.org/"
+echo "DhrLang extension development setup - requires JDK 17 and Node.js 22+"
+if ! node -e "if (Number(process.versions.node.split('.')[0]) < 22) process.exit(1)"; then
+    echo "Install Node.js 22 or newer before packaging the extension." >&2
     exit 1
 fi
 
-echo "📦 Installing dependencies..."
-npm install
+bash ./gradlew stageCompiler verifyCompilerArtifact
+cd vscode-extension
+npm ci
+npm run test:packaging
+npm run package
 
-# Install TypeScript compiler if not present
-if ! command -v tsc &> /dev/null; then
-    echo "📦 Installing TypeScript..."
-    npm install -g typescript
-fi
-
-# Install VS Code Extension CLI
-if ! command -v vsce &> /dev/null; then
-    echo "📦 Installing VS Code Extension CLI..."
-    npm install -g @vscode/vsce
-fi
-
-echo "🔨 Compiling TypeScript..."
-npm run compile
-
-echo "📋 Running extension package validation..."
-vsce package --no-yarn
-
-echo ""
-echo "✅ Development setup complete!"
-echo ""
-echo "🛠️  Available commands:"
-echo "   npm run compile       - Compile TypeScript"
-echo "   npm run watch         - Watch and auto-compile"
-echo "   vsce package          - Create .vsix package"
-echo "   code --install-extension dhrlang-vscode-*.vsix - Install locally"
-echo ""
-echo "🧪 To test the extension:"
-echo "   1. Open VS Code"
-echo "   2. Press F5 to launch Extension Development Host"
-echo "   3. Create a .dhr file and test features"
-echo ""
-echo "📦 Extension package created: dhrlang-vscode-*.vsix"
-echo "   Install with: code --install-extension dhrlang-vscode-*.vsix"
+echo "Verified JAR, VSIX and release-manifest.json are in build/release."
+echo "Install the exact VSIX with: code --install-extension build/release/dhrlang-vscode-VERSION.vsix"

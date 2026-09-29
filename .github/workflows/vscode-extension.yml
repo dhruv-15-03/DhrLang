@@ -6,106 +6,115 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Extension version (e.g., 1.0.0)'
+        description: 'Existing compiler release version (e.g., 4.0.3)'
         required: true
         type: string
 
+permissions:
+  contents: write
+
+concurrency:
+  group: vscode-release
+  cancel-in-progress: false
+
 jobs:
-  build-extension:
+  publish-extension:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7 # v4.2.2
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v7 # v4.1.0
+      - name: Resolve version and check publish credentials
+        id: version
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          VERSION="${DISPATCH_VERSION:-${GITHUB_REF_NAME#vscode-v}}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a compiler release version (MAJOR.MINOR.PATCH), got $VERSION" >&2
+            exit 1
+          fi
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is required; nothing has been published." >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the canonical compiler release
+        uses: actions/checkout@v7
         with:
-          node-version: '20'
+          ref: v${{ steps.version.outputs.VERSION }}
+          fetch-depth: 0
+
+      - name: Verify tag provenance
+        id: provenance
+        run: |
+          SHA=$(git rev-parse HEAD)
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$SHA" != "$GITHUB_SHA" ]; then
+            echo "Compiler and extension release tags must identify the same commit." >&2
+            exit 1
+          fi
+          echo "RELEASE_COMMIT=$SHA" >> "$GITHUB_ENV"
+          echo "SHA=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java
+        uses: actions/setup-java@v6.0.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: vscode-extension/package-lock.json
-          
-      - name: Install dependencies
+
+      - name: Install locked packaging tools
         working-directory: vscode-extension
-        run: npm install
-        
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
-        
-      - name: Get version
-        id: get_version
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            VERSION=${GITHUB_REF#refs/tags/vscode-v}
-            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          fi
-          
-      - name: Update package version
-        working-directory: vscode-extension
-        run: |
-          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version --allow-same-version
-          
-      - name: Compile TypeScript
-        working-directory: vscode-extension
-        run: npm run compile
-        
-      - name: Package extension
-        working-directory: vscode-extension
-        run: vsce package --no-yarn
-        
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: vscode-v${{ steps.get_version.outputs.VERSION }}
-          name: DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
-          body: |
-            # DhrLang VS Code Extension v${{ steps.get_version.outputs.VERSION }}
-            
-            ## Features (English-core token set)
-            - 🎨 Updated grammar for `num`, `duo`, `sab`, `kya`, `ek`, `kaam`
-            - 🧠 Snippets: main class, methods, loops, conditionals, printLine
-            - 🚀 Run & compile commands (Ctrl+F5 / Ctrl+Shift+B)
-            - � Hover + basic diagnostics surfacing compiler output
-            - ⚙️ Auto JAR detection & configurable settings
-            
-            ## Installation
-            1. Download the `.vsix` from this release OR install from Marketplace (when published)
-            2. VS Code Command Palette: "Extensions: Install from VSIX..."
-            3. Select the downloaded file
-            4. Open a `.dhr` file to activate
-            
-            ## Requirements
-            - VS Code 1.74.0+
-            - Java 17+
-            - `DhrLang.jar` accessible (auto-detected or configure setting)
-            
-            ## Quick Start
-            ```dhrlang
-            class Main {
-                static kaam main() { printLine("Hello, DhrLang!"); }
-            }
-            ```
-            Press Ctrl+F5 to run.
-            
-            ## Notes
-            Legacy Hindi keyword forms are no longer part of the advertised grammar; docs now reflect current language direction.
-          draft: false
-          prerelease: false
-          files: |
-            vscode-extension/*.vsix
+        run: npm ci --no-audit --no-fund
+
+      - name: Download the already-verified release artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Publish to VS Code Marketplace
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir build/downloaded \
+            --pattern DhrLang.jar --pattern release-manifest.json --pattern "dhrlang-vscode-$VERSION.vsix"
+
+      - name: Verify exact compiler and VSIX bytes before publishing
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          chmod +x gradlew
+          ./gradlew verifyReleaseConsistency verifyCompilerArtifact \
+            "-PreleaseVersion=$VERSION" -PcompilerJar=build/downloaded/DhrLang.jar
+          (cd vscode-extension && npm run verify:package -- ../build/downloaded)
+
+      - name: Publish the same VSIX to the Marketplace
         working-directory: vscode-extension
-        run: vsce publish --no-yarn
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      
-      - name: Upload extension artifact
-        uses: actions/upload-artifact@v7 # v4.4.3
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: npx --no-install vsce publish --packagePath "../build/downloaded/dhrlang-vscode-$VERSION.vsix"
+
+      - name: Confirm the version is visible on the Marketplace
+        working-directory: vscode-extension
+        run: node scripts/verify-marketplace.cjs
+
+      - name: Create extension release after successful publication
+        uses: softprops/action-gh-release@v3
         with:
-          name: dhrlang-vscode-extension
-          path: vscode-extension/*.vsix
+          tag_name: vscode-v${{ steps.version.outputs.VERSION }}
+          target_commitish: ${{ steps.provenance.outputs.SHA }}
+          name: DhrLang VS Code Extension v${{ steps.version.outputs.VERSION }}
+          body: |
+            The same verified VSIX is available here and on the VS Code Marketplace.
+            It bundles the standalone compiler from DhrLang v${{ steps.version.outputs.VERSION }}.
+            Java 17+ is required. See the compiler release changelog for capabilities and limitations.
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            build/downloaded/dhrlang-vscode-${{ steps.version.outputs.VERSION }}.vsix
+            build/downloaded/release-manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

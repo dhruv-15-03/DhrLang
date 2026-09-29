@@ -179,6 +179,8 @@ pmd {
 
 // Standard JAR configuration
 jar {
+    // Keep the Maven/application JAR separate from the standalone executable.
+    destinationDirectory = layout.buildDirectory.dir('libs/plain')
     manifest {
         attributes(
             'Main-Class': 'dhrlang.Main',
@@ -189,6 +191,11 @@ jar {
 }
 
 // Shadow JAR configuration (fat JAR)
+shadow {
+    // Maven consumers use the thin JAR and its declared dependencies.
+    addShadowVariantIntoJavaComponent = false
+}
+
 shadowJar {
     archiveClassifier.set('')
     manifest {
@@ -198,6 +205,48 @@ shadowJar {
             'Implementation-Version': project.version,
             'Implementation-Vendor': 'DhrLang Team'
         )
+    }
+}
+
+def executableJar = tasks.named('shadowJar').flatMap { it.archiveFile }
+def stagedCompiler = layout.buildDirectory.file('compiler/DhrLang.jar')
+def compilerVersion = version.toString()
+
+tasks.register('stageCompiler', Sync) {
+    group = 'distribution'
+    description = 'Stages the executable compiler from the shadowJar task output.'
+    from(executableJar)
+    into(layout.buildDirectory.dir('compiler'))
+    rename { 'DhrLang.jar' }
+}
+
+tasks.named('test') {
+    dependsOn 'stageCompiler', 'jar'
+    inputs.file(stagedCompiler).withPropertyName('packagedCompiler')
+    systemProperty 'dhrlang.test.jar', stagedCompiler.get().asFile.absolutePath
+    systemProperty 'dhrlang.test.version', compilerVersion
+}
+
+tasks.register('verifyCompilerArtifact', Test) {
+    group = 'verification'
+    description = 'Tests a staged or downloaded compiler in isolation (-PcompilerJar=<path>).'
+    useJUnitPlatform()
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/packaging/PackagedCompilerTest.class'
+    maxHeapSize = '256m'
+    systemProperty 'file.encoding', 'UTF-8'
+    def suppliedJar = providers.gradleProperty('compilerJar')
+    def artifact = suppliedJar.isPresent() ? file(suppliedJar.get()) : stagedCompiler.get().asFile
+    if (!suppliedJar.isPresent()) {
+        dependsOn 'stageCompiler', 'jar'
+    }
+    inputs.file(artifact).withPropertyName('packagedCompiler')
+    systemProperty 'dhrlang.test.jar', artifact.absolutePath
+    systemProperty 'dhrlang.test.version', compilerVersion
+    testLogging {
+        events 'passed', 'failed'
+        exceptionFormat = 'full'
     }
 }
 
@@ -274,6 +323,30 @@ publishing {
         }
     }
 }
+
+tasks.register('verifyCompilerPublication') {
+    group = 'verification'
+    description = 'Rejects overlapping JAR outputs and duplicate Maven artifact coordinates.'
+    def publication = publishing.publications.named('maven')
+    def plainJar = tasks.named('jar').flatMap { it.archiveFile }
+    doLast {
+        def plain = plainJar.get().asFile.canonicalFile
+        if (plain == executableJar.get().asFile.canonicalFile) {
+            throw new GradleException('jar and shadowJar must not write the same file.')
+        }
+        def artifacts = publication.get().artifacts
+        def duplicates = artifacts.groupBy { "${it.extension}:${it.classifier ?: ''}" }
+                .findAll { coordinate, entries -> entries.size() > 1 }
+        if (duplicates) {
+            throw new GradleException("Duplicate Maven artifact coordinates: ${duplicates.keySet()}")
+        }
+        def mainJars = artifacts.findAll { it.extension == 'jar' && !it.classifier }
+        if (mainJars.size() != 1 || mainJars.first().file.canonicalFile != plain) {
+            throw new GradleException('The Maven publication must have exactly one unclassified, thin JAR.')
+        }
+    }
+}
+check.dependsOn 'verifyCompilerPublication'
 
 // Signing configuration (for Maven Central)
 signing {
@@ -381,12 +454,6 @@ task packageDistribution(type: Zip) {
 // Ensure build order
 build.dependsOn shadowJar
 check.dependsOn integrationTest, jacocoTestReport
-
-// Explicitly declare dependencies to satisfy Gradle 8 task validation
-tasks.named('distZip') { dependsOn shadowJar }
-tasks.named('distTar') { dependsOn shadowJar }
-tasks.named('startScripts') { dependsOn shadowJar }
-tasks.named('startShadowScripts') { dependsOn jar }
 
 // --- Mutation Testing (PIT) baseline configuration (Step 4) ---
 pitest {
@@ -526,14 +593,14 @@ tasks.register('bench') {
 tasks.register('verifySpecVersion') {
     group = 'verification'
     description = 'Verifies SPEC.md Version line matches project.version'
+    def spec = layout.projectDirectory.file('SPEC.md').asFile
     doLast {
-        def spec = file('SPEC.md')
         if(!spec.exists()) { throw new GradleException('SPEC.md not found') }
         def line = spec.readLines().find { it =~ /^Version:/ }
         if(!line) throw new GradleException('Version line not found in SPEC.md')
         def ver = (line.replaceFirst(/Version:\s*/, '').trim())
-        if(!ver.startsWith(project.version.toString())) {
-            throw new GradleException("SPEC.md version '${ver}' does not start with project version '${project.version}'")
+        if(!ver.startsWith(compilerVersion)) {
+            throw new GradleException("SPEC.md version '${ver}' does not start with project version '${compilerVersion}'")
         }
         println "[specVersion] SPEC.md version OK (${ver})"
     }
@@ -552,11 +619,16 @@ check.dependsOn 'verifySpecVersion'
 tasks.register('verifyReleaseConsistency') {
     group = 'verification'
     description = 'Verifies CHANGELOG.md documents project.version and lists each version once'
+    def changelog = layout.projectDirectory.file('CHANGELOG.md').asFile
+    def pkg = layout.projectDirectory.file('vscode-extension/package.json').asFile
+    def requestedVersion = providers.gradleProperty('releaseVersion')
     doLast {
-        def changelog = file('CHANGELOG.md')
         if (!changelog.exists()) throw new GradleException('CHANGELOG.md not found')
 
-        def version = project.version.toString()
+        def version = compilerVersion
+        if (requestedVersion.isPresent() && requestedVersion.get() != version) {
+            throw new GradleException("Requested release ${requestedVersion.get()} does not match project version ${version}.")
+        }
         def headings = changelog.readLines().findAll { it =~ /^## \[\d+\.\d+\.\d+\]/ }
         def versions = headings.collect { (it =~ /^## \[(\d+\.\d+\.\d+)\]/)[0][1] }
 
@@ -575,7 +647,6 @@ tasks.register('verifyReleaseConsistency') {
 
         // The bundled extension ships with the language release; a mismatch is how
         // the Marketplace ended up two majors behind the repository.
-        def pkg = file('vscode-extension/package.json')
         if (pkg.exists()) {
             def m = (pkg.getText('UTF-8') =~ /"version"\s*:\s*"([^"]+)"/)
             if (m && m[0][1] != version) {
@@ -675,4 +746,3 @@ tasks.register('benchCompare') {
         println "[benchCompare] No regressions (>50% slowdown) detected"
     }
 }
-

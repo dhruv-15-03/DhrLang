@@ -6,11 +6,15 @@ on:
     paths:
       - 'input/contracts/**'
       - 'src/main/java/dhrlang/**'
+      - 'build.gradle'
+      - '.github/workflows/contract-audit.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'input/contracts/**'
       - 'src/main/java/dhrlang/**'
+      - 'build.gradle'
+      - '.github/workflows/contract-audit.yml'
   workflow_dispatch:
 
 permissions:
@@ -42,7 +46,7 @@ jobs:
       - name: Build compiler
         run: |
           chmod +x gradlew
-          ./gradlew shadowJar -x test
+          ./gradlew stageCompiler -x test
 
       - name: Find contract files
         id: contracts
@@ -54,28 +58,31 @@ jobs:
       - name: Run security audit (text report)
         if: steps.contracts.outputs.files != ''
         run: |
-          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          JAR=build/compiler/DhrLang.jar
           echo "═══════════════════════════════════════════════════"
           echo "  DhrLang Smart Contract Security Audit"
           echo "═══════════════════════════════════════════════════"
           for f in ${{ steps.contracts.outputs.files }}; do
             echo ""
             echo "── Auditing: $f ──"
-            java -jar "$JAR" --audit "$f" || true
+            java -jar "$JAR" --audit "$f"
           done
 
       - name: Generate SARIF reports
         if: steps.contracts.outputs.files != ''
         run: |
-          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          JAR=build/compiler/DhrLang.jar
           mkdir -p build/sarif
           for f in ${{ steps.contracts.outputs.files }}; do
             NAME=$(basename "$f" .dhr)
             # --audit is an analysis mode and exits 0 even when it reports findings.
-            java -jar "$JAR" --audit --sarif --output=build/sarif "$f" >/dev/null || true
+            java -jar "$JAR" --audit --sarif --output=build/sarif "$f" >/dev/null
             # The CLI writes audit-report.sarif into --output; rename per-contract.
             if [ -f build/sarif/audit-report.sarif ]; then
               mv build/sarif/audit-report.sarif "build/sarif/${NAME}.sarif"
+            else
+              echo "Missing SARIF report for $f" >&2
+              exit 1
             fi
           done
 
@@ -164,15 +171,15 @@ jobs:
       - name: Build compiler
         run: |
           chmod +x gradlew
-          ./gradlew shadowJar -x test
+          ./gradlew stageCompiler -x test
 
       - name: Compile contracts to EVM bytecode
         run: |
-          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          JAR=build/compiler/DhrLang.jar
           mkdir -p build/evm
           for f in input/contracts/*.dhr; do
             echo "Compiling: $f"
-            java -jar "$JAR" --compile-evm --output=build/evm "$f" || true
+            java -jar "$JAR" --compile-evm --output=build/evm "$f"
           done
           echo ""
           echo "═══ Compiled Artifacts ═══"
@@ -180,7 +187,7 @@ jobs:
 
       - name: Dry-run deploy smoke test (broadcast artifact)
         run: |
-          JAR=$(ls build/libs/DhrLang-*.jar | head -1)
+          JAR=build/compiler/DhrLang.jar
           OUT=build/deploy-smoke
           java -jar "$JAR" contract deploy --network=local --dry-run \
             --output="$OUT" input/contracts/ERC20Token.dhr

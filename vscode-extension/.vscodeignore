@@ -3,7 +3,7 @@
 # NOTE: Removed 'out/' ignore so compiled extension code is included in VSIX
 
 # Source maps
-*.map
+**/*.map
 
 # Node modules: vsce prunes this to production ("dependencies") entries only,
 # so vscode-languageclient (a runtime dependency, required by the Language
@@ -21,6 +21,7 @@ out/test/
 .vscode-test/
 *.vsix
 test/
+scripts/
 
 # Build files
 tsconfig.json

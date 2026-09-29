@@ -39,6 +39,22 @@ extension-only changes; they were never cut as language tags.
 
 ## [Unreleased]
 
+### Fixed
+- Keep the thin Maven/application JAR in `build/libs/plain/`, separate from the
+  standalone `shadowJar`. Distribution tasks no longer overwrite the executable
+  compiler with an artifact missing its signing dependencies. Maven publication
+  keeps the thin JAR and declared dependencies without a duplicate Shadow variant.
+- Stage the compiler from the Gradle task output at `build/compiler/DhrLang.jar`;
+  CI, contract audits, Docker and release packaging no longer guess a JAR from a
+  directory listing. Packaged-runtime tests check isolated crypto/signing, CLI
+  execution and framed LSP requests.
+- Build one self-contained VSIX with locked packaging tools and a SHA-256 manifest.
+  Marketplace publication consumes that exact compiler-release VSIX instead of
+  rebuilding a different package under the same version. The extension release is
+  created only after publication and a Marketplace version check succeed.
+- Run release consistency and packaged-artifact gates in CI, verify downloaded
+  artifacts, and leave compiler-release publication to `release.yml` alone.
+
 ## [4.0.2] - 2026-09-05
 
 ### Security

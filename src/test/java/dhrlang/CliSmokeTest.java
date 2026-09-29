@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,13 +30,15 @@ public class CliSmokeTest {
 
     @Test
     void helpPrintsUsage() throws Exception {
-        String result = runWithJarOrClasspath("--help");
+        String result = runPackagedJar("--help");
+        assertTrue(result.startsWith("0\n"), result);
         assertTrue(result.contains("Usage: java -jar DhrLang.jar"), "Help output should contain usage line. Got: " + result);
     }
 
     @Test
     void versionPrintsSemanticVersion() throws Exception {
-        String result = runWithJarOrClasspath("--version");
+        String result = runPackagedJar("--version");
+        assertTrue(result.startsWith("0\n"), result);
         assertTrue(result.matches("(?s).*DhrLang version .*"), "Version output missing. Got: " + result);
     }
 
@@ -48,40 +49,21 @@ public class CliSmokeTest {
         try (FileWriter fw = new FileWriter(tmp)) {
             fw.write("class Main { static kaam main() { num x = ; } }");
         }
-        String result = runWithJarOrClasspath("--json", tmp.getAbsolutePath());
+        String result = runPackagedJar("--json", tmp.getAbsolutePath());
     // Current JSON structure uses top-level 'errors' and 'warnings' arrays
     assertTrue(result.contains("\"errors\"") && result.contains("\"warnings\""),
         "JSON output should contain 'errors' and 'warnings'. Got: " + result);
     }
 
-    private String runWithJarOrClasspath(String... toolArgs) throws IOException, InterruptedException {
-        // Prefer running the assembled jar if present, but fall back to classpath execution to keep tests
-        // robust when run without a prior `gradle build`.
-        File libs = new File("build/libs");
-        File jar = null;
-        if (libs.exists()) {
-            File[] jars = libs.listFiles((dir, name) -> name.matches("DhrLang-.*\\.jar") && !name.contains("sources") && !name.contains("javadoc"));
-            if (jars != null && jars.length > 0) {
-                jar = jars[0];
-            }
-        }
-
-        if (jar != null && jar.exists()) {
-            String[] full = new String[3 + toolArgs.length];
-            full[0] = JAVA;
-            full[1] = "-jar";
-            full[2] = jar.getPath();
-            System.arraycopy(toolArgs, 0, full, 3, toolArgs.length);
-            return runProcess(full);
-        } else {
-            String cp = System.getProperty("java.class.path");
-            String[] full = new String[4 + toolArgs.length];
-            full[0] = JAVA;
-            full[1] = "-cp";
-            full[2] = cp;
-            full[3] = "dhrlang.Main";
-            System.arraycopy(toolArgs, 0, full, 4, toolArgs.length);
-            return runProcess(full);
-        }
+    private String runPackagedJar(String... toolArgs) throws IOException, InterruptedException {
+        String artifact = System.getProperty("dhrlang.test.jar");
+        assertNotNull(artifact, "Gradle must supply the packaged compiler");
+        assertTrue(new File(artifact).isFile(), "Missing compiler: " + artifact);
+        String[] full = new String[3 + toolArgs.length];
+        full[0] = JAVA;
+        full[1] = "-jar";
+        full[2] = artifact;
+        System.arraycopy(toolArgs, 0, full, 3, toolArgs.length);
+        return runProcess(full);
     }
 }
