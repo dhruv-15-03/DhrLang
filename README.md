@@ -375,8 +375,9 @@ An experimental process-separated interface is available as
 explicit stdin and a versioned JSON response; see [HOST_EXECUTION.md](HOST_EXECUTION.md)
 for limits and the distinction between process isolation and an OS sandbox.
 
-For an explicit ordered multi-file project, use
+For an explicit ordered multi-file project, use a **current `main` source build**:
 `java -jar DhrLang.jar project check dhrlang.json` or `project run dhrlang.json`.
+These commands are **unreleased** and **not included in the published v4.0.2 binaries**.
 See [PROJECTS.md](PROJECTS.md). This is a manifest-based source bundle, not new
 import syntax; existing source and numeric semantics are unchanged.
 

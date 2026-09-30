@@ -4,6 +4,10 @@ DhrLang projects use a manifest to load multiple existing `.dhr` files into the
 same program. This adds no `import` keyword, package namespace, remote dependency
 resolver or numeric-semantic change.
 
+**Availability:** These commands are **unreleased**, available only in source builds
+from current `main`. They are not included in the already-published v4.0.2 binaries,
+even though current source builds and the example below still use version `4.0.2`.
+
 ## Manifest and commands
 
 `dhrlang.json` follows [project.schema.json](project.schema.json):
