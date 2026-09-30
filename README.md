@@ -381,6 +381,12 @@ These commands are **unreleased** and **not included in the published v4.0.2 bin
 See [PROJECTS.md](PROJECTS.md). This is a manifest-based source bundle, not new
 import syntax; existing source and numeric semantics are unchanged.
 
+**Offline learning (unreleased; current `main` source builds only):** `doctor`
+checks the packaged installation, while `learn list/show/hint/start/check/trace/progress`
+provides ten practice exercises, bounded grading/traces and opt-in local result
+records. These commands are absent from published v4.0.2 binaries. See
+[LEARNING.md](LEARNING.md) for source-build commands and the pending learner-pilot gates.
+
 | Flag | Description |
 |------|-------------|
 | `--help`, `-h` | Print usage and exit |

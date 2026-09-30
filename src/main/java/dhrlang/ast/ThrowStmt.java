@@ -11,6 +11,7 @@ public class ThrowStmt extends Statement {
     public ThrowStmt(Expression value, Token throwToken) {
         this.value = value;
         this.throwToken = throwToken;
+        if (throwToken != null) setSourceLocation(throwToken.getLocation());
     }
     
     public ThrowStmt(Expression value) {

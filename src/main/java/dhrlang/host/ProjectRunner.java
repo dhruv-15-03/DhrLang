@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.jar.JarFile;
 
 /** Loads an explicit local project into the bounded worker; no imports, globs or package resolution. */
 public final class ProjectRunner {
@@ -82,12 +81,9 @@ public final class ProjectRunner {
 
     public static Result execute(Project project, boolean checkOnly, Path compilerJar)
             throws IOException, InterruptedException {
-        try (JarFile jar = new JarFile(compilerJar.toFile())) {
-            String actual = jar.getManifest() == null ? null
-                    : jar.getManifest().getMainAttributes().getValue("Implementation-Version");
-            require(project.manifest().compilerVersion().equals(actual),
-                    "Project requires compiler " + project.manifest().compilerVersion() + ", found " + actual);
-        }
+        String actual = HostExecution.compilerVersion(compilerJar);
+        require(project.manifest().compilerVersion().equals(actual),
+                "Project requires compiler " + project.manifest().compilerVersion() + ", found " + actual);
         HostExecution.Response response = HostExecution.executeSources(project.sources(),
                 project.manifest().input(), project.manifest().limits(), checkOnly, compilerJar);
         return new Result(1, checkOnly ? "check" : "run", project.sources().stream()

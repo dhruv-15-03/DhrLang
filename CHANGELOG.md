@@ -40,6 +40,12 @@ extension-only changes; they were never cut as language tags.
 ## [Unreleased]
 
 ### Added
+- Experimental offline `doctor` and `learn` commands: ten incorrect starters,
+  transparent practice cases, progressive hints, bounded grading and explicit
+  local result/progress files. Opt-in traces record a bounded source-linked
+  instruction prefix without program values, using unoptimized bytecode.
+  These are source-build features, not additions to the published v4.0.2 binary
+  or evidence of a completed human learner pilot.
 - Experimental manifest-based `project check/run` commands for ordered local
   source files. Units are parsed independently, share the existing namespace and
   run through the bounded host. Paths, source budgets, duplicates and exact
@@ -51,6 +57,10 @@ extension-only changes; they were never cut as language tags.
   This is not an OS sandbox or production multi-tenant service.
 
 ### Fixed
+- Preserve the `throw` token's location on its AST statement so source-linked
+  execution evidence points to the throw site.
+- Report the executed compiler JAR's manifest version in host/grading results,
+  rather than the embedding Java caller's development-package version.
 - Preserve filenames and spans across project parsing and synthetic tokens;
   distinguish same-position diagnostics in separate files and retain per-file
   warning directives.

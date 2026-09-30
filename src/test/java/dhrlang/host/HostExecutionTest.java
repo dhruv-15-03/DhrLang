@@ -47,6 +47,8 @@ class HostExecutionTest {
         assertEquals(Status.SUCCESS, result.status(), result.message() + result.stderr());
         assertEquals("7", result.stdout().trim());
         assertEquals(64, result.sourceSha256().length());
+        assertEquals(System.getProperty("dhrlang.test.version"), result.compilerVersion(),
+                "Report the executed artifact's version, not the embedding caller's package version");
         assertEquals(0, result.workerExitCode());
         assertTrue(result.elapsedMs() >= 0);
         var factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
@@ -183,6 +185,7 @@ class HostExecutionTest {
                 valid.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":2"),
                 valid.replace("\"profile\":\"jvm-bytecode-v1\"", "\"profile\":\"evm\""),
                 valid.substring(0, valid.length() - 1) + ",\"credentials\":\"forbidden\"}",
+                valid.substring(0, valid.length() - 1) + ",\"trace\":true}",
                 valid + "{}")) {
             Path input = temporary.resolve("invalid.json");
             Files.writeString(input, invalid);

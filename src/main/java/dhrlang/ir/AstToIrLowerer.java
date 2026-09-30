@@ -3,19 +3,33 @@ package dhrlang.ir;
 import dhrlang.ast.*;
 import dhrlang.error.ErrorFactory;
 import dhrlang.error.ErrorReporter;
+import dhrlang.error.SourceLocation;
 
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 
 /** Very small subset lowering (Phase 1 slice): literals, var decls with literal init, addition, return void. */
 public class AstToIrLowerer {
     private final ErrorReporter errorReporter;
     private final Map<String, ClassDecl> classIndex = new HashMap<>();
-    public AstToIrLowerer(ErrorReporter er){ this.errorReporter = er; }
+    private final boolean captureLocations;
+    private final Map<IrInstruction, SourceLocation> instructionLocations = new IdentityHashMap<>();
+
+    public AstToIrLowerer(ErrorReporter er){ this(er, false); }
+    public AstToIrLowerer(ErrorReporter er, boolean captureLocations){
+        this.errorReporter = er;
+        this.captureLocations = captureLocations;
+    }
+
+    public Map<IrInstruction, SourceLocation> getInstructionLocations(){
+        return java.util.Collections.unmodifiableMap(new IdentityHashMap<>(instructionLocations));
+    }
 
     public IrProgram lower(Program program){
         IrProgram ir = new IrProgram();
         classIndex.clear();
+        instructionLocations.clear();
         for (ClassDecl cd : program.getClasses()) {
             classIndex.put(cd.getName(), cd);
             IrClassDef classDef = new IrClassDef(
@@ -83,6 +97,7 @@ public class AstToIrLowerer {
                     if(field.hasModifier(Modifier.STATIC) && field.getInitializer() != null){
                         int val = lowerExpr(field.getInitializer(), initFunc, initCtx, cd.getName());
                         initFunc.instructions.add(new IrSetStatic(cd.getName(), field.getName(), val));
+                        recordLocation(field.getSourceLocation(), initFunc, initFunc.instructions.size() - 1);
                         hasStaticInits = true;
                     }
                 }
@@ -115,10 +130,24 @@ public class AstToIrLowerer {
         if(irf.instructions.isEmpty() || !(irf.instructions.get(irf.instructions.size()-1) instanceof IrReturn)) {
             irf.instructions.add(new IrReturn(null));
         }
+        recordLocation(f.getSourceLocation(), irf, 0);
         return irf;
     }
 
     private void lowerStmt(Statement s, IrFunction out, LoweringContext ctx, String currentClass){
+        int start = out.instructions.size();
+        lowerStmtBody(s, out, ctx, currentClass);
+        if(captureLocations) recordLocation(ErrorFactory.getLocation(s), out, start);
+    }
+
+    private void recordLocation(SourceLocation location, IrFunction out, int start){
+        if(!captureLocations || location == null) return;
+        for(int i = start; i < out.instructions.size(); i++){
+            instructionLocations.putIfAbsent(out.instructions.get(i), location);
+        }
+    }
+
+    private void lowerStmtBody(Statement s, IrFunction out, LoweringContext ctx, String currentClass){
         if(s instanceof VarDecl vd){
             int slot = ctx.allocSlot(vd.getName());
             if(vd.getInitializer()!=null){
@@ -284,6 +313,13 @@ public class AstToIrLowerer {
     }
 
     private int lowerExpr(Expression e, IrFunction out, LoweringContext ctx, String currentClass){
+        int start = out.instructions.size();
+        int result = lowerExprBody(e, out, ctx, currentClass);
+        if(captureLocations) recordLocation(ErrorFactory.getLocation(e), out, start);
+        return result;
+    }
+
+    private int lowerExprBody(Expression e, IrFunction out, LoweringContext ctx, String currentClass){
         if(e instanceof ThisExpr){
             int thisSlot = ctx.getSlot("this");
             int t = ctx.newTemp();

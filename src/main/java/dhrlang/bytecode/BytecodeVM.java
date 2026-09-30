@@ -60,7 +60,16 @@ public class BytecodeVM {
         BcObjectInstance(BcClassDef klass){ this.klass=klass; klass.populateDefaultFields(fields); }
     }
 
+    @FunctionalInterface
+    public interface InstructionObserver {
+        void beforeInstruction(int functionIndex, String function, int instruction, BytecodeOpcode opcode, int depth);
+    }
+
     public void execute(byte[] code){
+        execute(code, null);
+    }
+
+    public void execute(byte[] code, InstructionObserver observer){
         try{
             boolean untrusted = Boolean.getBoolean("dhrlang.bytecode.untrusted");
 
@@ -307,6 +316,7 @@ public class BytecodeVM {
                 }
                 BytecodeOpcode opc = cur.op[pc];
                 int[] a = cur.args[pc];
+                if(observer != null) observer.beforeInstruction(curFunc, cur.name, pc, opc, stackFunc.size());
                 try {
                 switch(opc){
                     case CONST -> slots[a[0]] = cp[a[1]];

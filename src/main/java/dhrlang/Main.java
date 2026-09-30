@@ -29,6 +29,14 @@ public class Main {
             System.exit(dhrlang.host.ProjectRunner.runCli(args));
             return;
         }
+        if (args.length > 0 && "learn".equals(args[0])) {
+            System.exit(dhrlang.learn.LearnCli.runCli(args));
+            return;
+        }
+        if (args.length > 0 && "doctor".equals(args[0])) {
+            System.exit(dhrlang.learn.DoctorCli.runCli(args));
+            return;
+        }
         CliOptions options = parseArgs(args);
         if (options.showHelp) { printHelp(); return; }
         if (options.showVersion) { printVersion(); return; }
@@ -148,6 +156,8 @@ public class Main {
         System.out.println("Usage: java -jar DhrLang.jar [options] <file.dhr>\n");
         System.out.println("       java -jar DhrLang.jar host <request.json>  Bounded bytecode execution (experimental)\n");
         System.out.println("       java -jar DhrLang.jar project <check|run> <dhrlang.json>  Ordered multi-file project\n");
+        System.out.println("       java -jar DhrLang.jar doctor  Check the local compiler installation\n");
+        System.out.println("       java -jar DhrLang.jar learn <list|show|hint|start|check|trace|progress>  Offline practice\n");
         System.out.println("Options:");
         System.out.println("  --help               Show this help and exit");
         System.out.println("  --version            Print version and exit");

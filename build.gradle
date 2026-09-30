@@ -437,7 +437,7 @@ task packageDistribution(type: Zip) {
     
     from('.') {
         include 'README.md', 'LICENSE', 'CHANGELOG.md', 'STDLIB.md',
-                'HOST_EXECUTION.md', 'PROJECTS.md', 'host-request.schema.json',
+                'HOST_EXECUTION.md', 'PROJECTS.md', 'LEARNING.md', 'host-request.schema.json',
                 'host-response.schema.json', 'project.schema.json'
     }
     

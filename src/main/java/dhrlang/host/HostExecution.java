@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import dhrlang.ast.Program;
 import dhrlang.bytecode.BytecodeVM;
 import dhrlang.bytecode.BytecodeWriter;
+import dhrlang.bytecode.ExecutionTrace;
 import dhrlang.error.DhrError;
 import dhrlang.error.ErrorReporter;
 import dhrlang.interpreter.DhrRuntimeException;
@@ -29,6 +30,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarFile;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -79,10 +81,15 @@ public final class HostExecution {
     public record Response(int schemaVersion, String profile, String compilerVersion, String sourceSha256,
                            Status status, String stdout, String stderr, List<Diagnostic> diagnostics,
                            String message, int workerExitCode, long elapsedMs) {}
-    private record WorkerResult(Status status, List<Diagnostic> diagnostics, String message) {}
+    public record TracedResponse(Response execution, ExecutionTrace.Snapshot trace) {}
+    private record WorkerResult(Status status, List<Diagnostic> diagnostics, String message, ExecutionTrace.Snapshot trace) {
+        private WorkerResult(Status status, List<Diagnostic> diagnostics, String message) {
+            this(status, diagnostics, message, ExecutionTrace.empty());
+        }
+    }
     record Capture(String text) {}
 
-    private record Invocation(List<SourceBundle.Source> sources, String input, Limits limits, boolean checkOnly) {
+    private record Invocation(List<SourceBundle.Source> sources, String input, Limits limits, boolean checkOnly, boolean trace) {
         private Invocation {
             sources = SourceBundle.validate(sources);
             require(input == null || input.length() <= MAX_INPUT_CHARS, "input must contain at most 65536 characters");
@@ -116,18 +123,25 @@ public final class HostExecution {
     public static Response execute(Request request, Path compilerJar) throws IOException, InterruptedException {
         java.util.Objects.requireNonNull(request, "request");
         return execute(new Invocation(List.of(new SourceBundle.Source("request.dhr", request.source())),
-                request.input(), request.limits(), false), compilerJar, sha256(request.source()));
+                request.input(), request.limits(), false, false), compilerJar, sha256(request.source())).execution();
+    }
+
+    public static TracedResponse executeTraced(Request request, Path compilerJar) throws IOException, InterruptedException {
+        java.util.Objects.requireNonNull(request, "request");
+        return execute(new Invocation(List.of(new SourceBundle.Source("request.dhr", request.source())),
+                request.input(), request.limits(), false, true), compilerJar, sha256(request.source()));
     }
 
     public static Response executeSources(List<SourceBundle.Source> sources, String input, Limits limits,
                                           boolean checkOnly, Path compilerJar) throws IOException, InterruptedException {
-        Invocation invocation = new Invocation(sources, input, limits, checkOnly);
-        return execute(invocation, compilerJar, SourceBundle.fingerprint(invocation.sources()));
+        Invocation invocation = new Invocation(sources, input, limits, checkOnly, false);
+        return execute(invocation, compilerJar, SourceBundle.fingerprint(invocation.sources())).execution();
     }
 
-    private static Response execute(Invocation request, Path compilerJar, String sourceIdentity)
+    private static TracedResponse execute(Invocation request, Path compilerJar, String sourceIdentity)
             throws IOException, InterruptedException {
         if (!Files.isRegularFile(compilerJar)) throw new IOException("Missing packaged compiler: " + compilerJar);
+        String compilerVersion = compilerVersion(compilerJar);
         long start = System.nanoTime();
         Path directory = Files.createTempDirectory("dhrlang-host-");
         Process process = null;
@@ -190,9 +204,10 @@ public final class HostExecution {
                 status = result.status();
                 message = result.message();
             }
-            return new Response(1, PROFILE, version(), sourceIdentity, status, out.text(), err.text(),
+            Response response = new Response(1, PROFILE, compilerVersion, sourceIdentity, status, out.text(), err.text(),
                     result == null ? List.of() : result.diagnostics(), message, worker.exitValue(),
                     TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+            return new TracedResponse(response, result == null ? ExecutionTrace.empty() : result.trace());
         } finally {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly();
@@ -262,6 +277,7 @@ public final class HostExecution {
     private static WorkerResult evaluate(Invocation request) {
         ErrorReporter reporter = new ErrorReporter();
         reporter.setColorEnabled(false);
+        ExecutionTrace trace = null;
         try {
             Program program = SourceBundle.parse(request.sources(), reporter);
             if (reporter.hasErrors()) return compilationFailure(reporter);
@@ -271,25 +287,32 @@ public final class HostExecution {
             }
             new TypeChecker(reporter).check(program);
             if (reporter.hasErrors()) return compilationFailure(reporter);
-            var ir = new AstToIrLowerer(reporter).lower(program);
+            var lowerer = new AstToIrLowerer(reporter, request.trace());
+            var ir = lowerer.lower(program);
             if (reporter.hasErrors()) return compilationFailure(reporter);
-            IrOptimizer.defaultPipeline().optimize(ir);
+            // Optimization can replace or remove the instructions whose source origins we captured.
+            if (!request.trace()) IrOptimizer.defaultPipeline().optimize(ir);
             byte[] code = new BytecodeWriter().write(ir);
             if (request.checkOnly()) {
                 return new WorkerResult(Status.SUCCESS, diagnostics(reporter), "Source bundle compiled; no program code executed");
             }
-            new BytecodeVM().execute(code);
-            return new WorkerResult(Status.SUCCESS, diagnostics(reporter), "Program completed");
+            if (request.trace()) trace = new ExecutionTrace(ir, lowerer.getInstructionLocations());
+            new BytecodeVM().execute(code, trace);
+            return new WorkerResult(Status.SUCCESS, diagnostics(reporter), "Program completed", snapshot(trace));
         } catch (DhrRuntimeException failure) {
             var location = failure.getLocation();
             return new WorkerResult(Status.RUNTIME_ERROR, List.of(new Diagnostic("ERROR",
                     failure.getCategory().name(), bounded(failure.getMessage()),
                     location == null ? 0 : location.getLine(), location == null ? 0 : location.getColumn())),
-                    "Program execution failed");
+                    "Program execution failed", snapshot(trace));
         } catch (IllegalArgumentException failure) {
             return new WorkerResult(Status.WORKER_ERROR, diagnostics(reporter),
-                    "Compiler/bytecode validation failed: " + bounded(failure.getMessage()));
+                    "Compiler/bytecode validation failed: " + bounded(failure.getMessage()), snapshot(trace));
         }
+    }
+
+    private static ExecutionTrace.Snapshot snapshot(ExecutionTrace trace) {
+        return trace == null ? ExecutionTrace.empty() : trace.snapshot();
     }
 
     private static WorkerResult compilationFailure(ErrorReporter reporter) {
@@ -353,6 +376,15 @@ public final class HostExecution {
         Path jar = Path.of(HostExecution.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         if (!Files.isRegularFile(jar)) throw new IOException("Host execution requires the packaged compiler JAR");
         return jar;
+    }
+
+    static String compilerVersion(Path compilerJar) throws IOException {
+        try (JarFile jar = new JarFile(compilerJar.toFile())) {
+            String version = jar.getManifest() == null ? null
+                    : jar.getManifest().getMainAttributes().getValue("Implementation-Version");
+            if (version == null || version.isBlank()) throw new IOException("Compiler JAR has no Implementation-Version");
+            return version;
+        }
     }
 
     private static String version() {

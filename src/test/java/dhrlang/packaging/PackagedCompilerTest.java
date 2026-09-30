@@ -49,6 +49,8 @@ class PackagedCompilerTest {
                     "The published compiler must include its runtime dependencies");
             assertNotNull(jar.getEntry("com/fasterxml/jackson/databind/ObjectMapper.class"),
                     "The host protocol must work without a separate JSON classpath");
+            assertNotNull(jar.getEntry("dhrlang/learn/exercises.json"),
+                    "Offline practice must not depend on a checkout or network download");
         }
     }
 
@@ -103,6 +105,17 @@ class PackagedCompilerTest {
             assertEquals(0, result.exitCode(), backend + ": " + result.error());
             assertEquals("packaged compiler works", result.output().trim());
         }
+    }
+
+    @Test
+    void copiedJarIncludesTheOfflineLearnerTools() throws Exception {
+        Path jar = copyCompiler();
+        Result doctor = run(jar, "", "doctor");
+        assertEquals(0, doctor.exitCode(), doctor.output() + doctor.error());
+        assertTrue(doctor.output().contains("Installation checks passed"));
+        Result lessons = run(jar, "", "learn", "list");
+        assertEquals(0, lessons.exitCode(), lessons.error());
+        assertTrue(lessons.output().contains("01-input") && lessons.output().contains("10-approval"));
     }
 
     @Test
