@@ -28,7 +28,8 @@ async function verifyCompiler(bytes, version) {
         'dhrlang/Main.class',
         'dhrlang/deploy/WalletManager.class',
         'org/bouncycastle/crypto/Digest.class',
-        'org/apache/commons/lang3/StringUtils.class'
+        'org/apache/commons/lang3/StringUtils.class',
+        'com/fasterxml/jackson/databind/ObjectMapper.class'
     ]) {
         await requiredEntry(jar, name);
     }

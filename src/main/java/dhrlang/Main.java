@@ -21,6 +21,10 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
+        if (args.length > 0 && "host".equals(args[0])) {
+            System.exit(dhrlang.host.HostExecution.runCli(args));
+            return;
+        }
         CliOptions options = parseArgs(args);
         if (options.showHelp) { printHelp(); return; }
         if (options.showVersion) { printVersion(); return; }
@@ -138,6 +142,7 @@ public class Main {
     private static void printHelp() {
         System.out.println("DhrLang - a compact statically typed language (num/duo/sab/kya/ek/kaam)\n");
         System.out.println("Usage: java -jar DhrLang.jar [options] <file.dhr>\n");
+        System.out.println("       java -jar DhrLang.jar host <request.json>  Bounded bytecode execution (experimental)\n");
         System.out.println("Options:");
         System.out.println("  --help               Show this help and exit");
         System.out.println("  --version            Print version and exit");

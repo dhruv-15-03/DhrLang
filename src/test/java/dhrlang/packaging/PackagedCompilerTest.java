@@ -47,6 +47,8 @@ class PackagedCompilerTest {
                     "The published compiler must include its crypto dependency");
             assertNotNull(jar.getEntry("org/apache/commons/lang3/StringUtils.class"),
                     "The published compiler must include its runtime dependencies");
+            assertNotNull(jar.getEntry("com/fasterxml/jackson/databind/ObjectMapper.class"),
+                    "The host protocol must work without a separate JSON classpath");
         }
     }
 

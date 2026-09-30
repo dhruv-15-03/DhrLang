@@ -105,7 +105,8 @@ jobs:
 
       - name: Prepare documentation and examples
         run: |
-          cp README.md LICENSE CHANGELOG.md GETTING_STARTED.md INSTALL.md TUTORIALS.md EXAMPLES.md build/release/
+          cp README.md LICENSE CHANGELOG.md GETTING_STARTED.md INSTALL.md TUTORIALS.md EXAMPLES.md \
+            HOST_EXECUTION.md host-request.schema.json host-response.schema.json build/release/
           mkdir -p build/release/examples
           cp -R input/. build/release/examples/
           {

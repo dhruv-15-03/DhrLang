@@ -370,6 +370,11 @@ java -jar DhrLang.jar [options] path/to/file.dhr
 
 If no file is given, DhrLang defaults to `input/sample.dhr`.
 
+An experimental process-separated interface is available as
+`java -jar DhrLang.jar host request.json`. It provides bounded bytecode execution,
+explicit stdin and a versioned JSON response; see [HOST_EXECUTION.md](HOST_EXECUTION.md)
+for limits and the distinction between process isolation and an OS sandbox.
+
 | Flag | Description |
 |------|-------------|
 | `--help`, `-h` | Print usage and exit |

@@ -263,8 +263,8 @@ public class IrOptimizerTest {
         }
 
         @Test
-        @DisplayName("Remove unused BinOp result")
-        void removeUnusedBinOp() {
+        @DisplayName("Preserve potentially throwing BinOp even when its result is unused")
+        void preserveUnusedBinOp() {
             IrFunction f = fn(
                     new IrConst(0, 10L),
                     new IrConst(1, 3L),
@@ -273,8 +273,7 @@ public class IrOptimizerTest {
                     new IrReturn(null)
             );
             pass.run(f);
-            // BinOp should be removed since s2 is never referenced
-            assertTrue(f.instructions.stream().noneMatch(i -> i instanceof IrBinOp));
+            assertTrue(f.instructions.stream().anyMatch(i -> i instanceof IrBinOp));
         }
 
         @Test

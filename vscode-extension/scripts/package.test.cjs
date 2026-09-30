@@ -20,7 +20,8 @@ async function fixtures() {
         'Manifest-Version: 1.0\r\nMain-Class: dhrlang.Main\r\nImplementation-Version: 4.0.2\r\n');
     for (const file of [
         'dhrlang/Main.class', 'dhrlang/deploy/WalletManager.class',
-        'org/bouncycastle/crypto/Digest.class', 'org/apache/commons/lang3/StringUtils.class'
+        'org/bouncycastle/crypto/Digest.class', 'org/apache/commons/lang3/StringUtils.class',
+        'com/fasterxml/jackson/databind/ObjectMapper.class'
     ]) {
         jar.file(file, 'test fixture');
     }

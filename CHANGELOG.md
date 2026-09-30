@@ -39,7 +39,20 @@ extension-only changes; they were never cut as language tags.
 
 ## [Unreleased]
 
+### Added
+- Experimental `host <request.json>` protocol for process-separated JVM bytecode
+  execution with explicit input, structured status/diagnostics, source identity,
+  wall-clock/step/heap/output budgets and an allowlisted deterministic native
+  surface. The child does not inherit credentials or JVM injection options.
+  This is not an OS sandbox or production multi-tenant service.
+
 ### Fixed
+- Propagate uncaught IR/bytecode exceptions to the caller with their runtime
+  category instead of silently returning success. Typed catch handlers retain
+  those categories, including null-valued throws. Dead-store elimination retains
+  potentially throwing computations even when their results are unused.
+  Resolve implicit static/instance field reads and assignments
+  in the IR backend rather than substituting null or a new local.
 - Preserve EVM integer literals above 32 bits and full-width negative words.
   Reject unsupported internal calls, floating-point literals, unknown variables
   and unsupported AST forms instead of generating success-shaped defaults.

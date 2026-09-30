@@ -33,7 +33,7 @@ dependencies {
     testImplementation 'org.mockito:mockito-junit-jupiter:5.23.0'
     
     // JSON & schema validation for diagnostics contract test
-    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.22.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.2'
     testImplementation 'com.networknt:json-schema-validator:1.4.0'
     
     // Code quality tools
@@ -436,7 +436,8 @@ task packageDistribution(type: Zip) {
     }
     
     from('.') {
-        include 'README.md', 'LICENSE', 'CHANGELOG.md', 'STDLIB.md'
+        include 'README.md', 'LICENSE', 'CHANGELOG.md', 'STDLIB.md',
+                'HOST_EXECUTION.md', 'host-request.schema.json', 'host-response.schema.json'
     }
     
     from('docs') {

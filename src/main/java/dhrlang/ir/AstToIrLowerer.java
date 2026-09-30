@@ -516,9 +516,18 @@ public class AstToIrLowerer {
             if(slot>=0){
                 out.instructions.add(new IrStoreLocal(valueSlot, slot));
             } else {
-                // If slot does not exist yet, allocate (fallback) then store.
-                slot = ctx.allocSlot(name);
-                out.instructions.add(new IrStoreLocal(valueSlot, slot));
+                String owner = findFieldOwner(currentClass, name);
+                if (owner != null && findField(owner, name).hasModifier(Modifier.STATIC)) {
+                    out.instructions.add(new IrSetStatic(owner, name, valueSlot));
+                    return valueSlot;
+                }
+                int receiver = ctx.getSlot("this");
+                if (owner != null && receiver >= 0) {
+                    out.instructions.add(new IrSetField(receiver, name, valueSlot));
+                    return valueSlot;
+                }
+                errorReporter.error(ErrorFactory.getLocation(ae), "IR cannot resolve assignment to '" + name + "'.");
+                return valueSlot;
             }
             // For expression value semantics, produce a temp copy of stored value.
             int t = ctx.newTemp();
@@ -666,7 +675,17 @@ public class AstToIrLowerer {
             int slot = ctx.getSlot(name);
             int t = ctx.newTemp();
             if(slot>=0) out.instructions.add(new IrLoadLocal(slot, t));
-            else out.instructions.add(new IrConst(t, null));
+            else {
+                String owner = findFieldOwner(currentClass, name);
+                if (owner != null && findField(owner, name).hasModifier(Modifier.STATIC)) {
+                    out.instructions.add(new IrGetStatic(owner, name, t));
+                } else if (owner != null && ctx.getSlot("this") >= 0) {
+                    out.instructions.add(new IrGetField(ctx.getSlot("this"), name, t));
+                } else {
+                    errorReporter.error(ErrorFactory.getLocation(ve), "IR cannot resolve variable '" + name + "'.");
+                    out.instructions.add(new IrConst(t, null));
+                }
+            }
             return t;
         }
         errorReporter.error(ErrorFactory.getLocation(e),
@@ -740,6 +759,19 @@ public class AstToIrLowerer {
             return findMethodInHierarchy(cd.getSuperclass().getName().getLexeme(), methodName);
         }
         return null;
+    }
+
+    private String findFieldOwner(String className, String name) {
+        ClassDecl declaration = classIndex.get(className);
+        if (declaration == null) return null;
+        if (findField(className, name) != null) return className;
+        return declaration.getSuperclass() == null ? null
+                : findFieldOwner(declaration.getSuperclass().getName().getLexeme(), name);
+    }
+
+    private VarDecl findField(String className, String name) {
+        return classIndex.get(className).getVariables().stream()
+                .filter(field -> field.getName().equals(name)).findFirst().orElse(null);
     }
 
     private int labelCounter = 0;
