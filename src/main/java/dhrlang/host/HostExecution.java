@@ -83,7 +83,7 @@ public final class HostExecution {
                            Status status, String stdout, String stderr, List<Diagnostic> diagnostics,
                            String message, int workerExitCode, long elapsedMs) {}
     private record WorkerResult(Status status, List<Diagnostic> diagnostics, String message) {}
-    private record Capture(String text) {}
+    record Capture(String text) {}
 
     public static Request readRequest(Path file) throws IOException {
         return JSON.readValue(readLimited(file, MAX_REQUEST_BYTES), Request.class);
@@ -130,12 +130,14 @@ public final class HostExecution {
             Process worker = process;
             AtomicInteger outputBytes = new AtomicInteger();
             AtomicBoolean truncated = new AtomicBoolean();
+            AtomicBoolean terminationRequested = new AtomicBoolean();
             Future<Capture> stdout = io.submit(() -> capture(worker.getInputStream(), worker,
-                    outputBytes, truncated, limits.maxOutputBytes()));
+                    outputBytes, truncated, terminationRequested, limits.maxOutputBytes()));
             Future<Capture> stderr = io.submit(() -> capture(worker.getErrorStream(), worker,
-                    outputBytes, truncated, limits.maxOutputBytes()));
+                    outputBytes, truncated, terminationRequested, limits.maxOutputBytes()));
             boolean finished = worker.waitFor(limits.timeoutMs(), TimeUnit.MILLISECONDS);
             if (!finished) {
+                terminationRequested.set(true);
                 worker.destroyForcibly();
                 if (!worker.waitFor(5, TimeUnit.SECONDS)) throw new IOException("Could not terminate timed-out worker");
             }
@@ -180,8 +182,8 @@ public final class HostExecution {
         return parent.containsKey("SystemRoot") ? Map.of("SystemRoot", parent.get("SystemRoot")) : Map.of();
     }
 
-    private static Capture capture(InputStream input, Process worker, AtomicInteger total,
-                                   AtomicBoolean truncated, int limit) throws IOException {
+    static Capture capture(InputStream input, Process worker, AtomicInteger total,
+                           AtomicBoolean truncated, AtomicBoolean terminationRequested, int limit) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
         try (input) {
@@ -192,9 +194,15 @@ public final class HostExecution {
                 bytes.write(buffer, 0, keep);
                 if (previous + count > limit) {
                     truncated.set(true);
+                    terminationRequested.set(true);
                     worker.destroyForcibly();
+                    break;
                 }
             }
+        } catch (IOException failure) {
+            // Process.destroyForcibly closes Linux pipes. The explicit failure
+            // status (output/time limit) remains authoritative after cancellation.
+            if (!terminationRequested.get()) throw failure;
         }
         // Do not expand a truncated UTF-8 character into a three-byte replacement
         // character after the byte budget has already been exhausted.

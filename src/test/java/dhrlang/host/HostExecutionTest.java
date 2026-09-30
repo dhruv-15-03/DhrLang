@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -87,6 +90,18 @@ class HostExecutionTest {
                 new Limits(5000, 5_000_000, 128, 257)), jar());
         assertEquals(Status.OUTPUT_LIMIT, result.status(), result.message() + result.stderr());
         assertTrue(result.stdout().getBytes(StandardCharsets.UTF_8).length <= 257);
+    }
+
+    @Test
+    void onlyIntentionalWorkerTerminationToleratesAClosedOutputPipe() throws Exception {
+        Process worker = org.mockito.Mockito.mock(Process.class);
+        InputStream closedPipe = new InputStream() {
+            @Override public int read() throws IOException { throw new IOException("Stream closed"); }
+        };
+        assertThrows(IOException.class, () -> HostExecution.capture(closedPipe, worker,
+                new AtomicInteger(), new AtomicBoolean(), new AtomicBoolean(false), 256));
+        assertEquals("", HostExecution.capture(closedPipe, worker, new AtomicInteger(),
+                new AtomicBoolean(), new AtomicBoolean(true), 256).text());
     }
 
     @Test

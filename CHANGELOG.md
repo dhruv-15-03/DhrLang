@@ -47,6 +47,10 @@ extension-only changes; they were never cut as language tags.
   This is not an OS sandbox or production multi-tenant service.
 
 ### Fixed
+- Preserve explicit output/time-limit failures when terminating a Linux worker
+  closes its output pipes; unrelated stream errors still fail visibly.
+- Update the extension's runtime `brace-expansion` dependency to the compatible
+  2.1.7 patch for newly reported recursion/CPU-exhaustion advisories.
 - Propagate uncaught IR/bytecode exceptions to the caller with their runtime
   category instead of silently returning success. Typed catch handlers retain
   those categories, including null-valued throws. Dead-store elimination retains
