@@ -176,6 +176,7 @@ class HostExecutionTest {
     void malformedAndAmbiguousRequestsAreRejected() throws Exception {
         String valid = JSON.writeValueAsString(request("printLine(1);", "", null));
         for (String invalid : List.of(
+                "null",
                 valid.replace("\"schemaVersion\":1", "\"schemaVersion\":\"1\""),
                 valid.replace("\"schemaVersion\":1", "\"schemaVersion\":null"),
                 valid.replace("\"schemaVersion\":1", "\"schemaVersion\":1.5"),

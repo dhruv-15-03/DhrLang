@@ -40,6 +40,10 @@ extension-only changes; they were never cut as language tags.
 ## [Unreleased]
 
 ### Added
+- Experimental manifest-based `project check/run` commands for ordered local
+  source files. Units are parsed independently, share the existing namespace and
+  run through the bounded host. Paths, source budgets, duplicates and exact
+  compiler versions are validated. No imports or numeric-default changes.
 - Experimental `host <request.json>` protocol for process-separated JVM bytecode
   execution with explicit input, structured status/diagnostics, source identity,
   wall-clock/step/heap/output budgets and an allowlisted deterministic native
@@ -47,6 +51,11 @@ extension-only changes; they were never cut as language tags.
   This is not an OS sandbox or production multi-tenant service.
 
 ### Fixed
+- Preserve filenames and spans across project parsing and synthetic tokens;
+  distinguish same-position diagnostics in separate files and retain per-file
+  warning directives.
+- Report unterminated block comments instead of silently accepting an incomplete
+  source unit.
 - Preserve explicit output/time-limit failures when terminating a Linux worker
   closes its output pipes; unrelated stream errors still fail visibly.
 - Update the extension's runtime `brace-expansion` dependency to the compatible

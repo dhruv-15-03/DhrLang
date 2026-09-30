@@ -14,9 +14,6 @@ import dhrlang.error.ErrorReporter;
 import dhrlang.interpreter.DhrRuntimeException;
 import dhrlang.ir.AstToIrLowerer;
 import dhrlang.ir.opt.IrOptimizer;
-import dhrlang.lexer.Lexer;
-import dhrlang.parser.ParseException;
-import dhrlang.parser.Parser;
 import dhrlang.typechecker.TypeChecker;
 
 import java.io.ByteArrayOutputStream;
@@ -85,8 +82,27 @@ public final class HostExecution {
     private record WorkerResult(Status status, List<Diagnostic> diagnostics, String message) {}
     record Capture(String text) {}
 
+    private record Invocation(List<SourceBundle.Source> sources, String input, Limits limits, boolean checkOnly) {
+        private Invocation {
+            sources = SourceBundle.validate(sources);
+            require(input == null || input.length() <= MAX_INPUT_CHARS, "input must contain at most 65536 characters");
+            input = input == null ? "" : input;
+            limits = limits == null ? Limits.defaults() : limits;
+        }
+    }
+
     public static Request readRequest(Path file) throws IOException {
-        return JSON.readValue(readLimited(file, MAX_REQUEST_BYTES), Request.class);
+        return readJson(file, Request.class);
+    }
+
+    static <T> T readJson(Path file, Class<T> type) throws IOException {
+        T value = JSON.readValue(readLimited(file, MAX_REQUEST_BYTES), type);
+        if (value == null) throw new IOException("Expected a JSON object, not null");
+        return value;
+    }
+
+    static String writeJson(Object value) throws IOException {
+        return JSON.writeValueAsString(value);
     }
 
     private static byte[] readLimited(Path file, int maximum) throws IOException {
@@ -99,6 +115,18 @@ public final class HostExecution {
 
     public static Response execute(Request request, Path compilerJar) throws IOException, InterruptedException {
         java.util.Objects.requireNonNull(request, "request");
+        return execute(new Invocation(List.of(new SourceBundle.Source("request.dhr", request.source())),
+                request.input(), request.limits(), false), compilerJar, sha256(request.source()));
+    }
+
+    public static Response executeSources(List<SourceBundle.Source> sources, String input, Limits limits,
+                                          boolean checkOnly, Path compilerJar) throws IOException, InterruptedException {
+        Invocation invocation = new Invocation(sources, input, limits, checkOnly);
+        return execute(invocation, compilerJar, SourceBundle.fingerprint(invocation.sources()));
+    }
+
+    private static Response execute(Invocation request, Path compilerJar, String sourceIdentity)
+            throws IOException, InterruptedException {
         if (!Files.isRegularFile(compilerJar)) throw new IOException("Missing packaged compiler: " + compilerJar);
         long start = System.nanoTime();
         Path directory = Files.createTempDirectory("dhrlang-host-");
@@ -108,7 +136,9 @@ public final class HostExecution {
             Path inputFile = directory.resolve("request.json");
             Path outputFile = directory.resolve("response.json");
             Path stdinFile = directory.resolve("stdin.txt");
-            JSON.writeValue(inputFile.toFile(), request);
+            byte[] invocation = JSON.writeValueAsBytes(request);
+            if (invocation.length > MAX_REQUEST_BYTES) throw new IOException("Serialized source bundle exceeds request limit");
+            Files.write(inputFile, invocation);
             Files.writeString(stdinFile, request.input(), StandardCharsets.UTF_8);
             String executable = System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java";
             String java = Path.of(System.getProperty("java.home"), "bin", executable).toString();
@@ -160,7 +190,7 @@ public final class HostExecution {
                 status = result.status();
                 message = result.message();
             }
-            return new Response(1, PROFILE, version(), sha256(request.source()), status, out.text(), err.text(),
+            return new Response(1, PROFILE, version(), sourceIdentity, status, out.text(), err.text(),
                     result == null ? List.of() : result.diagnostics(), message, worker.exitValue(),
                     TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
         } finally {
@@ -224,18 +254,17 @@ public final class HostExecution {
     /** Worker entry point. The normal user entry point is {@code Main host request.json}. */
     public static void main(String[] args) throws IOException {
         if (args.length != 2) throw new IllegalArgumentException("Worker expects request and response paths");
-        Request request = readRequest(Path.of(args[0]));
+        Invocation request = readJson(Path.of(args[0]), Invocation.class);
         WorkerResult result = evaluate(request);
         JSON.writeValue(Path.of(args[1]).toFile(), result);
     }
 
-    private static WorkerResult evaluate(Request request) {
-        ErrorReporter reporter = new ErrorReporter("request.dhr", request.source());
+    private static WorkerResult evaluate(Invocation request) {
+        ErrorReporter reporter = new ErrorReporter();
         reporter.setColorEnabled(false);
         try {
-            var tokens = new Lexer(request.source(), reporter).scanTokens();
+            Program program = SourceBundle.parse(request.sources(), reporter);
             if (reporter.hasErrors()) return compilationFailure(reporter);
-            Program program = new Parser(tokens, reporter).parse();
             if (program.getClasses().stream().anyMatch(c -> c.isContract())) {
                 return new WorkerResult(Status.COMPILE_ERROR, List.of(),
                         "The host profile accepts JVM programs, not EVM contracts");
@@ -245,11 +274,12 @@ public final class HostExecution {
             var ir = new AstToIrLowerer(reporter).lower(program);
             if (reporter.hasErrors()) return compilationFailure(reporter);
             IrOptimizer.defaultPipeline().optimize(ir);
-            new BytecodeVM().execute(new BytecodeWriter().write(ir));
+            byte[] code = new BytecodeWriter().write(ir);
+            if (request.checkOnly()) {
+                return new WorkerResult(Status.SUCCESS, diagnostics(reporter), "Source bundle compiled; no program code executed");
+            }
+            new BytecodeVM().execute(code);
             return new WorkerResult(Status.SUCCESS, diagnostics(reporter), "Program completed");
-        } catch (ParseException failure) {
-            if (!reporter.hasErrors()) reporter.error(1, failure.getMessage());
-            return compilationFailure(reporter);
         } catch (DhrRuntimeException failure) {
             var location = failure.getLocation();
             return new WorkerResult(Status.RUNTIME_ERROR, List.of(new Diagnostic("ERROR",
@@ -270,9 +300,15 @@ public final class HostExecution {
         List<DhrError> errors = new ArrayList<>(reporter.getErrors());
         errors.addAll(reporter.getWarnings());
         return errors.stream().limit(50).map(error -> new Diagnostic(error.getType().name(),
-                error.getCode() == null ? "" : error.getCode().name(), bounded(error.getMessage()),
+                error.getCode() == null ? "" : error.getCode().name(), bounded(locatedMessage(error)),
                 error.getLocation() == null ? 0 : error.getLocation().getLine(),
                 error.getLocation() == null ? 0 : error.getLocation().getColumn())).toList();
+    }
+
+    private static String locatedMessage(DhrError error) {
+        String filename = error.getLocation() == null ? null : error.getLocation().getFilename();
+        return filename == null ? error.getMessage()
+                : "[" + filename + "] " + error.getMessage();
     }
 
     public static int runCli(String[] args) {
@@ -286,8 +322,7 @@ public final class HostExecution {
             } catch (IOException failure) {
                 throw new IllegalArgumentException("Invalid request: " + bounded(failure.getMessage()), failure);
             }
-            Path jar = Path.of(HostExecution.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            if (!Files.isRegularFile(jar)) throw new IOException("Host execution requires the packaged compiler JAR");
+            Path jar = compilerJar();
             response = execute(request, jar);
             exit = response.status() == Status.SUCCESS ? 0 : 2;
         } catch (IllegalArgumentException failure) {
@@ -310,8 +345,14 @@ public final class HostExecution {
         return exit;
     }
 
-    private static Response failure(Status status, String message) {
+    static Response failure(Status status, String message) {
         return new Response(1, PROFILE, version(), "", status, "", "", List.of(), bounded(message), -1, 0);
+    }
+
+    static Path compilerJar() throws IOException, java.net.URISyntaxException {
+        Path jar = Path.of(HostExecution.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        if (!Files.isRegularFile(jar)) throw new IOException("Host execution requires the packaged compiler JAR");
+        return jar;
     }
 
     private static String version() {

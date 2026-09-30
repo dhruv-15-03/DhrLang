@@ -40,7 +40,9 @@ the values above. If supplied, all four limit fields are required:
 The entry point remains `static kaam main()`. Input is data on stdin, never
 interpolated into the source. The first protocol version accepts one source
 unit, not a module graph, an arbitrary host method, uploaded bytecode or a shell
-command. Core JVM numeric semantics remain unchanged.
+command. For explicit multi-file source bundles, use the separate
+[`project check/run` interface](PROJECTS.md); the single-file host schema and
+source-hash definition are unchanged. Core JVM numeric semantics remain unchanged.
 
 ## Response
 
@@ -94,11 +96,12 @@ approval and idempotency outside the learner program.
 
 ## Stage 3 compatibility decisions
 
-This increment implements the execution boundary only:
+The execution boundary and manifest-first project increment preserve these decisions:
 
 - No arithmetic-default change: JVM signed 64-bit behavior is preserved.
-- No `import` or package syntax is introduced. Module resolution, dependency
-  pinning and initialization rules need an explicit conformance/migration design.
+- No `import` or package syntax is introduced. The project manifest supports an
+  ordered local file list and an exact compiler version, not a module namespace
+  or package registry. Scoped module semantics remain a separate design.
 - No general in-process embedding guarantee. The existing native runtime bridge
   is isolated by one worker process per request, not declared thread-safe.
 - The host profile is experimental and bytecode-only. An accepted request can

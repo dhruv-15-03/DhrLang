@@ -9,10 +9,11 @@ public class ErrorReporter {
     private final List<DhrError> warnings = new ArrayList<>();
     private String sourceCode;
     private String filename;
+    private final java.util.Map<String, ErrorReporter> sources = new java.util.HashMap<>();
     // suppression: map target line -> set of suppressed codes (applies to that line)
     private final java.util.Map<Integer, java.util.Set<ErrorCode>> lineSuppressions = new java.util.HashMap<>();
     private final java.util.Set<ErrorCode> fileSuppressions = new java.util.HashSet<>();
-    // fast de-dup keys for errors & warnings (type|line|col|code|message)
+    // fast de-dup keys for errors & warnings (type|file|line|col|code|message)
     private final java.util.Set<String> errorKeys = new java.util.HashSet<>();
     private final java.util.Set<String> warningKeys = new java.util.HashSet<>();
 
@@ -30,6 +31,11 @@ public class ErrorReporter {
         this.filename = filename;
         this.sourceCode = sourceCode;
     parseSuppressDirectives();
+    }
+
+    /** Retain per-file snippets and warning directives for a shared project namespace. */
+    public void registerSource(String filename, String sourceCode) {
+        sources.put(filename, new ErrorReporter(filename, sourceCode));
     }
 
     public void error(SourceLocation location, String message) {
@@ -117,11 +123,9 @@ public class ErrorReporter {
         System.err.println(formattedError);
         
         // Show source context for better debugging
-        if (sourceCode != null && !sourceCode.isEmpty()) {
-            String context = getSourceContext(error.getLocation());
-            if (!context.isEmpty()) {
-                System.err.println(context);
-            }
+        String context = getSourceContext(error.getLocation());
+        if (!context.isEmpty()) {
+            System.err.println(context);
         }
         
         // Show helpful hints
@@ -157,11 +161,15 @@ public class ErrorReporter {
     }
 
     private String getSourceContext(SourceLocation location) {
-        if (location == null || sourceCode == null || sourceCode.isEmpty()) {
+        String contextSource = sourceCode;
+        if (location != null && sources.containsKey(location.getFilename())) {
+            contextSource = sources.get(location.getFilename()).sourceCode;
+        }
+        if (location == null || contextSource == null || contextSource.isEmpty()) {
             return "";
         }
 
-        String[] lines = sourceCode.split("\n");
+        String[] lines = contextSource.split("\n");
         int lineNum = location.getLine();
         
         // Handle EOF errors by showing context from the last available lines
@@ -222,6 +230,7 @@ public class ErrorReporter {
     fileSuppressions.clear();
     errorKeys.clear();
     warningKeys.clear();
+    sources.clear();
     }
 
     // JSON diagnostics (simple manual build; avoids external deps)
@@ -256,8 +265,12 @@ public class ErrorReporter {
         sb.append("\"message\":\"").append(escape(e.getMessage())).append('\"');
         if(e.getHint()!=null){ sb.append(',').append("\"hint\":\"").append(escape(e.getHint())).append('\"'); }
         // embed a short snippet (current line only)
-        if(sourceCode!=null && e.getLocation()!=null){
-            String[] lines = sourceCode.split("\n"); int ln = e.getLocation().getLine();
+        String contextSource = sourceCode;
+        if (e.getLocation() != null && sources.containsKey(e.getLocation().getFilename())) {
+            contextSource = sources.get(e.getLocation().getFilename()).sourceCode;
+        }
+        if(contextSource!=null && e.getLocation()!=null){
+            String[] lines = contextSource.split("\n"); int ln = e.getLocation().getLine();
             if(ln>=1 && ln<=lines.length){ sb.append(',').append("\"sourceLine\":\"").append(escape(lines[ln-1])).append('\"'); }
         }
         sb.append('}');
@@ -317,6 +330,8 @@ public class ErrorReporter {
 
     private boolean isSuppressed(SourceLocation loc, ErrorCode code){
         if(loc==null) return false;
+        ErrorReporter context = sources.get(loc.getFilename());
+        if (context != null) return context.isSuppressed(loc, code);
         if(code!=null && fileSuppressions.contains(code)) return true;
         java.util.Set<ErrorCode> set = lineSuppressions.get(loc.getLine());
         if(set==null) return false;
@@ -330,7 +345,8 @@ public class ErrorReporter {
         int line = l==null? -1 : l.getLine();
         int col = l==null? -1 : l.getColumn();
         String code = e.getCode()==null? "" : e.getCode().name();
-        return e.getType()+"|"+line+"|"+col+"|"+code+"|"+e.getMessage();
+        String file = l == null || l.getFilename() == null ? "" : l.getFilename();
+        return e.getType()+"|"+file+"|"+line+"|"+col+"|"+code+"|"+e.getMessage();
     }
     private void addError(DhrError e){
         String k = keyFor(e);

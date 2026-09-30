@@ -113,7 +113,7 @@ public class Parser {
                 fullSuperclassName = genericSuperclassName.toString();
             }
             
-            Token superclassToken = new Token(superclassName.getType(), fullSuperclassName, superclassName.getLine());
+            Token superclassToken = syntheticToken(fullSuperclassName, superclassName, superclassName.getType());
             superclass = new VariableExpr(superclassToken);
         }
         
@@ -146,7 +146,7 @@ public class Parser {
                     fullInterfaceName = genericInterfaceName.toString();
                 }
                 
-                Token interfaceToken = new Token(interfaceName.getType(), fullInterfaceName, interfaceName.getLine());
+                Token interfaceToken = syntheticToken(fullInterfaceName, interfaceName, interfaceName.getType());
                 interfaces.add(new VariableExpr(interfaceToken));
             } while (match(TokenType.COMMA));
         }
@@ -1088,11 +1088,12 @@ public class Parser {
     }
 
     private Token syntheticToken(String lexeme, Token ref) {
-        return new Token(TokenType.IDENTIFIER, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+        return syntheticToken(lexeme, ref, TokenType.IDENTIFIER);
     }
 
     private Token syntheticToken(String lexeme, Token ref, TokenType type) {
-        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset())
+                .inFile(ref.getLocation().getFilename());
     }
 
     /**
@@ -1372,7 +1373,7 @@ public class Parser {
                 }
             }
             mappingType.append(")");
-            return new Token(TokenType.IDENTIFIER, mappingType.toString(), baseType.getLine());
+            return syntheticToken(mappingType.toString(), baseType, TokenType.IDENTIFIER);
         }
 
         if (check(TokenType.LBRACKET)) {
@@ -1383,7 +1384,7 @@ public class Parser {
                 consume(TokenType.RBRACKET, "Expected ']' after '[' in array type.");
                 typeLex.append("[]");
             }
-            return new Token(baseType.getType(), typeLex.toString(), baseType.getLine());
+            return syntheticToken(typeLex.toString(), baseType, baseType.getType());
         }
         
         if (check(TokenType.LESS)) {
@@ -1407,7 +1408,7 @@ public class Parser {
                 }
             }
             
-            return new Token(TokenType.IDENTIFIER, genericTypeName.toString(), baseType.getLine());
+            return syntheticToken(genericTypeName.toString(), baseType, TokenType.IDENTIFIER);
         }
 
         return baseType;

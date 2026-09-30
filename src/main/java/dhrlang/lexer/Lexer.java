@@ -152,13 +152,25 @@ public class Lexer {
                 if (match('/')) {
                     while (peek() != '\n' && !isAtEnd()) advance();
                 } else if (match('*')) {
+                    int commentLine = line;
+                    int commentColumn = start - lineStart + 1;
+                    boolean terminated = false;
                     while (!isAtEnd()) {
                         if (peek() == '*' && peekNext() == '/') {
                             advance(); // consume *
                             advance(); // consume /
+                            terminated = true;
                             break;
                         }
                         advance();
+                    }
+                    if (!terminated) {
+                        if (errorReporter != null) {
+                            errorReporter.error(new SourceLocation(null, commentLine, commentColumn, start, current),
+                                    "Unterminated block comment.", "Add */ to close the block comment in this file.");
+                        } else {
+                            System.err.println("[Line " + commentLine + "] Unterminated block comment.");
+                        }
                     }
                 } else {
                     addToken(TokenType.SLASH);
