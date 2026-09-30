@@ -157,9 +157,14 @@ Demonstrate a stale revision and a replay under a different actor or tenant.
 For an AI-off held-out exercise, an instructor should supply a rule variant
 that is not already implemented in this visible reference.
 
-Still pending, and **not implemented by this mock**:
+The separate [LOCAL_CAP_MOCK_ADAPTER](examples/cap-java-mock/README.md) implements
+S1 using the actual CAP Java framework and local mock authentication. It reuses
+this S0 policy/store without adding CAP dependencies to S0 or connecting it to SAP.
+Its toolchain, exact wire contract and API/packaged tests are isolated
+from the compiler's build.
 
-- A conventional CAP Java mock-service adapter using supported SAP tooling.
+Still pending, and **not implemented by either local mock**:
+
 - Authorized tenant/API-specific read-only SAP integration and its mapping,
   pagination and failure tests.
 - Durable storage, real authentication and independent domain/isolation review;

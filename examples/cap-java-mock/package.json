@@ -1,0 +1,12 @@
+{
+  "name": "dhrlang-local-cap-mock-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LOCAL_CAP_MOCK_ADAPTER: isolated offline CAP Java example",
+  "engines": {
+    "node": "22.x"
+  },
+  "devDependencies": {
+    "@sap/cds-dk": "10.1.0"
+  }
+}

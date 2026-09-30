@@ -1,0 +1,17 @@
+.m2/
+.maven-user-home/
+.npm-cache/
+.tools/
+node_modules/
+srv/node_modules/
+srv/src/gen/
+srv/src/main/resources/edmx/
+target/
+srv/target/
+*.log
+.cdsrc-private.json
+default-env.json
+.env
+.env.*
+!.env.example
+!.env.sample

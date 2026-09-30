@@ -40,6 +40,12 @@ extension-only changes; they were never cut as language tags.
 ## [Unreleased]
 
 ### Added
+- Isolated `LOCAL_CAP_MOCK_ADAPTER` example using pinned CAP Java/CDS tooling,
+  actual OData action handlers, mock-authenticated actor/tenant context and the
+  existing bounded DhrLang runner. Canonical string revisions preserve exact
+  values across JSON clients. Framework and executable-JAR tests cover
+  authorization, typed inputs, failures, reconciliation and compiler identity.
+  No live SAP/BTP connection, production persistence or compiler dependency change.
 - Offline `learn enterprise` purchase-approval lab: shared DhrLang/Java fixtures,
   explicit currency and exact-integer profile limits, and an in-memory mock host
   with actor/tenant checks, payload-bound idempotency, optimistic revisions and

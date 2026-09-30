@@ -392,6 +392,11 @@ compares DhrLang and Java decisions against synthetic fixtures and demonstrates
 host-owned authorization, idempotency and reconciliation in an in-memory mock.
 It is not CAP Java, a SAP integration or a production transaction service.
 
+An isolated [local CAP Java adapter](examples/cap-java-mock/README.md) adds a real
+CAP OData action and mock-authenticated tenant context around that lab. It is
+labeled `LOCAL_CAP_MOCK_ADAPTER`, runs only locally and does not connect to SAP/BTP
+or add CAP dependencies to the compiler.
+
 | Flag | Description |
 |------|-------------|
 | `--help`, `-h` | Print usage and exit |
