@@ -40,6 +40,11 @@ extension-only changes; they were never cut as language tags.
 ## [Unreleased]
 
 ### Added
+- Offline `learn enterprise` purchase-approval lab: shared DhrLang/Java fixtures,
+  explicit currency and exact-integer profile limits, and an in-memory mock host
+  with actor/tenant checks, payload-bound idempotency, optimistic revisions and
+  explicit retry/reconciliation outcomes. Rejected inputs do not mutate request
+  state or budgets. This is not CAP/SAP integration or production qualification.
 - Experimental offline `doctor` and `learn` commands: ten incorrect starters,
   transparent practice cases, progressive hints, bounded grading and explicit
   local result/progress files. Opt-in traces record a bounded source-linked

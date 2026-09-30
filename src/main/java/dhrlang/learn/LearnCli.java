@@ -180,6 +180,9 @@ public final class LearnCli {
         try {
             require(args.length >= 2, usage());
             switch (args[1]) {
+                case "enterprise" -> {
+                    return dhrlang.enterprise.EnterpriseCli.runCli(java.util.Arrays.copyOfRange(args, 1, args.length));
+                }
                 case "list" -> {
                     require(args.length == 2, usage());
                     for (Exercise exercise : catalog().exercises()) {
@@ -337,6 +340,7 @@ public final class LearnCli {
         return "Usage: learn list | show <id> | hint <id> [1-3] | start <id> <new-file.dhr>\n"
                 + "       learn check <id> <file.dhr> [--json] [--record <new-result.json>]\n"
                 + "       learn trace <id> <file.dhr> <case-number> [--json]\n"
+                + "       learn enterprise <cases|start|verify|demo>  Synthetic purchase workflow\n"
                 + "       learn progress <result.json> [more-results.json ...]";
     }
 

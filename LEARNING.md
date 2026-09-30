@@ -148,6 +148,10 @@ numeric-default changes, SAP calls or autonomous AI writes are introduced.
 
 ## Human qualification still required
 
+The next offline capstone is the [purchase-approval lab](ENTERPRISE_LAB.md).
+It adds a shared DhrLang/Java fixture corpus and a simulated host-owned workflow;
+it is not a live SAP integration or a completed human pilot.
+
 Automated compiler/lesson tests are not learner-pilot results. The agreed gates
 remain pending:
 

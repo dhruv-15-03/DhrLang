@@ -387,6 +387,11 @@ provides ten practice exercises, bounded grading/traces and opt-in local result
 records. These commands are absent from published v4.0.2 binaries. See
 [LEARNING.md](LEARNING.md) for source-build commands and the pending learner-pilot gates.
 
+The source-build-only `learn enterprise` [purchase-approval lab](ENTERPRISE_LAB.md)
+compares DhrLang and Java decisions against synthetic fixtures and demonstrates
+host-owned authorization, idempotency and reconciliation in an in-memory mock.
+It is not CAP Java, a SAP integration or a production transaction service.
+
 | Flag | Description |
 |------|-------------|
 | `--help`, `-h` | Print usage and exit |

@@ -31,6 +31,8 @@ public final class DoctorCli {
             for (String entry : List.of(
                     "dhrlang/Main.class", "dhrlang/host/HostExecution.class", "dhrlang/host/ProjectRunner.class",
                     "dhrlang/learn/LearnCli.class", "dhrlang/lsp/DhrLangLspServer.class",
+                    "dhrlang/enterprise/EnterpriseCli.class", "dhrlang/enterprise/purchase-policy.dhr",
+                    "dhrlang/enterprise/purchase-cases.json",
                     "org/bouncycastle/crypto/Digest.class", "com/fasterxml/jackson/databind/ObjectMapper.class",
                     "org/apache/commons/lang3/StringUtils.class", "dhrlang/learn/exercises.json")) {
                 boolean present = jar.getEntry(entry) != null;

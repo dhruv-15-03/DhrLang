@@ -51,6 +51,8 @@ class PackagedCompilerTest {
                     "The host protocol must work without a separate JSON classpath");
             assertNotNull(jar.getEntry("dhrlang/learn/exercises.json"),
                     "Offline practice must not depend on a checkout or network download");
+            assertNotNull(jar.getEntry("dhrlang/enterprise/purchase-policy.dhr"));
+            assertNotNull(jar.getEntry("dhrlang/enterprise/purchase-cases.json"));
         }
     }
 
@@ -116,6 +118,20 @@ class PackagedCompilerTest {
         Result lessons = run(jar, "", "learn", "list");
         assertEquals(0, lessons.exitCode(), lessons.error());
         assertTrue(lessons.output().contains("01-input") && lessons.output().contains("10-approval"));
+    }
+
+    @Test
+    void copiedJarRunsTheMockEnterpriseDemoWithoutACheckoutOrNetwork() throws Exception {
+        Path jar = copyCompiler();
+        Result result = run(jar, "", "learn", "enterprise", "demo", "--json");
+        assertEquals(0, result.exitCode(), result.output() + result.error());
+        var demo = JSON.readTree(result.output());
+        assertTrue(demo.path("mockOnly").asBoolean());
+        assertTrue(demo.path("passed").asBoolean());
+        assertEquals(2, demo.path("audit").size());
+        assertEquals("RECONCILIATION_REQUIRED", demo.path("steps").get(2).path("status").asText());
+        assertEquals("REPLAYED", demo.path("steps").get(3).path("status").asText());
+        assertEquals(36500, demo.path("remainingBudgetMinor").asLong());
     }
 
     @Test
