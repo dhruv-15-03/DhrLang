@@ -23,8 +23,9 @@ import java.util.*;
  *   <li>Unguarded decrement: {@code count--} without zero-check</li>
  * </ul>
  *
- * <p>Unlike Solidity's runtime checks (0.8+), DhrLang detects these at
- * <b>compile time</b> — zero gas cost, impossible to bypass.</p>
+ * <p>This is an incomplete static analysis, not a replacement for the EVM
+ * runtime's checked arithmetic. A recognised bound is attached to the actual
+ * write, after preceding control flow and possible invalidating effects.</p>
  */
 public class ArithmeticOverflowDetector {
 
@@ -107,10 +108,9 @@ public class ArithmeticOverflowDetector {
             if (fn.getBody() == null) continue;
             if (fn.hasContractAnnotation(ContractAnnotation.EVENT)) continue;
 
-            // Collect guard conditions (if statements that check before arithmetic)
-            Set<String> guardedVars = collectGuardedVariables(fn.getBody().getStatements());
-
-            analyzeStatements(fn, fn.getBody().getStatements(), storageFields, guardedVars);
+            for (GuardAnalysis.Write write : GuardAnalysis.analyze(fn, storageFields)) {
+                analyzeArithmeticExpr(fn, write);
+            }
         }
 
         // Report unguarded risks
@@ -137,97 +137,41 @@ public class ArithmeticOverflowDetector {
         return risks.stream().filter(r -> !r.hasGuard()).toList();
     }
 
-    // ── Guard Detection ──────────────────────────────────────────────────
-
-    /**
-     * Detect variables that are guarded by preceding if/require checks.
-     * e.g., {@code if (amount > balance) throw "...";} guards `balance` for subtraction.
-     *
-     * <p>Delegates to {@link GuardAnalysis}, which is shared with
-     * {@link InvariantChecker} so both detectors agree on what counts as a
-     * guard. See that class for the two deliberate limitations — notably that
-     * only <em>direct</em> operands of a comparison are recognised.</p>
-     */
-    private Set<String> collectGuardedVariables(List<Statement> stmts) {
-        return GuardAnalysis.collectGuardedVariables(stmts);
-    }
-
-    // ── Statement Analysis ───────────────────────────────────────────────
-
-    private void analyzeStatements(FunctionDecl fn, List<Statement> stmts,
-                                    Set<String> storageFields, Set<String> guarded) {
-        for (Statement stmt : stmts) {
-            if (stmt instanceof ExpressionStmt es) {
-                analyzeExpression(fn, es.getExpression(), storageFields, guarded);
-            } else if (stmt instanceof Block block) {
-                analyzeStatements(fn, block.getStatements(), storageFields, guarded);
-            } else if (stmt instanceof IfStmt ifStmt) {
-                analyzeStatements(fn, List.of(ifStmt.getThenBranch()), storageFields, guarded);
-                if (ifStmt.getElseBranch() != null) {
-                    analyzeStatements(fn, List.of(ifStmt.getElseBranch()), storageFields, guarded);
-                }
-            } else if (stmt instanceof WhileStmt whileStmt) {
-                analyzeStatements(fn, List.of(whileStmt.getBody()), storageFields, guarded);
-            }
-        }
-    }
-
-    private void analyzeExpression(FunctionDecl fn, Expression expr,
-                                    Set<String> storageFields, Set<String> guarded) {
-        if (expr instanceof AssignmentExpr assign) {
-            String target = null;
-            if (assign.getName() != null) {
-                target = assign.getName().getLexeme();
-            }
-            if (target != null && storageFields.contains(target)) {
-                analyzeArithmeticExpr(fn, target, assign.getValue(), guarded);
-            }
-        }
-    }
-
-    private void analyzeArithmeticExpr(FunctionDecl fn, String target, Expression value,
-                                        Set<String> guarded) {
-        if (!(value instanceof BinaryExpr bin)) return;
+    private void analyzeArithmeticExpr(FunctionDecl fn, GuardAnalysis.Write write) {
+        if (!(write.value() instanceof BinaryExpr bin)) return;
 
         var op = bin.getOperator().getType();
-        boolean isGuarded = guarded.contains(target);
+        String target = write.field();
+        boolean isGuarded = write.bounds().guards(bin);
+        SourceLocation location = write.location() != null ? write.location() : fn.getSourceLocation();
 
         switch (op) {
             case PLUS -> risks.add(new ArithmeticRisk(
                     ArithmeticRisk.Kind.ADDITION_OVERFLOW, fn.getName(),
                     target + " = ... + ...",
-                    "Addition could overflow uint256. Add: require(result >= a, \"overflow\")",
-                    fn.getSourceLocation(), isGuarded));
+                    "Bound b first, then require(a <= MAX - b) before adding.",
+                    location, isGuarded));
 
             case MINUS -> {
-                // Check if there's a guard for the right operand
-                String rightName = (bin.getRight() instanceof VariableExpr rve)
-                        ? rve.getName().getLexeme() : null;
-                boolean subGuarded = isGuarded || (rightName != null && guarded.contains(rightName));
                 risks.add(new ArithmeticRisk(
                         ArithmeticRisk.Kind.SUBTRACTION_UNDERFLOW, fn.getName(),
                         target + " = ... - ...",
                         "Subtraction could underflow. Add: if (b > a) { throw \"underflow\"; }",
-                        fn.getSourceLocation(), subGuarded));
+                        location, isGuarded));
             }
 
             case STAR -> risks.add(new ArithmeticRisk(
                     ArithmeticRisk.Kind.MULTIPLICATION_OVERFLOW, fn.getName(),
                     target + " = ... * ...",
-                    "Multiplication could overflow. Add: require(a == 0 || result / a == b, \"overflow\")",
-                    fn.getSourceLocation(), isGuarded));
+                    "Require b != 0 and a <= MAX / b before multiplying, or handle zero separately.",
+                    location, isGuarded));
 
-            case SLASH -> {
-                // Division by zero if right is a variable (could be 0)
-                if (bin.getRight() instanceof VariableExpr) {
-                    boolean divGuarded = guarded.contains(
-                            ((VariableExpr) bin.getRight()).getName().getLexeme());
-                    risks.add(new ArithmeticRisk(
+            case SLASH, MOD -> {
+                risks.add(new ArithmeticRisk(
                             ArithmeticRisk.Kind.DIVISION_BY_ZERO, fn.getName(),
                             target + " = ... / ...",
                             "Division by zero possible. Add: require(divisor != 0, \"div by zero\")",
-                            fn.getSourceLocation(), divGuarded));
-                }
+                            location, isGuarded));
             }
 
             default -> { /* not an arithmetic op */ }

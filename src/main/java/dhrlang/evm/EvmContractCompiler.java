@@ -83,18 +83,19 @@ public final class EvmContractCompiler {
         EvmCodeGen codeGen = new EvmCodeGen(classDecl, layout, classRegistry);
         EvmCodeGen.CompilationResult result = codeGen.compile();
 
-        // Run peephole optimizer on the runtime bytecode
-        byte[] optimizedRuntime = EvmPeepholeOptimizer.optimize(result.getRuntimeBytecode());
-        byte[] optimizedCreation = EvmPeepholeOptimizer.optimize(result.getCreationBytecode());
+        // Labels and CODECOPY offsets are already resolved. Size-changing
+        // rewrites here corrupt jumps and the embedded runtime's boundaries.
+        byte[] runtime = result.getRuntimeBytecode();
+        byte[] creation = result.getCreationBytecode();
 
         return new ContractArtifact(
                 classDecl.getName(),
-                optimizedCreation,
-                optimizedRuntime,
+                creation,
+                runtime,
                 result.getAbiJson(),
                 result.getAbi(),
                 layout,
-                estimateGas(optimizedCreation)
+                estimateGas(creation)
         );
     }
 

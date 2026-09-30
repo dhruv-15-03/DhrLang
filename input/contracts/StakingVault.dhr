@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  DhrLang Simple Staking Vault
 //  Users stake tokens and earn rewards over time.
+//  Teaching scaffold only: no per-user balances, token transfers or reward payouts.
 //
 //  Compile:  java -jar DhrLang.jar contract compile input/contracts/StakingVault.dhr
 //  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/StakingVault.dhr
@@ -60,7 +61,7 @@ class StakingVault {
     }
 
     // ── Pure functions ───────────────────────────────────────────
-    @pure
+    @view
     kaam calculateReward(num amount, num duration) {
         return amount * duration * rewardRate / 10000;
     }

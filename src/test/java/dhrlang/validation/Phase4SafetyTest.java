@@ -240,16 +240,18 @@ class Phase4SafetyTest {
     @DisplayName("GuardAnalysis")
     class GuardAnalysisTests {
 
-        private List<dhrlang.ast.Statement> bodyOf(String source) {
+        private List<GuardAnalysis.Write> writesOf(String source) {
             ClassDecl cls = parseContract(source);
             assertNotNull(cls);
-            return cls.getFunctions().get(0).getBody().getStatements();
+            return GuardAnalysis.analyze(cls.getFunctions().get(0),
+                    cls.getVariables().stream().map(dhrlang.ast.VarDecl::getName)
+                            .collect(java.util.stream.Collectors.toSet()));
         }
 
         @Test
-        @DisplayName("Comparison operands are collected as guarded")
-        void collectsGuardedVariables() {
-            var stmts = bodyOf("""
+        @DisplayName("A rejecting comparison bounds the subsequent subtraction")
+        void collectsGuardedWrites() {
+            var writes = writesOf("""
                 @contract
                 class C {
                     @storage num balance;
@@ -261,15 +263,14 @@ class Phase4SafetyTest {
                     }
                 }
                 """);
-            var guarded = GuardAnalysis.collectGuardedVariables(stmts);
-            assertTrue(guarded.contains("amount"));
-            assertTrue(guarded.contains("balance"));
+            assertEquals(1, writes.size());
+            assertTrue(writes.get(0).bounds().guards((dhrlang.ast.BinaryExpr) writes.get(0).value()));
         }
 
         @Test
-        @DisplayName("hasRelationalGuard requires both names in one comparison")
+        @DisplayName("A relation must bound the actual subtraction operands")
         void relationalGuardNeedsBothNames() {
-            var related = bodyOf("""
+            var related = writesOf("""
                 @contract
                 class C {
                     @storage num balance;
@@ -281,10 +282,9 @@ class Phase4SafetyTest {
                     }
                 }
                 """);
-            assertTrue(GuardAnalysis.hasRelationalGuard(related, "balance", "amount"));
-            assertTrue(GuardAnalysis.hasRelationalGuard(related, "amount", "balance"));
+            assertTrue(related.get(0).bounds().guards((dhrlang.ast.BinaryExpr) related.get(0).value()));
 
-            var unrelated = bodyOf("""
+            var unrelated = writesOf("""
                 @contract
                 class C {
                     @storage num balance;
@@ -296,22 +296,19 @@ class Phase4SafetyTest {
                     }
                 }
                 """);
-            assertFalse(GuardAnalysis.hasRelationalGuard(unrelated, "balance", "amount"));
+            assertFalse(unrelated.get(0).bounds().guards((dhrlang.ast.BinaryExpr) unrelated.get(0).value()));
         }
 
         @Test
-        @DisplayName("Operands nested inside a sub-expression are NOT recognised")
-        void nestedOperandsAreNotRecognised() {
-            // Documents a real constraint rather than an aspiration: a guard must
-            // name the field directly. `maxSupply - totalSupply` hides totalSupply
-            // inside a BinaryExpr, so it does not register. Contract authors who
-            // write the bound the other way round will not be credited for it.
-            var stmts = bodyOf("""
+        @DisplayName("A nested capacity expression is recognised only after its own bound")
+        void nestedCapacityBoundIsRecognised() {
+            var writes = writesOf("""
                 @contract
                 class C {
                     @storage num totalSupply;
                     @storage num maxSupply;
                     kaam f(num amount) {
+                        if (totalSupply > maxSupply) { throw "invalid supply"; }
                         if (amount > maxSupply - totalSupply) {
                             throw "no";
                         }
@@ -319,9 +316,7 @@ class Phase4SafetyTest {
                     }
                 }
                 """);
-            var guarded = GuardAnalysis.collectGuardedVariables(stmts);
-            assertTrue(guarded.contains("amount"), "direct operand is recognised");
-            assertFalse(guarded.contains("totalSupply"), "nested operand is not recognised");
+            assertTrue(writes.get(0).bounds().guards((dhrlang.ast.BinaryExpr) writes.get(0).value()));
         }
     }
 

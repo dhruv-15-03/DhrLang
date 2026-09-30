@@ -32,6 +32,15 @@ public final class EvmPeepholeOptimizer {
      * @return optimized bytecode
      */
     public static byte[] optimize(byte[] bytecode, int passes) {
+        // This byte-oriented optimizer has no relocation table. Never rewrite
+        // code that observes positions or contains absolute jump/copy offsets.
+        for (int pc = 0; pc < bytecode.length; pc++) {
+            int op = bytecode[pc] & 0xff;
+            if (op == 0x38 || op == 0x39 || op == 0x56 || op == 0x57 || op == 0x58 || op == 0x5b) {
+                return Arrays.copyOf(bytecode, bytecode.length);
+            }
+            if (op >= 0x60 && op <= 0x7f) pc += op - 0x5f;
+        }
         byte[] current = bytecode;
         for (int p = 0; p < passes; p++) {
             byte[] next = singlePass(current);
@@ -92,9 +101,9 @@ public final class EvmPeepholeOptimizer {
                             int b = code[next + 1] & 0xFF;
                             int result = -1;
 
-                            if (arithOp == 0x01) result = (a + b) & 0xFF;      // ADD
-                            else if (arithOp == 0x02) result = (a * b) & 0xFF;  // MUL
-                            else if (arithOp == 0x03) result = (a - b) & 0xFF;  // SUB
+                            if (arithOp == 0x01) result = a + b;
+                            else if (arithOp == 0x02) result = a * b;
+                            else if (arithOp == 0x03) result = b - a; // EVM pops b first
 
                             if (result >= 0 && result <= 0xFF) {
                                 if (result == 0) {

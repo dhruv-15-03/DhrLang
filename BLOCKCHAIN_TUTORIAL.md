@@ -2,6 +2,38 @@
 
 > **End-to-end guide** for building, deploying, and verifying smart contracts using DhrLang.
 
+> **Experimental target, not a production-security endorsement.** The examples
+> below teach syntax and tooling. They are not complete ERC tokens, multisig
+> wallets or staking protocols and must not hold real funds.
+
+## Current EVM correctness boundary
+
+The unreleased compiler preserves 64-bit integer literals, checks integer
+arithmetic, emits string-literal `throw` guards as EVM reverts, and decodes scalar
+constructor arguments from the bytes appended to creation code. Internal helper
+calls and floating-point literals are rejected rather than silently replaced by
+zero or truncated. Ownable/AccessControl scaffolds use explicit inline guards
+until internal calls have a supported implementation.
+
+Dynamic string storage/parameters, dynamic-array behavior, inherited constructor
+execution and general external-call ABI handling are **not production-qualified**.
+The legacy EVM `duo` ABI mapping does not provide floating-point semantics.
+Do not infer support from an ABI or a successful compile alone.
+
+Independent execution regressions run on EthereumJS (no keys, RPC or funds):
+
+```powershell
+.\gradlew.bat stageCompiler
+Set-Location src\test\evm
+npm ci
+npm test
+```
+
+The regression suite deploys the generated creation code and checks that it
+installs exactly the emitted runtime. It also checks numeric boundaries,
+constructor input, reverts, storage changes, receive routing and return values.
+These tests are a bounded conformance corpus, not an independent security audit.
+
 ---
 
 ## Prerequisites
@@ -677,15 +709,16 @@ java -jar DhrLang-4.0.2.jar contract networks
 
 ## Sample Contracts
 
-Reference contracts in `input/contracts/`. Every constructor takes an explicit
-upper bound for each accumulating field, so the totals cannot wrap:
+Teaching scaffolds in `input/contracts/`. Every constructor takes an explicit
+upper bound for each accumulating field. These bounds do not implement the
+missing application behavior:
 
 | File | Description | Bounded by |
 |------|-------------|------------|
-| `ERC20Token.dhr` | Standard fungible token (ERC-20) | `maxSupply` |
-| `ERC721NFT.dhr` | Non-fungible token (ERC-721) | `maxSupply` |
-| `MultiSigWallet.dhr` | M-of-N multi-signature wallet | `maxTransactions` |
-| `StakingVault.dhr` | Token staking with rewards | `maxTotalStaked`, `maxStakers` |
+| `ERC20Token.dhr` | Supply counter; no holder balances, allowances or transfers | `maxSupply` |
+| `ERC721NFT.dhr` | Mint counter; no ownership/approval bookkeeping | `maxSupply` |
+| `MultiSigWallet.dhr` | Transaction counter; no stored votes or execution | `maxTransactions` |
+| `StakingVault.dhr` | Aggregate stake counters; no per-user balances or payouts | `maxTotalStaked`, `maxStakers` |
 
 The guards are written as
 
@@ -703,7 +736,7 @@ because the second form performs the very addition it is meant to protect, and
 on a 256-bit target it overflows before the comparison can reject it. Where the
 subtraction could itself underflow, the operand is bounded first.
 
-These contracts are audited on every push by
+These contracts are analyzed on relevant pushes by
 [`contract-audit.yml`](.github/workflows/contract-audit.yml), which uploads the
 results to the repository's Security tab. Run the same audit yourself:
 

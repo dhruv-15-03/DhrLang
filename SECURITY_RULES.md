@@ -24,8 +24,9 @@ emits one SARIF file per contract and uploads them to the repository's
 
 Each result also carries:
 
-- **`region.startLine`** — the source line of the offending function, when the
-  analyzer knows it (omitted otherwise, so the alert still lands at the file).
+- **`region.startLine`** — arithmetic and invariant findings use the actual
+  storage-write line when available. Other detectors may report a function line.
+  Unknown locations omit the region rather than inventing a line.
 - **`partialFingerprints["dhrlangAuditFingerprint/v1"]`** — a stable SHA-256 of
   the rule id + logical location + title. GitHub uses it to track an alert
   across runs and dedupe identical findings even as line numbers shift.
@@ -41,10 +42,24 @@ Detected by `ArithmeticOverflowDetector` on `num` (uint256) arithmetic that
 writes to storage. Maps to **SWC-101 (Integer Overflow and Underflow)**.
 Severity is `HIGH` when unguarded, `LOW` when a guarding `require`/check is found.
 
+Bounds are now evaluated at each write. A comparison must have the correct
+direction and apply to every path reaching that write. Rejecting `if` branches
+(throw/revert/return) and true `require` conditions can establish facts; empty
+checks, later checks and unrelated comparisons cannot. Writes to either operand,
+shadowed bindings and unknown calls invalidate affected facts. Loops and
+exception handlers are handled conservatively, without assuming an entry guard
+survives every iteration or a caught exception.
+
+This is a deliberately incomplete analysis of unsigned contract arithmetic,
+not a general symbolic proof. Unrecognised bounds remain findings. Signed EVM
+semantics, runtime/compiler correctness and contract business logic require
+separate validation; a LOW finding or empty report is not an audit certificate.
+
 ### ARITH-ADDITION_OVERFLOW
 An addition that writes a storage field may overflow uint256.
-*Fix:* guard with `require(result >= a, "overflow")` or compile the function
-`@checked` so the EVM backend reverts on overflow.
+*Fix:* establish `b <= MAX`, then check `a <= MAX - b` before adding.
+Do not evaluate `a + b` inside the check. EVM arithmetic is checked by default;
+`@unchecked` opts into wrapping and does not replace input validation.
 
 ### ARITH-SUBTRACTION_UNDERFLOW
 A subtraction that writes a storage field may underflow below zero.
@@ -52,11 +67,11 @@ A subtraction that writes a storage field may underflow below zero.
 
 ### ARITH-MULTIPLICATION_OVERFLOW
 A multiplication that writes a storage field may overflow uint256.
-*Fix:* guard the result, or use `@checked` (which lowers to a SafeMath-style
-identity check).
+*Fix:* handle zero separately, otherwise require `b != 0` and `a <= MAX / b`
+before multiplying. Checked EVM arithmetic also enforces a runtime overflow check.
 
 ### ARITH-DIVISION_BY_ZERO
-A division whose divisor is not provably non-zero.
+A division or modulo whose divisor is not known to be non-zero at the write.
 *Fix:* `require(divisor != 0, "div by zero")`.
 
 ---
@@ -107,6 +122,8 @@ invariant inferred from a field's declaration or guards. All `HIGH`.
 
 ### INV-NON_NEGATIVE
 A field expected to stay `>= 0` can be driven negative.
+For a subtraction, the bound must relate the actual minuend and subtrahend;
+mentioning the destination field in an unrelated comparison is insufficient.
 
 ### INV-NON_ZERO
 A field expected to stay `!= 0` can be zeroed.

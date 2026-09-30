@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  DhrLang Multi-Signature Wallet Contract
 //  Requires M-of-N owner approvals to execute transactions.
+//  Teaching scaffold only: owner votes, stored transactions and execution are not implemented.
 //
 //  Compile:  java -jar DhrLang.jar contract compile input/contracts/MultiSigWallet.dhr
 //  Deploy:   java -jar DhrLang.jar contract deploy --network=sepolia input/contracts/MultiSigWallet.dhr
@@ -88,6 +89,9 @@ class MultiSigWallet {
     // ── Receive ETH ──────────────────────────────────────────────
     @payable
     kaam receive() {
+        if (msg.value <= 0) {
+            throw "Deposit must be positive";
+        }
     }
 
     // ── Events ───────────────────────────────────────────────────

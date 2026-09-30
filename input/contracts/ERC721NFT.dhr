@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  DhrLang ERC-721 NFT Contract
 //  A minimal non-fungible token with mint, transfer, and approvals.
+//  Teaching scaffold only: token ownership and approval bookkeeping are not implemented.
 //
 //  Compile:  java -jar DhrLang.jar contract compile input/contracts/ERC721NFT.dhr
 //  Gas:      java -jar DhrLang.jar contract gas input/contracts/ERC721NFT.dhr

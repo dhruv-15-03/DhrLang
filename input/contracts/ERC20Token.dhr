@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  DhrLang ERC-20 Token Contract
 //  A standard fungible token with mint, burn, transfer, approve.
+//  Teaching scaffold only: no holder balances, allowances or token transfers.
 //
 //  Compile:  java -jar DhrLang.jar contract compile input/contracts/ERC20Token.dhr
 //  Gas:      java -jar DhrLang.jar contract gas input/contracts/ERC20Token.dhr

@@ -197,17 +197,17 @@ public final class EvmCodeGen {
 
         // ── Function bodies ──────────────────────────────────────
         for (int i = 0; i < publicFunctions.size(); i++) {
-            emitFunction(publicFunctions.get(i), functionLabels[i]);
+            emitFunction(publicFunctions.get(i), functionLabels[i], true);
         }
 
         // ── Receive function body ────────────────────────────────
         if (receiveFunc != null) {
-            emitFunction(receiveFunc, receiveLabel);
+            emitFunction(receiveFunc, receiveLabel, false);
         }
 
         // ── Fallback function body ───────────────────────────────
         if (fallbackFunc != null) {
-            emitFunction(fallbackFunc, fallbackLabel);
+            emitFunction(fallbackFunc, fallbackLabel, false);
         }
 
         return buf.resolve();
@@ -224,6 +224,8 @@ public final class EvmCodeGen {
 
         // Run constructor if it exists
         FunctionDecl ctor = findConstructor();
+        List<Integer> argumentOffsets = new ArrayList<>();
+        int argumentSizeCheck = -1;
 
         // Auto-store msg.sender as contract owner for access control
         creation.emit(EvmOpcode.CALLER);
@@ -233,17 +235,30 @@ public final class EvmCodeGen {
         if (ctor != null) {
             EvmCodeGen ctorGen = new EvmCodeGen(contract, layout, classRegistry);
             ctorGen.buf = creation;
+            ctorGen.currentFn = ctor;
 
-            // Decode constructor parameters from calldata.
-            // At deploy time, constructor args are ABI-encoded in calldata
-            // (no 4-byte selector prefix for constructors).
+            // Constructor arguments are appended to initcode, not supplied as
+            // calldata. Patch their absolute code offsets after assembly.
             List<VarDecl> ctorParams = ctor.getParameters();
+            if (!ctorParams.isEmpty()) {
+                argumentSizeCheck = creation.pc() + 1;
+                creation.push4(0);
+                creation.emit(EvmOpcode.CODESIZE);
+                creation.emit(EvmOpcode.LT);
+                creation.emit(EvmOpcode.ISZERO);
+                String argumentsPresent = creation.newLabel();
+                creation.jumpIf(argumentsPresent);
+                creation.revertWithMessage("missing constructor arguments");
+                creation.placeLabel(argumentsPresent);
+            }
             for (int i = 0; i < ctorParams.size(); i++) {
                 String name = ctorParams.get(i).getName();
                 int offset = ctorGen.allocLocal(name);
-                creation.pushInt(i * 32);
-                creation.emit(EvmOpcode.CALLDATALOAD);
-                creation.mstoreAt(offset);
+                creation.pushInt(32);
+                argumentOffsets.add(creation.pc() + 1);
+                creation.push4(0);
+                creation.pushInt(offset);
+                creation.emit(EvmOpcode.CODECOPY);
             }
 
             ctorGen.emitFunctionBody(ctor);
@@ -282,17 +297,27 @@ public final class EvmCodeGen {
         byte[] full = new byte[creationBytes.length + rtLen];
         System.arraycopy(creationBytes, 0, full, 0, creationBytes.length);
         System.arraycopy(runtimeBytecode, 0, full, creationBytes.length, rtLen);
+        for (int i = 0; i < argumentOffsets.size(); i++) {
+            patchWordOffset(full, argumentOffsets.get(i), full.length + i * 32);
+        }
+        if (argumentSizeCheck >= 0) {
+            patchWordOffset(full, argumentSizeCheck, full.length + argumentOffsets.size() * 32);
+        }
         return full;
+    }
+
+    private static void patchWordOffset(byte[] code, int position, int value) {
+        for (int i = 0; i < 4; i++) code[position + i] = (byte) (value >>> ((3 - i) * 8));
     }
 
     // ── Function emission ────────────────────────────────────────────────
 
-    private void emitFunction(FunctionDecl fn, String label) {
+    private void emitFunction(FunctionDecl fn, String label, boolean selectorOnStack) {
         resetLocals();
         buf.placeLabel(label);
 
         // Pop the selector from the stack (left over from dispatch)
-        buf.emit(EvmOpcode.POP);
+        if (selectorOnStack) buf.emit(EvmOpcode.POP);
 
         // Check payable
         if (!fn.isPayable()) {
@@ -318,6 +343,16 @@ public final class EvmCodeGen {
 
         // Decode parameters from calldata
         List<VarDecl> params = fn.getParameters();
+        if (!params.isEmpty()) {
+            buf.pushInt(4 + params.size() * 32);
+            buf.emit(EvmOpcode.CALLDATASIZE);
+            buf.emit(EvmOpcode.LT);
+            buf.emit(EvmOpcode.ISZERO);
+            String argumentsPresent = buf.newLabel();
+            buf.jumpIf(argumentsPresent);
+            buf.revertWithMessage("missing function arguments");
+            buf.placeLabel(argumentsPresent);
+        }
         for (int i = 0; i < params.size(); i++) {
             String name = params.get(i).getName();
             int offset = allocLocal(name);
@@ -329,6 +364,11 @@ public final class EvmCodeGen {
 
         // Track current function for return-type / spec awareness
         currentFn = fn;
+        if (!fn.getEnsures().isEmpty()) {
+            int resultOffset = allocLocal(RESULT_LOCAL);
+            buf.pushInt(0);
+            buf.mstoreAt(resultOffset);
+        }
 
         // @requires preconditions: revert at entry if any condition is false.
         // Checked after parameters are decoded so conditions can reference them.
@@ -453,32 +493,46 @@ public final class EvmCodeGen {
             emitWhileStmt((WhileStmt) stmt);
         } else if (stmt instanceof ReturnStmt) {
             emitReturnStmt((ReturnStmt) stmt);
+        } else if (stmt instanceof ThrowStmt thrown) {
+            if (thrown.getValue() instanceof LiteralExpr literal && literal.getValue() instanceof String message) {
+                buf.revertWithMessage(message);
+            } else if (thrown.getValue() instanceof CallExpr call
+                    && call.getCallee() instanceof VariableExpr name
+                    && isErrorFunction(name.getName().getLexeme())) {
+                emitCustomErrorRevert(name.getName().getLexeme(), call.getArguments());
+            } else {
+                throw unsupported(stmt, "Only string literals and declared custom errors can be thrown on EVM");
+            }
         } else if (stmt instanceof Block) {
             emitBlock((Block) stmt);
         } else if (stmt instanceof BreakStmt) {
             if (!breakLabels.isEmpty()) {
                 buf.jumpTo(breakLabels.peek());
-            }
+            } else throw unsupported(stmt, "break outside an EVM loop");
         } else if (stmt instanceof ContinueStmt) {
             if (!continueLabels.isEmpty()) {
                 buf.jumpTo(continueLabels.peek());
-            }
+            } else throw unsupported(stmt, "continue outside an EVM loop");
+        } else {
+            throw unsupported(stmt, "Statement " + stmt.getClass().getSimpleName() + " is not supported on EVM");
         }
-        // FunctionDecl nested inside body — skip (EVM doesn't support nested functions)
     }
 
     private void emitBlock(Block block) {
-        for (Statement stmt : block.getStatements()) {
-            emitStatement(stmt);
+        Map<String, Integer> enclosing = new LinkedHashMap<>(locals);
+        try {
+            for (Statement stmt : block.getStatements()) emitStatement(stmt);
+        } finally {
+            locals.clear();
+            locals.putAll(enclosing);
         }
     }
 
     private void emitVarDecl(VarDecl decl) {
-        int offset = allocLocal(decl.getName());
         if (decl.getInitializer() != null) {
             emitExpression(decl.getInitializer());
-            buf.mstoreAt(offset);
-        }
+        } else buf.pushInt(0);
+        buf.mstoreAt(allocLocal(decl.getName()));
     }
 
     private void emitExpressionStmt(ExpressionStmt stmt) {
@@ -713,10 +767,13 @@ public final class EvmCodeGen {
         } else if (value instanceof Integer) {
             buf.pushInt((Integer) value);
         } else if (value instanceof Long) {
-            buf.pushInt(((Long) value).intValue());
+            buf.pushInt((Long) value);
         } else if (value instanceof Double) {
-            // EVM doesn't have floating point — truncate
-            buf.pushInt(((Double) value).intValue());
+            throw unsupported(expr, "Floating-point literals are not supported on EVM");
+        } else if (value instanceof BigInteger integer) {
+            buf.push32(integer);
+        } else if (value instanceof Character character) {
+            buf.pushInt(character);
         } else if (value instanceof Boolean) {
             buf.pushInt((Boolean) value ? 1 : 0);
         } else if (value instanceof String) {
@@ -725,17 +782,16 @@ public final class EvmCodeGen {
                     ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             buf.push32(new java.math.BigInteger(1, hash));
         } else {
-            buf.pushInt(0);
+            throw unsupported(expr, "Literal type " + value.getClass().getSimpleName() + " is not supported on EVM");
         }
     }
 
     private void emitVariable(VariableExpr expr) {
         String name = expr.getName().getLexeme();
-        // Check storage first
-        if (storageSlots.containsKey(name)) {
-            buf.sloadSlot(storageSlots.get(name));
-        } else if (locals.containsKey(name)) {
+        if (locals.containsKey(name)) {
             buf.mloadAt(locals.get(name));
+        } else if (storageSlots.containsKey(name)) {
+            buf.sloadSlot(storageSlots.get(name));
         } else if ("msg.sender".equals(name)) {
             buf.emit(EvmOpcode.CALLER);
         } else if ("msg.value".equals(name)) {
@@ -755,8 +811,7 @@ public final class EvmCodeGen {
         } else if ("tx.gasprice".equals(name)) {
             buf.emit(EvmOpcode.GASPRICE);
         } else {
-            // Unknown variable — push 0
-            buf.pushInt(0);
+            throw unsupported(expr, "Unknown EVM variable '" + name + "'");
         }
     }
 
@@ -839,10 +894,12 @@ public final class EvmCodeGen {
                 }
                 break;
             case SLASH:
+                emitNonzeroDivisor();
                 buf.emit(EvmOpcode.SWAP1);        // [b, a]
                 buf.emit(EvmOpcode.DIV);          // a / b (unsigned)
                 break;
             case MOD:
+                emitNonzeroDivisor();
                 buf.emit(EvmOpcode.SWAP1);        // [b, a]
                 buf.emit(EvmOpcode.MOD);          // a % b (unsigned)
                 break;
@@ -875,10 +932,16 @@ public final class EvmCodeGen {
             case LSHIFT:   buf.emit(EvmOpcode.SHL);     break;
             case RSHIFT:   buf.emit(EvmOpcode.SHR);     break;
             default:
-                // Fallback: pop one operand, leave the other
-                buf.emit(EvmOpcode.POP);
-                break;
+                throw unsupported(expr, "Binary operator " + op + " is not supported on EVM");
         }
+    }
+
+    private void emitNonzeroDivisor() {
+        buf.emit(EvmOpcode.DUP1);
+        String nonzero = buf.newLabel();
+        buf.jumpIf(nonzero);
+        buf.revertWithMessage("division by zero");
+        buf.placeLabel(nonzero);
     }
 
     /**
@@ -932,7 +995,7 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.NOT);
                 break;
             default:
-                break;
+                throw unsupported(expr, "Unary operator " + op + " is not supported on EVM");
         }
     }
 
@@ -952,13 +1015,14 @@ public final class EvmCodeGen {
     private void emitAssignment(AssignmentExpr expr) {
         emitExpression(expr.getValue());
         String name = expr.getName().getLexeme();
-        if (storageSlots.containsKey(name)) {
+        if (locals.containsKey(name)) {
+            buf.emit(EvmOpcode.DUP1);
+            buf.mstoreAt(locals.get(name));
+        } else if (storageSlots.containsKey(name)) {
             buf.emit(EvmOpcode.DUP1);        // keep value on stack as expression result
             buf.sstoreSlot(storageSlots.get(name));
         } else {
-            int offset = locals.containsKey(name) ? locals.get(name) : allocLocal(name);
-            buf.emit(EvmOpcode.DUP1);
-            buf.mstoreAt(offset);
+            throw unsupported(expr, "Assignment to unknown EVM variable '" + name + "'");
         }
     }
 
@@ -1075,9 +1139,7 @@ public final class EvmCodeGen {
             }
         }
 
-        // Generic internal call — not directly supported in EVM (functions 
-        // are inlined or dispatched). Push 0 as fallback.
-        buf.pushInt(0);
+        throw unsupported(expr, "Internal or unresolved calls are not supported on EVM");
     }
 
     private void emitGet(GetExpr expr) {
@@ -1150,8 +1212,7 @@ public final class EvmCodeGen {
             }
         }
 
-        // Fallback
-        buf.pushInt(0);
+        throw unsupported(expr, "Member '" + member + "' is not supported on EVM");
     }
 
     private void emitSet(SetExpr expr) {
@@ -1163,8 +1224,7 @@ public final class EvmCodeGen {
             buf.sstoreSlot(storageSlots.get(member));
             return;
         }
-        // Fallback
-        emitExpression(expr.getValue());
+        throw unsupported(expr, "Member assignment is not supported on EVM");
     }
 
     private void emitIndexAccess(IndexExpr expr) {
@@ -1211,8 +1271,7 @@ public final class EvmCodeGen {
             // 4. SLOAD from computed slot
             buf.emit(EvmOpcode.SLOAD);
         } else {
-            // Fallback: treat as array-like access (push 0 for now)
-            buf.pushInt(0);
+            throw unsupported(expr, "Non-storage index access is not supported on EVM");
         }
     }
 
@@ -1260,8 +1319,7 @@ public final class EvmCodeGen {
             buf.emit(EvmOpcode.SWAP1);
             buf.emit(EvmOpcode.SSTORE);
         } else {
-            // Fallback: just evaluate value (no storage)
-            emitExpression(expr.getValue());
+            throw unsupported(expr, "Non-storage index assignment is not supported on EVM");
         }
     }
 
@@ -1388,50 +1446,33 @@ public final class EvmCodeGen {
     }
 
     private void emitPrefixIncrement(PrefixIncrementExpr expr) {
-        Expression target = expr.getTarget();
-        if (target instanceof VariableExpr) {
-            String name = ((VariableExpr) target).getName().getLexeme();
-            if (locals.containsKey(name)) {
-                int offset = locals.get(name);
-                buf.mloadAt(offset);
-                buf.pushInt(1);
-                if (expr.isIncrement()) {
-                    buf.emit(EvmOpcode.ADD);
-                } else {
-                    buf.emit(EvmOpcode.SUB);
-                }
-                buf.emit(EvmOpcode.DUP1);
-                buf.mstoreAt(offset);
-            } else {
-                buf.pushInt(0);
-            }
-        } else {
-            buf.pushInt(0);
-        }
+        emitIncrement(expr.getTarget(), expr.isIncrement(), false);
     }
 
     private void emitPostfixIncrement(PostfixIncrementExpr expr) {
-        Expression target = expr.getTarget();
-        if (target instanceof VariableExpr) {
-            String name = ((VariableExpr) target).getName().getLexeme();
-            if (locals.containsKey(name)) {
-                int offset = locals.get(name);
-                buf.mloadAt(offset);       // push old value
-                buf.emit(EvmOpcode.DUP1);  // dup for return
-                buf.pushInt(1);
-                if (expr.isIncrement()) {
-                    buf.emit(EvmOpcode.ADD);
-                } else {
-                    buf.emit(EvmOpcode.SUB);
-                }
-                buf.mstoreAt(offset);      // store new value
-                // Old value is left on stack
-            } else {
-                buf.pushInt(0);
-            }
-        } else {
-            buf.pushInt(0);
+        emitIncrement(expr.getTarget(), expr.isIncrement(), true);
+    }
+
+    private void emitIncrement(Expression target, boolean addition, boolean postfix) {
+        Integer local = null;
+        Integer slot = null;
+        if (target instanceof VariableExpr variable) {
+            String name = variable.getName().getLexeme();
+            local = locals.get(name);
+            if (local == null) slot = storageSlots.get(name);
+        } else if (target instanceof GetExpr get && get.getObject() instanceof ThisExpr) {
+            slot = storageSlots.get(get.getName().getLexeme());
         }
+        if (local == null && slot == null) {
+            throw unsupported(target, "Increment target is not supported on EVM");
+        }
+        if (postfix) emitExpression(target);
+        emitBinary(new BinaryExpr(target,
+                new dhrlang.lexer.Token(addition ? TokenType.PLUS : TokenType.MINUS, addition ? "+" : "-", 0),
+                new LiteralExpr(1L)));
+        if (!postfix) buf.emit(EvmOpcode.DUP1);
+        if (local != null) buf.mstoreAt(local);
+        else buf.sstoreSlot(slot);
     }
 
     // ── Event emission ───────────────────────────────────────────────────
@@ -1757,6 +1798,13 @@ public final class EvmCodeGen {
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private IllegalStateException unsupported(ASTNode node, String message) {
+        var location = node.getSourceLocation() != null ? node.getSourceLocation()
+                : currentFn != null ? currentFn.getSourceLocation() : contract.getSourceLocation();
+        return new IllegalStateException("EVM codegen: " + message
+                + (location != null ? " at line " + location.getLine() : ""));
+    }
 
     private FunctionDecl findConstructor() {
         for (FunctionDecl fn : contract.getFunctions()) {

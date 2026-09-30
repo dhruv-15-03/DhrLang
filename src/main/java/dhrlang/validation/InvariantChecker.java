@@ -236,127 +236,18 @@ public class InvariantChecker {
     // ── Function Analysis ────────────────────────────────────────────────
 
     private void checkFunction(FunctionDecl fn, List<Invariant> invariants, Set<String> storageFields) {
-        List<Statement> stmts = fn.getBody().getStatements();
-        Set<String> modifiedFields = new HashSet<>();
-
-        // Collect which storage fields this function modifies
-        collectModifiedFields(stmts, storageFields, modifiedFields);
-
-        // Check each invariant against modified fields
-        for (Invariant inv : invariants) {
-            if (!modifiedFields.contains(inv.getFieldName())) continue;
-
-            // Analyze the modification pattern
-            checkInvariantPreservation(fn, inv, stmts, storageFields);
-        }
-    }
-
-    private void collectModifiedFields(List<Statement> stmts, Set<String> storageFields,
-                                        Set<String> modified) {
-        for (Statement stmt : stmts) {
-            if (stmt instanceof ExpressionStmt es) {
-                collectModifiedFieldsFromExpr(es.getExpression(), storageFields, modified);
-            } else if (stmt instanceof IfStmt ifStmt) {
-                collectModifiedFields(ifStmt.getThenBranch(), storageFields, modified);
-                if (ifStmt.getElseBranch() != null) {
-                    collectModifiedFields(ifStmt.getElseBranch(), storageFields, modified);
-                }
-            } else if (stmt instanceof WhileStmt whileStmt) {
-                collectModifiedFields(whileStmt.getBody(), storageFields, modified);
-            } else if (stmt instanceof Block block) {
-                collectModifiedFields(block.getStatements(), storageFields, modified);
-            }
-        }
-    }
-
-    private void collectModifiedFields(Statement stmt, Set<String> storageFields, Set<String> modified) {
-        if (stmt instanceof Block block) {
-            collectModifiedFields(block.getStatements(), storageFields, modified);
-        } else {
-            collectModifiedFields(List.of(stmt), storageFields, modified);
-        }
-    }
-
-    private void collectModifiedFieldsFromExpr(Expression expr, Set<String> storageFields,
-                                                 Set<String> modified) {
-        if (expr instanceof AssignmentExpr assign) {
-            if (true) {
-                String name = assign.getName().getLexeme();
-                if (storageFields.contains(name)) {
-                    modified.add(name);
+        for (GuardAnalysis.Write write : GuardAnalysis.analyze(fn, storageFields)) {
+            for (Invariant invariant : invariants) {
+                if (invariant.getFieldName().equals(write.field())) {
+                    checkValueAgainstInvariant(fn, invariant, write);
                 }
             }
-        } else if (expr instanceof SetExpr se) {
-            modified.add(se.getName().getLexeme());
         }
     }
 
-    private void checkInvariantPreservation(FunctionDecl fn, Invariant inv,
-                                             List<Statement> stmts, Set<String> storageFields) {
-        // `stmts` is the function body, which is also where guard preambles live,
-        // so it doubles as the scope searched for bounds checks.
-        for (Statement stmt : stmts) {
-            checkStatementForViolation(fn, inv, stmt, storageFields, stmts);
-        }
-    }
-
-    private void checkStatementForViolation(FunctionDecl fn, Invariant inv,
-                                             Statement stmt, Set<String> storageFields,
-                                             List<Statement> guardScope) {
-        if (stmt instanceof ExpressionStmt es) {
-            checkExprForViolation(fn, inv, es.getExpression(), guardScope);
-        } else if (stmt instanceof IfStmt ifStmt) {
-            checkStatementForViolation(fn, inv, ifStmt.getThenBranch(), storageFields, guardScope);
-            if (ifStmt.getElseBranch() != null) {
-                checkStatementForViolation(fn, inv, ifStmt.getElseBranch(), storageFields, guardScope);
-            }
-        } else if (stmt instanceof WhileStmt whileStmt) {
-            checkStatementForViolation(fn, inv, whileStmt.getBody(), storageFields, guardScope);
-        } else if (stmt instanceof Block block) {
-            for (Statement s : block.getStatements()) {
-                checkStatementForViolation(fn, inv, s, storageFields, guardScope);
-            }
-        }
-    }
-
-    private void checkExprForViolation(FunctionDecl fn, Invariant inv, Expression expr,
-                                        List<Statement> guardScope) {
-        if (expr instanceof AssignmentExpr assign) {
-            String target = assign.getName().getLexeme();
-            if (!inv.getFieldName().equals(target)) return;
-
-            checkValueAgainstInvariant(fn, inv, assign.getValue(), guardScope);
-        }
-    }
-
-    /**
-     * Decide whether {@code field = <left> - <right>} is bounded by a preceding
-     * check, and therefore cannot drive the field negative.
-     *
-     * <p>A subtraction is only safe when something already established that the
-     * subtrahend does not exceed the minuend. That demands a guard comparing the
-     * two <em>against each other</em>; a guard that merely mentions one of them
-     * (say {@code if (amount <= 0)}) proves nothing about their relationship.
-     * When the subtrahend is not a simple variable there is no name to relate,
-     * so the weaker test — the field itself appears in some bounds check — is
-     * used instead.</p>
-     */
-    private boolean isSubtractionGuarded(Invariant inv, BinaryExpr subtraction,
-                                          List<Statement> guardScope) {
-        String subtrahend = GuardAnalysis.simpleName(subtraction.getRight());
-        if (subtrahend != null) {
-            String minuend = GuardAnalysis.simpleName(subtraction.getLeft());
-            if (minuend == null) {
-                minuend = inv.getFieldName();
-            }
-            return GuardAnalysis.hasRelationalGuard(guardScope, minuend, subtrahend)
-                    || GuardAnalysis.hasRelationalGuard(guardScope, inv.getFieldName(), subtrahend);
-        }
-        return GuardAnalysis.collectGuardedVariables(guardScope).contains(inv.getFieldName());
-    }
-
-    private void checkValueAgainstInvariant(FunctionDecl fn, Invariant inv, Expression value,
-                                             List<Statement> guardScope) {
+    private void checkValueAgainstInvariant(FunctionDecl fn, Invariant inv, GuardAnalysis.Write write) {
+        Expression value = write.value();
+        SourceLocation location = write.location() != null ? write.location() : fn.getSourceLocation();
         switch (inv.getKind()) {
             case NON_NEGATIVE -> {
                 // field = field - amount → can go negative unless amount was
@@ -365,19 +256,19 @@ public class InvariantChecker {
                 // look like a defect.
                 if (value instanceof BinaryExpr bin
                         && bin.getOperator().getType() == dhrlang.lexer.TokenType.MINUS
-                        && !isSubtractionGuarded(inv, bin, guardScope)) {
+                        && !write.bounds().guards(bin)) {
                     violations.add(new Violation(inv, fn.getName(),
                             "Subtraction on '" + inv.getFieldName()
                                     + "' could produce a negative value. "
                                     + "Add a guard: if (amount > " + inv.getFieldName() + ") { throw \"...\"; }",
-                            fn.getSourceLocation()));
+                            location));
                 }
                 // Check if assigned a literal negative
                 if (value instanceof UnaryExpr unary
                         && unary.getOperator().getType() == dhrlang.lexer.TokenType.MINUS) {
                     violations.add(new Violation(inv, fn.getName(),
                             "Direct negative assignment to '" + inv.getFieldName() + "'.",
-                            fn.getSourceLocation()));
+                            location));
                 }
             }
             case NOT_NULL_ADDRESS -> {
@@ -387,7 +278,7 @@ public class InvariantChecker {
                     violations.add(new Violation(inv, fn.getName(),
                             "Assignment of zero/null address to '" + inv.getFieldName()
                                     + "'. Add a null-address check.",
-                            fn.getSourceLocation()));
+                            location));
                 }
             }
             case MONOTONIC_INC -> {
@@ -397,7 +288,7 @@ public class InvariantChecker {
                     violations.add(new Violation(inv, fn.getName(),
                             "Monotonically increasing field '" + inv.getFieldName()
                                     + "' is being decreased.",
-                            fn.getSourceLocation()));
+                            location));
                 }
             }
             case MONOTONIC_DEC -> {
@@ -406,7 +297,7 @@ public class InvariantChecker {
                     violations.add(new Violation(inv, fn.getName(),
                             "Monotonically decreasing field '" + inv.getFieldName()
                                     + "' is being increased.",
-                            fn.getSourceLocation()));
+                            location));
                 }
             }
             default -> { /* CUSTOM, UPPER_BOUND, LOWER_BOUND — future work */ }

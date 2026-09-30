@@ -55,6 +55,7 @@ vscode-extension/node_modules/
 vscode-extension/out/
 vscode-extension/*.vsix
 vscode-extension/.vscode-test/
+src/test/evm/node_modules/
 vscode-extension/src/test/fixtures/workspace/*.jar
 *.ipr
 out/

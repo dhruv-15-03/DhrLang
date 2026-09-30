@@ -40,6 +40,26 @@ extension-only changes; they were never cut as language tags.
 ## [Unreleased]
 
 ### Fixed
+- Preserve EVM integer literals above 32 bits and full-width negative words.
+  Reject unsupported internal calls, floating-point literals, unknown variables
+  and unsupported AST forms instead of generating success-shaped defaults.
+- Emit `throw` as a real revert, decode scalar constructor arguments from
+  appended initcode, reject missing arguments, and correct receive/fallback
+  stack handling, local-variable precedence, block scoping and checked increments.
+- Stop applying size-changing peephole rewrites after jump and runtime-copy
+  offsets have been fixed. Such rewriting could install shifted runtime bytecode.
+  Standalone constant folding no longer truncates arithmetic to eight bits.
+- Give inherited storage fields distinct base-first slots; report ambiguous
+  shadowed storage rather than silently accessing the wrong slot.
+- Replace name-only guard detection with bounds attached to individual writes.
+  Wrong-direction, empty, late, branch-local and invalidated checks no longer
+  suppress invariant findings. Unknown analysis failures are reported instead
+  of silently producing an incomplete successful audit.
+- Label token/wallet/vault examples as incomplete teaching scaffolds. Validate
+  the multisig receive value and mark the reward-rate reader `@view`, allowing
+  the now-fail-fast contract compilation job to check all four examples.
+- Add independent EthereumJS execution tests for actual deployment, numeric
+  boundaries, checked/wrapping operations, reverts, calldata and state changes.
 - Keep the thin Maven/application JAR in `build/libs/plain/`, separate from the
   standalone `shadowJar`. Distribution tasks no longer overwrite the executable
   compiler with an artifact missing its signing dependencies. Maven publication

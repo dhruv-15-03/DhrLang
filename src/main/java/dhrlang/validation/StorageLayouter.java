@@ -113,10 +113,12 @@ public class StorageLayouter {
     public void layoutAll(Program program) {
         layouts.clear();
         overflowContracts.clear();
+        Map<String, ClassDecl> classes = new HashMap<>();
+        for (ClassDecl declaration : program.getClasses()) classes.put(declaration.getName(), declaration);
         
         for (ClassDecl classDecl : program.getClasses()) {
             if (classDecl.isContract()) {
-                ContractLayout layout = layoutContract(classDecl);
+                ContractLayout layout = layoutContract(classDecl, classes);
                 layouts.put(classDecl.getName(), layout);
                 
                 if (layout.getTotalSlots() > MAX_STORAGE_SLOTS) {
@@ -129,12 +131,17 @@ public class StorageLayouter {
     /**
      * Compute the storage layout for a single contract.
      */
-    private ContractLayout layoutContract(ClassDecl contract) {
+    private ContractLayout layoutContract(ClassDecl contract, Map<String, ClassDecl> classes) {
         List<SlotInfo> slots = new ArrayList<>();
         int slotIndex = 0;
-        
-        for (VarDecl field : contract.getVariables()) {
+        List<VarDecl> fields = new ArrayList<>();
+        collectFields(contract, classes, new HashSet<>(), fields);
+        Set<String> names = new HashSet<>();
+        for (VarDecl field : fields) {
             if (field.isStorage()) {
+                if (!names.add(field.getName())) {
+                    throw new IllegalArgumentException("Ambiguous inherited storage field: " + field.getName());
+                }
                 int size = getFieldStorageSize(field.getType());
                 slots.add(new SlotInfo(field.getName(), field.getType(), slotIndex, size));
                 slotIndex++;
@@ -142,6 +149,20 @@ public class StorageLayouter {
         }
         
         return new ContractLayout(contract.getName(), slots);
+    }
+
+    private void collectFields(ClassDecl contract, Map<String, ClassDecl> classes,
+                               Set<String> ancestors, List<VarDecl> fields) {
+        if (!ancestors.add(contract.getName())) {
+            throw new IllegalArgumentException("Cyclic storage inheritance: " + contract.getName());
+        }
+        if (contract.getSuperclass() != null) {
+            String name = contract.getSuperclass().getName().getLexeme();
+            ClassDecl parent = classes.get(name);
+            if (parent == null) throw new IllegalArgumentException("Unknown storage superclass: " + name);
+            collectFields(parent, classes, ancestors, fields);
+        }
+        fields.addAll(contract.getVariables());
     }
     
     /**

@@ -320,7 +320,9 @@ public final class AuditReportGenerator {
                             contractName + "." + risk.getFunctionName(),
                             riskLine);
                 }
-            } catch (Exception ignored) {}
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException("Arithmetic analysis failed for " + contractName, failure);
+            }
 
             // SecurityAnalyzer (taint, privilege, loop bounds)
             try {
@@ -343,7 +345,9 @@ public final class AuditReportGenerator {
                             contractName + (sf.getFunctionName() != null ? "." + sf.getFunctionName() : ""),
                             secLine);
                 }
-            } catch (Exception ignored) {}
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException("Security analysis failed for " + contractName, failure);
+            }
 
             // InvariantChecker
             try {
@@ -361,7 +365,9 @@ public final class AuditReportGenerator {
                             contractName + "." + v.getFunctionName(),
                             invLine);
                 }
-            } catch (Exception ignored) {}
+            } catch (RuntimeException failure) {
+                throw new IllegalStateException("Invariant analysis failed for " + contractName, failure);
+            }
         }
     }
 

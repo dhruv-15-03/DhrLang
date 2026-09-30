@@ -112,6 +112,10 @@ public class EvmCodeBuffer {
 
     /** Emit PUSH32 with a 32-byte big-endian value. */
     public void push32(BigInteger value) {
+        if (value.bitLength() > 256) {
+            throw new IllegalArgumentException("EVM word exceeds 256 bits");
+        }
+        if (value.signum() < 0) value = value.mod(BigInteger.ONE.shiftLeft(256));
         emit(EvmOpcode.PUSH32);
         byte[] raw = value.toByteArray();
         // Pad to 32 bytes
