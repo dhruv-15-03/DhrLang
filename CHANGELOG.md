@@ -4,19 +4,583 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project adheres to Semantic Versioning.
 
+`./gradlew verifyReleaseConsistency` runs as part of `check` and fails the build if
+`project.version` is missing from this file, if a version is listed twice, or if the
+bundled VS Code extension disagrees with the language version.
+
+## Release history
+
+Headline change per release. Full detail in the sections below.
+
+| Version | Date | What shipped |
+|---|---|---|
+| [4.0.2](#402---2026-09-05) | 2026-09-05 | Bounded the reference contracts so they pass the project's own audit; Marketplace publishing restored |
+| [4.0.1](#401---2026-07-27) | 2026-07-27 | Bundled extension aligned with the language release |
+| [4.0.0](#400---2026-07-01) | 2026-07-01 | **Breaking:** checked arithmetic by default |
+| [3.13.0](#3130---2026-06-30) | 2026-06-30 | `SpecProver` — static discharge of `@ensures` / `@invariant` |
+| [3.12.0](#3120---2026-06-29) | 2026-06-29 | |
+| [3.11.0](#3110---2026-06-28) | 2026-06-28 | |
+| [3.10.0](#3100---2026-06-27) | 2026-06-27 | |
+| [3.9.0](#390---2026-06-26) | 2026-06-26 | |
+| [3.8.0](#380---2026-06-25) | 2026-06-25 | Contract stdlib templates |
+| [3.6.0](#360---2026-06-23) | 2026-06-23 | Contract fuzzing (`SpecFuzzEngine`) |
+| [3.5.0](#350---2026-06-20) | 2026-06-20 | |
+| [3.3.0](#330---2026-06-18) | 2026-06-18 | |
+| [3.2.1](#321---2026-06-17) | 2026-06-17 | |
+| [3.2.0](#320---2026-06-17) | 2026-06-17 | |
+| [3.1.0](#310---2026-06-17) | 2026-06-17 | |
+| [3.0.0](#300---2026-04-25) | 2026-04-25 | EVM backend |
+| [2.0.0](#200---2026-03-05) | 2026-03-05 | |
+| [1.1.3](#113---2025-11-23) | 2025-11-23 | |
+| [1.0.0](#100---2025-09-23) | 2025-09-23 | First release |
+
+Versions suffixed `-dev` or `-extension` are development snapshots and
+extension-only changes; they were never cut as language tags.
+
 ## [Unreleased]
+
+### Added
+- Isolated `LOCAL_CAP_MOCK_ADAPTER` example using pinned CAP Java/CDS tooling,
+  actual OData action handlers, mock-authenticated actor/tenant context and the
+  existing bounded DhrLang runner. Canonical string revisions preserve exact
+  values across JSON clients. Framework and executable-JAR tests cover
+  authorization, typed inputs, failures, reconciliation and compiler identity.
+  No live SAP/BTP connection, production persistence or compiler dependency change.
+- Offline `learn enterprise` purchase-approval lab: shared DhrLang/Java fixtures,
+  explicit currency and exact-integer profile limits, and an in-memory mock host
+  with actor/tenant checks, payload-bound idempotency, optimistic revisions and
+  explicit retry/reconciliation outcomes. Rejected inputs do not mutate request
+  state or budgets. This is not CAP/SAP integration or production qualification.
+- Experimental offline `doctor` and `learn` commands: ten incorrect starters,
+  transparent practice cases, progressive hints, bounded grading and explicit
+  local result/progress files. Opt-in traces record a bounded source-linked
+  instruction prefix without program values, using unoptimized bytecode.
+  These are source-build features, not additions to the published v4.0.2 binary
+  or evidence of a completed human learner pilot.
+- Experimental manifest-based `project check/run` commands for ordered local
+  source files. Units are parsed independently, share the existing namespace and
+  run through the bounded host. Paths, source budgets, duplicates and exact
+  compiler versions are validated. No imports or numeric-default changes.
+- Experimental `host <request.json>` protocol for process-separated JVM bytecode
+  execution with explicit input, structured status/diagnostics, source identity,
+  wall-clock/step/heap/output budgets and an allowlisted deterministic native
+  surface. The child does not inherit credentials or JVM injection options.
+  This is not an OS sandbox or production multi-tenant service.
+
+### Fixed
+- Preserve the `throw` token's location on its AST statement so source-linked
+  execution evidence points to the throw site.
+- Report the executed compiler JAR's manifest version in host/grading results,
+  rather than the embedding Java caller's development-package version.
+- Preserve filenames and spans across project parsing and synthetic tokens;
+  distinguish same-position diagnostics in separate files and retain per-file
+  warning directives.
+- Report unterminated block comments instead of silently accepting an incomplete
+  source unit.
+- Preserve explicit output/time-limit failures when terminating a Linux worker
+  closes its output pipes; unrelated stream errors still fail visibly.
+- Update the extension's runtime `brace-expansion` dependency to the compatible
+  2.1.7 patch for newly reported recursion/CPU-exhaustion advisories.
+- Propagate uncaught IR/bytecode exceptions to the caller with their runtime
+  category instead of silently returning success. Typed catch handlers retain
+  those categories, including null-valued throws. Dead-store elimination retains
+  potentially throwing computations even when their results are unused.
+  Resolve implicit static/instance field reads and assignments
+  in the IR backend rather than substituting null or a new local.
+- Preserve EVM integer literals above 32 bits and full-width negative words.
+  Reject unsupported internal calls, floating-point literals, unknown variables
+  and unsupported AST forms instead of generating success-shaped defaults.
+- Emit `throw` as a real revert, decode scalar constructor arguments from
+  appended initcode, reject missing arguments, and correct receive/fallback
+  stack handling, local-variable precedence, block scoping and checked increments.
+- Stop applying size-changing peephole rewrites after jump and runtime-copy
+  offsets have been fixed. Such rewriting could install shifted runtime bytecode.
+  Standalone constant folding no longer truncates arithmetic to eight bits.
+- Give inherited storage fields distinct base-first slots; report ambiguous
+  shadowed storage rather than silently accessing the wrong slot.
+- Replace name-only guard detection with bounds attached to individual writes.
+  Wrong-direction, empty, late, branch-local and invalidated checks no longer
+  suppress invariant findings. Unknown analysis failures are reported instead
+  of silently producing an incomplete successful audit.
+- Label token/wallet/vault examples as incomplete teaching scaffolds. Validate
+  the multisig receive value and mark the reward-rate reader `@view`, allowing
+  the now-fail-fast contract compilation job to check all four examples.
+- Add independent EthereumJS execution tests for actual deployment, numeric
+  boundaries, checked/wrapping operations, reverts, calldata and state changes.
+- Keep the thin Maven/application JAR in `build/libs/plain/`, separate from the
+  standalone `shadowJar`. Distribution tasks no longer overwrite the executable
+  compiler with an artifact missing its signing dependencies. Maven publication
+  keeps the thin JAR and declared dependencies without a duplicate Shadow variant.
+- Stage the compiler from the Gradle task output at `build/compiler/DhrLang.jar`;
+  CI, contract audits, Docker and release packaging no longer guess a JAR from a
+  directory listing. Packaged-runtime tests check isolated crypto/signing, CLI
+  execution and framed LSP requests.
+- Build one self-contained VSIX with locked packaging tools and a SHA-256 manifest.
+  Marketplace publication consumes that exact compiler-release VSIX instead of
+  rebuilding a different package under the same version. The extension release is
+  created only after publication and a Marketplace version check succeed.
+- Run release consistency and packaged-artifact gates in CI, verify downloaded
+  artifacts, and leave compiler-release publication to `release.yml` alone.
+
+## [4.0.2] - 2026-09-05
+
+### Security
+- Bounded every accumulating field in the reference contracts under
+  `input/contracts/`. DhrLang's own `ArithmeticOverflowDetector` rated six
+  additions across them HIGH, and `contract-audit.yml` was publishing those
+  findings to the repository's Security tab. The findings were correct: each
+  function guarded its operand and never its result. `ERC20Token` and
+  `ERC721NFT` now take a `maxSupply`, `MultiSigWallet` a `maxTransactions`, and
+  `StakingVault` a `maxTotalStaked` and `maxStakers`, each validated in the
+  constructor. HIGH `ARITH-*` findings: 6 to 0.
+
+  Guards are written as `acc > MAX - operand` rather than `acc + operand > MAX`,
+  because the second form performs the very addition it is meant to protect and
+  overflows before the comparison can reject it. Where the subtraction could
+  itself underflow, the operand is bounded first.
+
+### Fixed
+- `vscode-extension/tsconfig.json` pinned `typeRoots` to the extension's own
+  `node_modules/@types`. `tsc` walks parent directories looking for `@types`, so
+  packages installed above the checkout leaked into the build and failed the
+  local compile with errors from `@types/jest` and `@types/react-dom`, neither of
+  which the extension depends on. CI never reproduced it, because a fresh runner
+  has nothing above the checkout.
+- Corrected 35 stale `DhrLang-3.x.x.jar` references across `docs/GETTING_STARTED.md`
+  and `BLOCKCHAIN_TUTORIAL.md`. The tutorial alone cited four different jar
+  versions (3.0.0, 3.6.0, 3.8.0, 3.13.0), so copied commands did not run.
+- The tutorial's `MyToken` example taught the unbounded `totalSupply + amount`
+  pattern that the analyser flags. It now matches the shipped contracts.
+
+### Changed
+- The VS Code extension is published to the Marketplace again. The publish
+  workflow triggers on `vscode-v*` tags and no such tag had been pushed since
+  3.x, so the Marketplace served 3.0.1 while the repository was on 4.0.1.
+- Dependencies: Gradle wrapper 8.13 to 9.7.0 with the build migrated to Gradle 9,
+  JUnit Jupiter, SpotBugs, Jackson, and the grouped GitHub Actions updates.
+
+### Known issues
+- `InvariantChecker` reports `INV-NON_NEGATIVE` on `ERC20Token.burn()` even
+  though the function already carries the exact guard the message recommends.
+  `checkValueAgainstInvariant` flags any subtraction from a non-negative field
+  without inspecting preceding guards; the source notes this with
+  `// For now, warn if subtraction has no preceding guard`. Fixing it means
+  teaching `InvariantChecker` the guard collection that
+  `ArithmeticOverflowDetector` already implements.
+
+## [4.0.1] - 2026-07-27
+
+### Fixed
+- Aligned the bundled VS Code extension version with the DhrLang release so the v4.0.1
+  release publishes `dhrlang-vscode-4.0.1.vsix` instead of carrying a stale 3.x asset.
+- Repaired the release-to-distribution workflow handoff and Docker JAR lookup so tagged
+  releases can build the downstream distribution packages from the published JAR.
+- Grouped weekly Dependabot updates by ecosystem to prevent stale per-dependency PR walls.
+
+## [4.0.0] - 2026-07-01
+
+### Changed (BREAKING)
+- **Checked arithmetic is now the default.** `num`/`duo` `+`, `-`, `*` on the EVM
+  backend now **revert on overflow/underflow** by default (`"arithmetic overflow"` /
+  `"arithmetic underflow"`), matching the **Solidity 0.8+** model. Previously the
+  alpha default was silent two's-complement **wrapping** modulo 2^256.
+  - This is the single breaking change that tags **v4.0.0**. Bytecode for any
+    contract with unannotated arithmetic changes (overflow guards are now emitted),
+    so gas costs rise slightly and math that previously wrapped now reverts.
+  - The static prover (`contract prove`) and spec fuzzer (`contract fuzz`) mirror the
+    new default, so they now reflect checked semantics for unannotated code â€” `prove`
+    discharges `@ensures`/`@invariant` for unannotated functions without `@checked`.
+
+  **Migration** â€” to preserve the old wrapping behaviour, annotate the method with
+  `@unchecked`:
+
+  ```dhrlang
+  // v3.x behaviour (wrap modulo 2^256) â€” opt back in explicitly:
+  @unchecked
+  kaam wrappingAdd(num a, num b) {
+      total = a + b;
+  }
+  ```
+
+  Methods already annotated `@checked` or `@unchecked` are **unaffected**: the
+  per-method annotation always overrides the default. Most contracts want the new
+  checked default and need no change.
+
+## [3.13.0] - 2026-06-30
+
+### Added
+- **`dhrlang contract prove`** â€” experimental static proving (provable-safety
+  level **L2b**). Where `contract fuzz` *samples* inputs hunting for a
+  counterexample, `prove` attempts a **universal proof** of each `@ensures`
+  postcondition and `@invariant` over *all* inputs:
+  - Symbolic execution with path forking on `if`/`@requires`, normalizing
+    integer expressions into a linear-arithmetic IR (`LinearForm`).
+  - A hand-rolled **Fourierâ€“Motzkin** elimination decision procedure discharges
+    each obligation, reporting `PROVED`, `REFUTED`, or `UNKNOWN`.
+  - Every `REFUTED` obligation carries a **concrete counterexample**,
+    cross-checked by the L3 `SpecFuzzEngine` so a refutation is never a false
+    alarm (e.g. `@ensures(result > a)` on `add` â‡’ `REFUTED a=0, b=0`).
+  - Proving is **sound only under checked arithmetic**, so it is enabled for
+    `@checked` functions; otherwise the obligation degrades to `UNKNOWN`
+    (refutation still runs). Loops, mappings, and external calls are reported
+    `UNKNOWN` rather than guessed.
+  - `--bound=<n>` tunes the refutation search radius (default 8). `--json`
+    emits a machine-readable report. Exits non-zero when any obligation is
+    refuted, so it doubles as a **CI gate** alongside `fuzz`/`safety`.
+
+### Notes
+- Additive and non-breaking: a new `proving` package (`SpecProver`,
+  `LinearForm`) and a new CLI subcommand; nothing in existing behavior changes.
+- Marked **experimental**: the prover is intentionally conservative â€” it only
+  reports `PROVED` when a linear-arithmetic proof goes through, and never
+  reports `REFUTED` without a witnessing concrete execution.
+
+## [3.12.0] - 2026-06-29
+
+### Added
+- **One-command verified deploy loop** for `dhrlang contract deploy`:
+  - Every deploy path now writes a **Foundry-compatible broadcast artifact**
+    (`broadcast/Deploy.s.sol/<chainId>/run-latest.json`, dry runs nested under
+    `dry-run/`) recording each CREATE transaction, the deployed/predicted address,
+    and - for live deploys - the receipt. Drops a DhrLang deployment straight into
+    Foundry-shaped tooling (verifiers, indexers, CI).
+  - `--verify` chains source verification after a successful live deploy, so a
+    contract is deployed **and** verified in a single command. Degrades gracefully
+    when no explorer API key is set (prints the manual follow-up).
+  - `--from=<0x..>` sets the deployer used to **predict** CREATE addresses in a
+    dry run. Dry runs now print each contract's deterministic predicted address
+    (`keccak256(rlp([sender, nonce]))[12:]`); local deploys default to Anvil
+    account #0, so `deploy --network=local --dry-run` predicts the canonical
+    `0x5fbd...0aa3` first-deploy address.
+- **`WalletManager.computeCreateAddress(sender, nonce)`** and a new
+  **`BroadcastArtifact`** builder back the above. Address prediction is validated
+  byte-for-byte against ethers.js v6 `getCreateAddress` vectors across the RLP
+  nonce boundaries (0, 1, 127, 128, 256).
+
+### Fixed
+- The generated Foundry deploy script declared `contract Deploy extends Script`
+  (invalid Solidity); it now correctly emits `contract Deploy is Script`.
+
+### Notes
+- Additive and non-breaking: contracts that don't pass `--verify`/`--from` deploy
+  exactly as before, plus the new broadcast artifact. A CI smoke test runs an
+  offline dry-run deploy and asserts the broadcast artifact and predicted address.
+
+## [3.11.0] - 2026-06-28
+
+### Added
+- **Offline ERC-4337 account abstraction** via a new `dhrlang contract account`
+  subcommand - build and hash UserOperations entirely off-chain (no bundler or RPC
+  node required):
+  - `contract account entrypoint [--version=0.6|0.7]` prints the canonical EntryPoint
+    address (v0.6 `0x5FF1...2789`, v0.7 `0x0000...a032`), identical on every EVM chain
+    via CREATE2.
+  - `contract account userop --sender=0x.. [--nonce=N] [--call-data=0x..]
+    [--init-code=0x..] [--paymaster-data=0x..] [--call-gas=..] [--verification-gas=..]
+    [--pre-verification-gas=..] [--max-fee=..] [--max-priority-fee=..]
+    [--network=<name>]` builds a v0.6 UserOperation, prints it in the
+    `eth_sendUserOperation` JSON shape, and computes the deterministic **`userOpHash`** -
+    the exact value the smart-account owner signs. `--json` emits a machine-readable
+    object.
+- **`AccountAbstraction`** deploy helper: EntryPoint registry plus the canonical v0.6
+  `userOpHash = keccak256(abi.encode(keccak256(pack(op)), entryPoint, chainId))`, where
+  `pack` is the 10-field `abi.encode` (signature excluded). Reuses the existing
+  dependency-free keccak-256, and is validated byte-for-byte against ethers.js v6
+  reference vectors (chain-id domain separation included).
+
+### Notes
+- Additive and non-breaking. The hash is chain-scoped, so the same UserOperation yields
+  a different `userOpHash` per network (e.g. mainnet vs Polygon).
+- v0.7 EntryPoint **address** lookup is supported; v0.7 `userOpHash` (a different packing)
+  is intentionally rejected by `account userop` - use `--version=0.6` (the default).
+- Bundler submission (`eth_sendUserOperation`) remains out of scope (it needs a live
+  bundler); the emitted JSON is ready to pipe to one.
+
+## [3.10.0] - 2026-06-27
+
+### Added
+- **Twelve more supported chains**, taking the deployment registry from 9 to 21
+  networks and activating first-class **ZK rollup** support (`ChainType.L2_ZK`):
+  - **ZK rollups (mainnet + testnet):** zkSync Era (`324`) / zkSync Sepolia (`300`),
+    Polygon zkEVM (`1101`) / Cardona (`2442`), Scroll (`534352`) / Scroll Sepolia
+    (`534351`), Linea (`59144`) / Linea Sepolia (`59141`).
+  - **Optimistic rollup:** Blast (`81457`) / Blast Sepolia (`168587773`).
+  - **Filled-in testnets for existing chains:** Optimism Sepolia (`11155420`) and
+    Polygon Amoy (`80002`, replacing the deprecated Mumbai).
+- Each chain ships its canonical chain ID, public RPC endpoint, block-explorer URL,
+  native token and EIP-1559 flag, and is reachable from `contract deploy` /
+  `contract verify` via `--network=<name>` using friendly aliases (e.g. `zksync`,
+  `era`, `zkevm`, `scroll`, `linea`, `blast`, `amoy`, `op-sepolia`) or the raw
+  numeric chain ID. `contract networks` lists them all.
+
+### Notes
+- Additive and non-breaking: no existing chain entry, alias, or default changed.
+- zkSync Era is flagged as non-EIP-1559 (it uses a native fee model); the other ZK
+  rollups accept standard type-2 transactions.
+
+## [3.9.0] - 2026-06-26
+
+### Added
+- **First-class `msg.data` and `msg.sig` in contract code.** The transaction-context
+  surface now exposes the raw calldata alongside `msg.sender` / `msg.value`, closing the
+  last `msg.*` language gap:
+  - `msg.data.length` reads the calldata size, lowering on the EVM to the `CALLDATASIZE`
+    opcode. It is typed as `uint256` (freely assignable to `num`).
+  - `msg.sig` reads the 4-byte function selector (the first calldata word, right-aligned),
+    lowering to `calldataload(0) >> 224` - the exact extraction the function dispatcher
+    already performs. Also typed as `uint256`.
+
+  Both are usable anywhere a number is expected, including `@view` getters and
+  design-by-contract `@requires` / `@ensures` specs. Because they read transaction
+  context, `@pure` methods reject them and `@view` methods allow them - identical to
+  `msg.sender`, and enforced automatically by the existing view/pure checker.
+
+### Notes
+- Additive and non-breaking: existing contracts compile identically.
+- DhrLang has no dynamic `bytes` value type, so `msg.data` has no scalar form. It is
+  intentionally usable **only** as `msg.data.length`; using bare `msg.data` as a value,
+  or reading any other `msg.data.<x>`, is a type error whose hint points at `.length`
+  and `msg.sig`.
+- VS Code extension stays at 3.0.1 (no editor-facing change this release).
+
+## [3.8.0] - 2026-06-25
+
+### Added
+- **`contract stdlib` - browse & scaffold the standard base-contract library.** A new
+  subcommand exposes the eight OpenZeppelin-style base contracts that previously lived
+  as dead code, turning them into a real, discoverable starting point for new contracts:
+  - `dhrlang contract stdlib list` prints the catalog (Ownable, ReentrancyGuard,
+    Pausable, SafeMath, ERC20, ERC721, AccessControl, TimelockController) with a
+    one-line description for each.
+  - `dhrlang contract stdlib show <Name>` prints a template's DhrLang source to stdout.
+  - `dhrlang contract stdlib new <Name> [--name=<Custom>] [--output=<dir>]` scaffolds
+    `<Name>.dhr` (or `<Custom>.dhr`, renaming the contract class) into the output
+    directory, refusing to overwrite an existing file.
+
+  Every template is validated by the build: `ContractStdlibTest` compiles all eight
+  through the real Lexer -> Parser -> TypeChecker -> EVM pipeline and asserts a
+  non-empty ABI, so the library can never silently rot again. The token templates
+  (ERC20/ERC721) ship as honest **starter scaffolds** - transfer/balance bookkeeping is
+  stubbed for you to fill in; Ownable, Pausable, ReentrancyGuard, SafeMath,
+  AccessControl and TimelockController are complete patterns.
+
+- **`address(num)` builtin - first-class numeric-to-Address cast.** DhrLang now
+  understands `address(0)` (the zero address) and `address(n)` generally, lowering on
+  the EVM to a 160-bit mask (`x AND 0xff..ff`). This closes a real language gap: there
+  was previously no way to write a zero/sentinel address in source, which is exactly
+  what owner-guard patterns (`if (newOwner == address(0)) { ... }`) need. The
+  type-checker types `address(x)` as `Address`, requires a single numeric argument, and
+  reports a clear error otherwise (`DHR-E601` arity / `DHR-E201` type mismatch).
+
+### Notes
+- Additive and non-breaking: existing contracts compile identically. The `address`
+  builtin occupies a previously unused call name (lowercase `address`; the capitalised
+  `Address` type keyword is unaffected).
+
+### Added
+- **`contract export` - framework-ready interop artifacts (Hardhat, Foundry,
+  viem/wagmi).** A new subcommand that compiles every `@contract` in a source file
+  and emits the artifacts the surrounding EVM ecosystem already knows how to consume,
+  so a DhrLang contract drops straight into an existing JavaScript/TypeScript or
+  Solidity-tooling project.
+  - **Hardhat.** Writes `hardhat/<Name>.json` in the `hh-sol-artifact-1` shape
+    (`_format`, `contractName`, `sourceName`, `compiler`, `abi`, `bytecode`,
+    `deployedBytecode`, `linkReferences`), readable by Hardhat, ethers, viem and wagmi.
+  - **Foundry.** Writes `foundry/<Name>.json` matching the shape `forge` emits under
+    `out/` (`abi`, `bytecode.object`, `deployedBytecode.object`, `metadata`).
+  - **viem / wagmi.** Writes `ts/<Name>.ts` exporting the ABI `as const` (the assertion
+    that unlocks viem's compile-time type inference) plus `0x`-prefixed creation and
+    runtime bytecode constants, and a `ts/index.ts` barrel re-exporting every module.
+  - **Selectable output.** `--format=all|hardhat|foundry|ts` (default `all`) picks which
+    targets to emit; `--output=<dir>` chooses the destination (default `build/contracts`).
+    The same per-contract `AbiGenerator` selectors back both the ABI entries and the
+    bytecode, so off-chain decoders line up with on-chain dispatch.
+
+### Notes
+- Additive, non-breaking. `export` is a pure, read-only projection of the compiled
+  artifacts - it touches no codegen, audit or SARIF path, so existing behavior and the
+  Security Audit alerts are unaffected. All generated output is plain ASCII for
+  byte-for-byte deterministic artifacts across platforms.
+
+## [3.6.0] - 2026-06-23
+
+### Added
+- **Smart-contract safety report with a CI gate (`contract safety`), provable
+  safety layer L4.** A new subcommand that folds the L3 specification fuzzer into
+  the static security audit and turns the result into a single, gradeable safety
+  artifact.
+  - **Unified analysis.** `dhrlang contract safety token.dhr` runs the full
+    `AuditReportGenerator` deep analysis (reentrancy, `tx.origin`, taint-to-storage,
+    arithmetic overflow, access-control and view/pure detectors) *and*, opt-in, the
+    L3 fuzzer. Each invariant/postcondition counterexample the fuzzer finds is folded
+    back in as a HIGH-severity `FUZZ-INVARIANT` (or `FUZZ-EXCEPTION`) finding carrying
+    the **minimized counterexample**, so spec bugs and code smells surface in one place.
+  - **Safety score + letter grade.** The report derives a `safetyScore`
+    (`100 - riskScore`) and an A-F `safetyGrade` (A >= 90, B >= 75, C >= 60, D >= 40,
+    F < 40), so a contract's posture is a single, glanceable number.
+  - **Human + machine output.** Emits a GitHub-flavored **Markdown report** (score,
+    severity table, per-contract table, findings + details) to stdout, or JSON with
+    `--json`. It also writes `safety.sarif` (GitHub Code Scanning ingestible) and
+    `safety-report.md` to the output directory for CI job summaries.
+  - **CI gate.** `--fail-on=critical|high|medium|low|none` sets the severity threshold
+    (default `high`); the command exits non-zero when any finding meets it, so
+    `contract safety` drops straight into a pipeline. `--fail-on=none` disables the
+    gate (report-only).
+
+### Notes
+- Additive, non-breaking. The existing `--audit`/`--sarif` path is unchanged, so the
+  Security Audit workflow and its Code Scanning alerts are unaffected. Fuzzing inside
+  the auditor is **opt-in** (off by default), so contracts without specs produce an
+  identical audit to before.
+
+## [3.5.0] - 2026-06-20
+
+### Added
+- **Specification fuzzing for smart contracts (`contract fuzz`), provable safety
+  layer L3.** A new property-based fuzzer that searches for inputs which falsify a
+  contract's declared `@ensures` postconditions and `@invariant` contract invariants.
+  - **`SpecFuzzEngine`** â€” a sound, concrete `uint256` evaluator that executes a
+    contract function over a simulated EVM state (`2^256` wrapping arithmetic,
+    `@checked` overflow reverts, mapping/storage reads defaulting to zero) and then
+    checks every applicable specification. It is deliberately **sound, not complete**:
+    it only reports a `VIOLATION` when a faithful execution falsifies a spec; anything
+    it cannot model faithfully (user-function calls, unsupported statements, non-numeric
+    arguments) degrades to a skip, never a false positive.
+  - **`ContractFuzzer`** is now backed by that engine (previously a stub). It generates
+    randomized arguments, runs each fuzzable function, **minimizes** any failing input
+    toward a smaller counterexample, and reports per-function `ok / violations / reverts
+    / skipped / errors` tallies. A run is reproducible under `--seed`.
+  - **CLI:** `dhrlang contract fuzz [--runs=N] [--seed=N] <file.dhr>` fuzzes every
+    contract's specs and exits non-zero when a counterexample is found, so it doubles as
+    a CI gate. `--runs` controls iterations per function (default 256); `--seed` makes a
+    run deterministic.
+  - Preconditions (`@requires`) are treated as input-domain filters: an input that fails
+    a precondition is reported as *skipped* (out of scope), not as a bug.
+
+
+
+### Added
+- **Design-by-contract spec annotations, runtime-enforced on the EVM backend
+  (provable safety, layer L2a).** Three new contract specification annotations that
+  lower to revert checks in the compiled bytecode:
+  - **`@requires(expr)`** â€” a function precondition, evaluated at entry after the
+    parameters are decoded (so it can reference them). A false condition reverts with
+    `precondition failed`. Multiple `@requires` on one function are AND-ed.
+  - **`@ensures(expr)`** â€” a function postcondition, evaluated at every `return` (and on
+    the implicit void return). A false condition reverts with `postcondition failed`.
+    Postconditions may reference the new **`result`** keyword, which binds to the
+    function's scalar return value.
+  - **`@invariant(expr)`** â€” a contract-level invariant, declared next to `@contract`,
+    re-checked after every state-mutating function and reverting with `invariant
+    violated`. `@view`/`@pure` functions are exempt (they cannot mutate state).
+- **`DHR-E516` â€” unknown identifier in a spec expression.** `ContractValidator` now walks
+  every `@requires`/`@ensures`/`@invariant` expression and rejects names that do not
+  resolve to a parameter, a contract field, the `result` keyword (in `@ensures`), or a
+  known builtin (`msg`/`block`/`tx`). This closes a footgun: on the EVM backend an
+  unresolved identifier silently compiles to `0`, which would quietly turn a spec into an
+  always-true or always-false guard.
+
+### Notes
+- Additive, non-breaking: contracts without spec annotations compile to identical
+  bytecode. `result` binding is supported for scalar returns; on `sab`/string returns the
+  postcondition runs but `result` is unbound.
+
+## [3.3.0] - 2026-06-18
+
+### Added
+- **Two new security detectors (provable safety, layer L1).** `SecurityAnalyzer` now
+  flags **reentrancy** (`SEC-REENTRANCY`, **SWC-107**): a storage write that happens
+  after an external call in the same function â€” the classic checks-effects-interactions
+  violation â€” recognising both value transfers (`this.transfer(...)`) and method calls on
+  an `Address`-typed storage field or parameter, and trusting `@nonreentrant` as an
+  explicit guard. It also flags **`tx.origin` authorization** (`SEC-TX_ORIGIN`,
+  **SWC-115**): `tx.origin` used in an equality check, which is phishable; use
+  `msg.sender` instead. Both are documented in
+  [`SECURITY_RULES.md`](SECURITY_RULES.md).
+- **Richer SARIF for the Security tab.** Each SARIF rule now carries a `properties`
+  block with `tags` (`security` plus the mapped `SWC-*` id) and a numeric
+  `security-severity`, so GitHub Code Scanning buckets DhrLang alerts into
+  Critical/High/Medium/Low and lets you filter by tag.
+
+## [3.2.1] - 2026-06-17
+
+### Fixed
+- **Audit SARIF now passes GitHub's schema validation and actually ingests into Code
+  Scanning.** Each result previously emitted a `fixes[]` entry that omitted the required
+  `artifactChanges` property, so every SARIF upload was rejected with
+  `JOB_STATUS_CONFIGURATION_ERROR` â€” silently, because the upload step was
+  `continue-on-error`. The remediation advice is now folded into the result message and the
+  rule's `help` text instead of an (invalid) fix, and the upload step no longer swallows
+  validation failures. The `SarifFormatterTest` now asserts a fix is never emitted without
+  `artifactChanges`.
+
+## [3.2.0] - 2026-06-17
+
+### Added
+- **SARIF code-scanning is now first-class (provable safety, layer L0).** The security
+  auditor's SARIF output (`--audit --sarif`) now emits real source line numbers
+  (`region.startLine`) for every finding from the arithmetic, security, invariant, and
+  validation analyzers, plus a stable per-result `partialFingerprints` value so GitHub Code
+  Scanning can track and dedupe alerts across runs. Rule `helpUri`s now resolve to the new
+  [`SECURITY_RULES.md`](SECURITY_RULES.md), which documents every rule family (`ARITH-*`,
+  `SEC-*`, `INV-*`, `AUD-*`, `DHR-E5xx`) with severities and SWC mappings. The
+  `Smart Contract Security Audit` workflow now writes a per-contract findings table to the
+  run summary.
+
+### Fixed
+- **`--audit` no longer silently produces nothing on contracts that have errors.** The audit
+  pipeline was gated behind a clean type-check, so any contract with a validation error (e.g.
+  `DHR-E550`) yielded no report or SARIF at all â€” exactly the contracts most worth scanning.
+  Audit is now treated as an analysis mode that runs after parsing regardless of semantic
+  errors and exits `0`, surfacing those errors as findings instead of aborting.
+
+## [3.1.0] - 2026-06-17
+
+### Added
+- **Checked / wrapping arithmetic modes** (EVM backend): per-function `@checked` and
+  `@unchecked` annotations select whether `+`, `-`, `*` on `num` revert on overflow/underflow
+  (`"arithmetic overflow"` / `"arithmetic underflow"`) or wrap modulo 2Â²âµâ¶. The compiler default
+  is wrapping in this alpha and flips to checked-by-default in beta via a single constant
+  (`CHECKED_ARITHMETIC_BY_DEFAULT`). Declaring both annotations on one method is rejected
+  (`DHR-E515`).
+- **Custom errors + `revert`** (EVM backend): declare gas-efficient typed errors with
+  `@error kaam InsufficientBalance(num available, num required) {}` and raise them with
+  `revert(InsufficientBalance(a, b))`. Reverts encode the Solidity-compatible 4-byte error
+  selector plus ABI-encoded arguments, and the error is emitted as a `"type":"error"` entry
+  in the contract ABI. `revert("message")` (Error(string)) and bare `revert()` are also
+  supported, as is `require(cond, CustomError(args))`.
+- **Explicit `indexed` event parameters** (EVM backend): event params are indexed only when
+  declared `indexed` (e.g. `Transfer(indexed Address from, indexed Address to, num amount)`),
+  driving both the ABI `indexed` flag and `LOG` topics from the same declaration. More than 3
+  indexed params is rejected (EVM `LOG4` limit). Events without `indexed` now correctly default
+  to zero indexed params.
+
+### Fixed
+- **EVM backend arithmetic correctness**: `-`, `/`, `%` and the comparison operators
+  (`<`, `>`, `<=`, `>=`) now emit the correct **unsigned** opcodes with the correct operand
+  order (`num` maps to `uint256`). Previously they used signed opcodes and/or reversed operands
+  (e.g. computing `b - a`). The checked multiply now uses the standard SafeMath identity
+  (`a != 0 && (a*b)/a == b`).
+- **EVM peephole optimizer no longer corrupts `PUSH` data**: the optimizer walked one byte at a
+  time and could misread a `PUSH`'s immediate operand as opcodes, spuriously eliminating bytes
+  whenever the data matched a `PUSH+POP` / `DUP1+POP` pattern (e.g. inside embedded revert
+  strings). It now copies each surviving `PUSH` together with its full immediate operand.
+- **Numeric `as` casts**: `expr as num` / `expr as duo` (and `toNum` / `toDuo`) now accept
+  numeric operands, not just strings. `duo as num` truncates toward zero, `num as duo` widens.
+  Previously these failed at type-check, contradicting the v3.0.0 `as`-cast feature. Truncating
+  a division â€” `(7 / 2) as num` â†’ `3` â€” is now the supported way to get integer division.
 
 ## [3.0.0] - 2026-04-25
 
-### Added — Language Features
-- **Labeled break/continue**: `outer: for(...) { for(...) { break outer; } }` — jump to named outer loops
-- **`as` type cast syntax**: `expr as num`, `expr as sab`, `expr as duo` — desugars to toNum/toDuo/toString
+### Added â€” Language Features
+- **Labeled break/continue**: `outer: for(...) { for(...) { break outer; } }` â€” jump to named outer loops
+- **`as` type cast syntax**: `expr as num`, `expr as sab`, `expr as duo` â€” desugars to toNum/toDuo/toString
 - **Labeled loops**: `label: while(...)`, `label: for(...)`, `label: do {...}` with labeled break/continue
 - **Hex literals**: `0xFF`, `0xABCD` in all backends
 - **String interpolation**: `"Hello ${name}!"` desugars to concatenation
 - **Bitwise operators**: `&`, `|`, `^`, `~`, `<<`, `>>` across all backends + TypeChecker
 
-### Added — EVM Blockchain Production
+### Added â€” EVM Blockchain Production
 - **SafeMath overflow protection**: ADD reverts on overflow, SUB reverts on underflow, MUL verifies result/a == b
 - **Access control codegen**: Auto-stores msg.sender as owner at deploy; private functions emit onlyOwner check
 - **Reentrancy lock collision-safe**: Lock slot computed as keccak256("dhrlang.reentrancy.lock") instead of hardcoded 0xFFFF
@@ -27,7 +591,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Dynamic array ABI return encoding**: Proper offset+length+data layout for array returns
 - **Unsupported expressions now throw**: Instead of silently pushing 0, emitExpression throws IllegalStateException
 
-### Added — Tooling
+### Added â€” Tooling
 - **LSP server**: Full stdio-based LSP with diagnostics, completion, hover via `--lsp` CLI flag
 - **VS Code extension v3.0.0**: Updated grammar (do/switch/case/default/as/emit), new keyword highlighting
 
@@ -42,28 +606,28 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [2.0.0] - 2026-03-05
 
-### Added — Iteration 2: Smart Contract Safety Features
+### Added â€” Iteration 2: Smart Contract Safety Features
 - **ViewPureChecker** (SC-201): Static analysis enforcing `view` and `pure` function modifiers; detects state reads/writes in pure functions and state writes in view functions
 - **NonReentrantChecker** (SC-202): Reentrancy guard analysis with call-graph tracking, mutex validation, and cross-function reentrancy detection
 - **StatementClassifier** (SC-203): Classifies statements as state-reading, state-writing, pure computation, or external calls for safety analysis
 - **EffectOrderingAnalyzer** (SC-204): Checks-Effects-Interactions pattern enforcement; flags state writes after external calls
 - **StorageLayouter** (SC-205): Deterministic storage slot assignment with packing optimization for types < 32 bytes; supports structs, arrays, and mappings
 
-### Added — Iteration 3: EVM Backend
+### Added â€” Iteration 3: EVM Backend
 - **OpCode** (SC-301): Complete EVM opcode enum (150+ opcodes) covering arithmetic, comparison, bitwise, memory, storage, flow, logging, system, and push/dup/swap families
-- **EvmAssembler** (SC-302): Assembles opcode sequences into raw bytecode with label resolution, jump patching, and PUSH optimization (PUSH1–PUSH32)
+- **EvmAssembler** (SC-302): Assembles opcode sequences into raw bytecode with label resolution, jump patching, and PUSH optimization (PUSH1â€“PUSH32)
 - **FunctionSelector** (SC-303): Solidity-compatible 4-byte function selector generation using Keccak-256; supports selector collision detection and function dispatch tables
 - **AbiEncoder** (SC-304): ABI encoding/decoding for uint256, int256, bool, address, bytes32, string, dynamic bytes, and fixed/dynamic arrays with proper head/tail encoding
 - **BytecodeOptimizer** (SC-305): Peephole optimizer with constant folding, dead code elimination, push optimization, and duplicate swap reduction; multi-pass optimization pipeline
 
-### Added — Iteration 4: Interactive Debugging
+### Added â€” Iteration 4: Interactive Debugging
 - **BreakpointManager** (SC-401): Manages breakpoints by line, function name, or condition; supports enable/disable/toggle, hit counts, conditional expressions, and logpoints
 - **DebugSession** (SC-402): Full debug session lifecycle with step-over, step-into, step-out, continue, and run-to-cursor operations; maintains variable scopes, call stack, and watch expressions
 - **DebugRepl** (SC-403): Interactive debug REPL with command parsing for break, step, continue, print, watch, stack, locals, and variable evaluation
 - **WatchExpression** (SC-404): Live expression evaluation during debugging with history tracking, formatting options, and error resilience
 - **SourceMapGenerator** (SC-405): Generates source maps mapping bytecode offsets to source file/line/column with inline source embedding and JSON serialization
 
-### Added — Iteration 5: Testing & Verification Framework
+### Added â€” Iteration 5: Testing & Verification Framework
 - **ContractTestRunner** (SC-501): Test discovery and execution engine with setup/teardown lifecycle, assertion framework, expected-exception support, and timeout enforcement
 - **FuzzTester** (SC-502): Fuzz testing with random input generation for integers, strings, bytes, addresses, booleans, and arrays; configurable seed, iterations, and range constraints
 - **PropertyBasedTester** (SC-503): Property-based testing with shrinking support; generates random inputs, detects failures, and automatically minimizes failing test cases
@@ -73,14 +637,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **TestReporter** (SC-507): Multi-format test report generation (text, JSON, JUnit XML, HTML) with suite/case aggregation and timing information
 - **DiagnosticsSchemaValidation**: Enhanced JSON diagnostics schema validation tests
 
-### Added — Iteration 6: Production Deployment & Tooling
+### Added â€” Iteration 6: Production Deployment & Tooling
 - **AuditReportGenerator** (SC-601): Security audit report generation with finding severity levels, categorized checks, executive summary, and compliance scoring
 - **ContractDocGenerator** (SC-602): NatSpec-style documentation generation from annotated contracts with function signatures, parameter descriptions, and Markdown/HTML output
 - **DeploymentManager** (SC-603): Multi-network deployment orchestration supporting mainnet, testnets (Goerli, Sepolia, Mumbai), and custom networks; dry-run mode, gas estimation, and deployment receipt tracking
 - **L2ChainConfig** (SC-604): Layer-2 chain configuration for Optimism, Arbitrum, zkSync, Polygon, Base, Scroll, and StarkNet with gas adjustments, bridge addresses, and finality parameters
 - **ExampleContractTemplates** (SC-605): Production-ready contract templates for ERC-20, ERC-721, multi-sig wallet, and governance contracts with configurable parameters
 
-### Added — Iteration 7: AI Agent & Data Pipeline Framework
+### Added â€” Iteration 7: AI Agent & Data Pipeline Framework
 - **AgentAnnotations** (SC-701): Annotation system for AI agent definitions (`@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@timeout`, `@stream`) with validation, target checking, and conflict detection
 - **AgentRuntime** (SC-702): AI agent execution environment with tool registry, conversation memory, execution context, token tracking, multi-model support, and streaming callbacks
 - **AgentPlanner** (SC-703): Multi-step task planning with dependency resolution, topological execution ordering, parallel step detection, plan optimization, and execution with retry/timeout support
@@ -96,63 +660,63 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Iteration 5: ~120+ tests for testing/verification framework
 - Iteration 6: ~100+ tests for deployment and tooling
 - Iteration 7: ~217 tests for AI agent and data pipeline framework
-## [2.0.0] - 2026-01-28
+## [2.0.0-dev] - 2026-01-28
 
-### Major Release — 7 Iterations of New Features (1,034 tests, 0 failures)
+### Major Release â€” 7 Iterations of New Features (1,034 tests, 0 failures)
 
-### Added — Iteration 1: Enhanced Error Reporting
+### Added â€” Iteration 1: Enhanced Error Reporting
 - Unique error codes with DHR-EXXX/DHR-WXXX format for easy searchability
 - All errors now include line number, column, and error code
 - Contextual hints for every error type with actionable suggestions
 - Type-aware hints (e.g., suggesting 'sab' when 'string' is used)
-- Multi-Dimensional Array test suite (20+ cases covering 2D–4D arrays)
+- Multi-Dimensional Array test suite (20+ cases covering 2Dâ€“4D arrays)
 - FUTURE_ENHANCEMENTS.md with Agile sprint plans
 
-### Added — Iteration 2: Smart Contract Safety Features
-- **ViewPureChecker** — enforces `view`/`pure` function semantics and state-access rules
-- **NonReentrantChecker** — static reentrancy guard analysis with call-graph traversal
-- **StatementClassifier** — classifies statements as reads, writes, calls, or transfers
-- **EffectOrderingAnalyzer** — checks-effects-interactions pattern enforcement
-- **StorageLayouter** — EVM-compatible storage slot assignment with packing and alignment
+### Added â€” Iteration 2: Smart Contract Safety Features
+- **ViewPureChecker** â€” enforces `view`/`pure` function semantics and state-access rules
+- **NonReentrantChecker** â€” static reentrancy guard analysis with call-graph traversal
+- **StatementClassifier** â€” classifies statements as reads, writes, calls, or transfers
+- **EffectOrderingAnalyzer** â€” checks-effects-interactions pattern enforcement
+- **StorageLayouter** â€” EVM-compatible storage slot assignment with packing and alignment
 
-### Added — Iteration 3: EVM Backend
-- **OpCode** — complete EVM opcode enum with gas costs, stack effects, and categories
-- **EvmAssembler** — EVM bytecode assembly with label resolution and jump patching
-- **FunctionSelector** — Solidity-compatible 4-byte function selector generation (Keccak-256)
-- **AbiEncoder** — ABI encoding/decoding for uint256, address, bool, string, bytes, arrays, tuples
-- **BytecodeOptimizer** — peephole optimizations, dead code elimination, constant folding, jump threading
+### Added â€” Iteration 3: EVM Backend
+- **OpCode** â€” complete EVM opcode enum with gas costs, stack effects, and categories
+- **EvmAssembler** â€” EVM bytecode assembly with label resolution and jump patching
+- **FunctionSelector** â€” Solidity-compatible 4-byte function selector generation (Keccak-256)
+- **AbiEncoder** â€” ABI encoding/decoding for uint256, address, bool, string, bytes, arrays, tuples
+- **BytecodeOptimizer** â€” peephole optimizations, dead code elimination, constant folding, jump threading
 
-### Added — Iteration 4: Interactive Debugging
-- **BreakpointManager** — file/line/conditional/hit-count breakpoints with enable/disable
-- **DebugSession** — full debug session lifecycle with step-over, step-into, step-out, continue
-- **DebugRepl** — interactive debug REPL with expression evaluation and variable inspection
-- **WatchExpression** — watch expressions with change detection and conditional watches
-- **SourceMapGenerator** — bidirectional source map generation (source ↔ bytecode offset)
+### Added â€” Iteration 4: Interactive Debugging
+- **BreakpointManager** â€” file/line/conditional/hit-count breakpoints with enable/disable
+- **DebugSession** â€” full debug session lifecycle with step-over, step-into, step-out, continue
+- **DebugRepl** â€” interactive debug REPL with expression evaluation and variable inspection
+- **WatchExpression** â€” watch expressions with change detection and conditional watches
+- **SourceMapGenerator** â€” bidirectional source map generation (source â†” bytecode offset)
 
-### Added — Iteration 5: Testing & Verification Framework
-- **ContractTestRunner** — smart contract test discovery, execution, and lifecycle management
-- **FuzzTester** — coverage-guided fuzzing with boundary, mutation, and dictionary strategies
-- **PropertyBasedTester** — property-based testing with shrinking and reproducible seeds
-- **CoverageTracker** — line, branch, function, and contract-level coverage tracking
-- **MockFramework** — mock contract creation with call recording and return value stubbing
-- **GasProfiler** — per-function and per-opcode gas profiling with hotspot detection
-- **TestReporter** — multi-format test reporting (text, JSON, JUnit XML, HTML, Markdown)
-- **DiagnosticsSchemaValidation** — JSON schema validation for diagnostic output
+### Added â€” Iteration 5: Testing & Verification Framework
+- **ContractTestRunner** â€” smart contract test discovery, execution, and lifecycle management
+- **FuzzTester** â€” coverage-guided fuzzing with boundary, mutation, and dictionary strategies
+- **PropertyBasedTester** â€” property-based testing with shrinking and reproducible seeds
+- **CoverageTracker** â€” line, branch, function, and contract-level coverage tracking
+- **MockFramework** â€” mock contract creation with call recording and return value stubbing
+- **GasProfiler** â€” per-function and per-opcode gas profiling with hotspot detection
+- **TestReporter** â€” multi-format test reporting (text, JSON, JUnit XML, HTML, Markdown)
+- **DiagnosticsSchemaValidation** â€” JSON schema validation for diagnostic output
 
-### Added — Iteration 6: Production & Deployment Tooling
-- **AuditReportGenerator** — security audit reports with severity scoring and SARIF export
-- **ContractDocGenerator** — NatSpec-compatible documentation generation (HTML, Markdown, JSON)
-- **DeploymentManager** — multi-chain deployment with verification, proxy patterns, and gas estimation
-- **L2ChainConfig** — Layer-2 chain configuration (Optimism, Arbitrum, zkSync, Polygon, Base, etc.)
-- **ExampleContractTemplates** — production-ready templates (ERC-20, ERC-721, Governor, Vault, etc.)
+### Added â€” Iteration 6: Production & Deployment Tooling
+- **AuditReportGenerator** â€” security audit reports with severity scoring and SARIF export
+- **ContractDocGenerator** â€” NatSpec-compatible documentation generation (HTML, Markdown, JSON)
+- **DeploymentManager** â€” multi-chain deployment with verification, proxy patterns, and gas estimation
+- **L2ChainConfig** â€” Layer-2 chain configuration (Optimism, Arbitrum, zkSync, Polygon, Base, etc.)
+- **ExampleContractTemplates** â€” production-ready templates (ERC-20, ERC-721, Governor, Vault, etc.)
 
-### Added — Iteration 7: AI Agent & Data Pipeline Framework
-- **AgentAnnotations** — `@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@pipeline`, `@transform`, `@schema` annotations with full validation
-- **AgentRuntime** — AI agent execution engine with tool dispatch, memory management, and guardrails
-- **AgentPlanner** — multi-step planning with ReAct, chain-of-thought, and tree-of-thought strategies
-- **PipelineConfig** — data pipeline configuration with stages, connections, and validation
-- **PipelineExecutor** — streaming/batch pipeline execution with backpressure, windowing, and fault tolerance
-- **AgentPipelineIntegration** — intelligent pipelines combining AI agents with data processing
+### Added â€” Iteration 7: AI Agent & Data Pipeline Framework
+- **AgentAnnotations** â€” `@agent`, `@tool`, `@model`, `@prompt`, `@guardrail`, `@memory`, `@retry`, `@pipeline`, `@transform`, `@schema` annotations with full validation
+- **AgentRuntime** â€” AI agent execution engine with tool dispatch, memory management, and guardrails
+- **AgentPlanner** â€” multi-step planning with ReAct, chain-of-thought, and tree-of-thought strategies
+- **PipelineConfig** â€” data pipeline configuration with stages, connections, and validation
+- **PipelineExecutor** â€” streaming/batch pipeline execution with backpressure, windowing, and fault tolerance
+- **AgentPipelineIntegration** â€” intelligent pipelines combining AI agents with data processing
 
 ### Changed
 - ErrorCode enum restructured with unique code strings (DHR-E201, etc.)
@@ -235,7 +799,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Cleaned VS Code snippets: removed unsupported Hindi keyword bodies & switch; added entry class, printLine, init pattern.
 
 ### Removed
-- Snippet bilingual prefixes & legacy Hindi keyword constructs (मुख्य, प्रिंट, अगर, जबकि, के लिए, switch Hindi forms).
+- Snippet bilingual prefixes & legacy Hindi keyword constructs (à¤®à¥à¤–à¥à¤¯, à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ, à¤…à¤—à¤°, à¤œà¤¬à¤•à¤¿, à¤•à¥‡ à¤²à¤¿à¤, switch Hindi forms).
 - Legacy bilingual calculator example with Java interop and Hindi keywords.
 
 ### Added
@@ -289,9 +853,9 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Built-in function highlighting (printLine, substring, replace, arrayFill, arraySlice, arrayIndexOf, range, charAt).
 
 ### Removed
-- Legacy Hindi keyword completions and highlighting (अगर, जबकि, आदि) to prevent confusion with unsupported syntax in the compiler.
+- Legacy Hindi keyword completions and highlighting (à¤…à¤—à¤°, à¤œà¤¬à¤•à¤¿, à¤†à¤¦à¤¿) to prevent confusion with unsupported syntax in the compiler.
 
-## [1.1.2] - 2025-09-29
+## [1.1.2-extension] - 2025-09-29
 
 ### Changed
 - VS Code extension `package.json` metadata: clarified description to emphasize English-core tokens; pruned outdated Hindi-focused keywords.
@@ -322,4 +886,3 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Fixed
 - Regression in undefined-variable hint preserved for static contexts while enabling implicit field access in instance methods.
 - Improved static dependency analysis to catch forward references inside nested expressions and multi-dimensional initializers.
-

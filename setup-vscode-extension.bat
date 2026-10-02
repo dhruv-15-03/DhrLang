@@ -1,58 +1,36 @@
 @echo off
-REM DhrLang VS Code Extension Development Script for Windows
+setlocal
+pushd "%~dp0"
+if errorlevel 1 exit /b 1
 
-echo 🚀 DhrLang VS Code Extension Development Setup
-echo ==============================================
-
-cd /d "%~dp0vscode-extension"
-
-REM Check if Node.js is installed
-node --version >nul 2>&1
+echo DhrLang extension development setup - requires JDK 17 and Node.js 22+
+node -e "if (Number(process.versions.node.split('.')[0]) < 22) process.exit(1)"
 if errorlevel 1 (
-    echo ❌ Node.js is not installed. Please install Node.js 18+ first.
-    echo    Download from: https://nodejs.org/
-    pause
-    exit /b 1
+    echo Install Node.js 22 or newer before packaging the extension.
+    goto failed
 )
 
-echo 📦 Installing dependencies...
-npm install
+call gradlew.bat stageCompiler verifyCompilerArtifact
+if errorlevel 1 goto failed
 
-REM Install TypeScript compiler if not present
-tsc --version >nul 2>&1
-if errorlevel 1 (
-    echo 📦 Installing TypeScript...
-    npm install -g typescript
-)
+pushd vscode-extension
+if errorlevel 1 goto failed
+call npm ci
+if errorlevel 1 goto extension_failed
+call npm run test:packaging
+if errorlevel 1 goto extension_failed
+call npm run package
+if errorlevel 1 goto extension_failed
+popd
 
-REM Install VS Code Extension CLI
-vsce --version >nul 2>&1
-if errorlevel 1 (
-    echo 📦 Installing VS Code Extension CLI...
-    npm install -g @vscode/vsce
-)
+echo Verified JAR, VSIX and release-manifest.json are in build\release.
+echo Install the exact VSIX with: code --install-extension build\release\dhrlang-vscode-VERSION.vsix
+popd
+exit /b 0
 
-echo 🔨 Compiling TypeScript...
-npm run compile
-
-echo 📋 Running extension package validation...
-vsce package --no-yarn
-
-echo.
-echo ✅ Development setup complete!
-echo.
-echo 🛠️  Available commands:
-echo    npm run compile       - Compile TypeScript
-echo    npm run watch         - Watch and auto-compile
-echo    vsce package          - Create .vsix package
-echo    code --install-extension dhrlang-vscode-*.vsix - Install locally
-echo.
-echo 🧪 To test the extension:
-echo    1. Open VS Code
-echo    2. Press F5 to launch Extension Development Host
-echo    3. Create a .dhr file and test features
-echo.
-echo 📦 Extension package created: dhrlang-vscode-*.vsix
-echo    Install with: code --install-extension dhrlang-vscode-*.vsix
-
-pause
+:extension_failed
+popd
+:failed
+echo Extension setup failed. Nothing was published.
+popd
+exit /b 1

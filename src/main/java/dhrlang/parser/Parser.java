@@ -17,10 +17,24 @@ import java.util.EnumSet;
 class ParsedModifiers {
     final Set<Modifier> modifiers;
     final Set<ContractAnnotation> contractAnnotations;
-    
+    /** {@code @requires(expr)} preconditions collected on a function. */
+    final List<Expression> requires;
+    /** {@code @ensures(expr)} postconditions collected on a function. */
+    final List<Expression> ensures;
+    /** {@code @invariant(expr)} contract invariants collected before a class or member. */
+    final List<Expression> invariants;
+
     ParsedModifiers(Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations) {
+        this(modifiers, contractAnnotations, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    }
+
+    ParsedModifiers(Set<Modifier> modifiers, Set<ContractAnnotation> contractAnnotations,
+                    List<Expression> requires, List<Expression> ensures, List<Expression> invariants) {
         this.modifiers = modifiers;
         this.contractAnnotations = contractAnnotations;
+        this.requires = requires;
+        this.ensures = ensures;
+        this.invariants = invariants;
     }
 }
 
@@ -70,6 +84,7 @@ public class Parser {
         ParsedModifiers parsed = parseAllModifiers();
         Set<Modifier> classModifiers = parsed.modifiers;
         Set<ContractAnnotation> classAnnotations = parsed.contractAnnotations;
+        List<Expression> classInvariants = new ArrayList<>(parsed.invariants);
         
         consume(TokenType.CLASS, "Expected 'class' keyword to start a class declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected class name after 'class'.");
@@ -107,7 +122,7 @@ public class Parser {
                 fullSuperclassName = genericSuperclassName.toString();
             }
             
-            Token superclassToken = new Token(superclassName.getType(), fullSuperclassName, superclassName.getLine());
+            Token superclassToken = syntheticToken(fullSuperclassName, superclassName, superclassName.getType());
             superclass = new VariableExpr(superclassToken);
         }
         
@@ -140,7 +155,7 @@ public class Parser {
                     fullInterfaceName = genericInterfaceName.toString();
                 }
                 
-                Token interfaceToken = new Token(interfaceName.getType(), fullInterfaceName, interfaceName.getLine());
+                Token interfaceToken = syntheticToken(fullInterfaceName, interfaceName, interfaceName.getType());
                 interfaces.add(new VariableExpr(interfaceToken));
             } while (match(TokenType.COMMA));
         }
@@ -152,12 +167,17 @@ public class Parser {
             ParsedModifiers memberParsed = parseAllModifiers();
             Set<Modifier> modifiers = memberParsed.modifiers;
             Set<ContractAnnotation> memberAnnotations = memberParsed.contractAnnotations;
+            // @invariant(expr) may also be declared at the top of the class body.
+            classInvariants.addAll(memberParsed.invariants);
             
             if (checkType()) {
                 Token typeToken = consumeType("Expected type.");
                 Token nameToken = consume(TokenType.IDENTIFIER, "Expected name after type.");
                 if (check(TokenType.LPAREN)) {
-                    functions.add(parseFunctionDecl(typeToken, nameToken, modifiers, memberAnnotations));
+                    FunctionDecl fn = parseFunctionDecl(typeToken, nameToken, modifiers, memberAnnotations);
+                    fn.getRequires().addAll(memberParsed.requires);
+                    fn.getEnsures().addAll(memberParsed.ensures);
+                    functions.add(fn);
                 } else {
                     variables.add(parseVarDecl(typeToken, nameToken, modifiers, memberAnnotations));
                 }
@@ -173,6 +193,7 @@ public class Parser {
         } else {
             classDecl = new ClassDecl(name.getLexeme(), superclass, interfaces, functions, variables, classModifiers, classAnnotations);
         }
+        classDecl.getInvariants().addAll(classInvariants);
         
         classDecl.setSourceLocation(name.getLocation());
         return classDecl;
@@ -307,10 +328,22 @@ public class Parser {
     }
 
     private VarDecl parseParameter() {
+        boolean indexed = false;
+        // Contextual 'indexed' modifier for event parameters (e.g. `indexed num from`).
+        // Only treated as a modifier when a type+name still follow, so an ordinary
+        // parameter whose type happens to be named "indexed" is unaffected.
+        if (check(TokenType.IDENTIFIER) && "indexed".equals(peek().getLexeme())
+                && current + 1 < tokens.size()
+                && tokens.get(current + 1).getType() != TokenType.COMMA
+                && tokens.get(current + 1).getType() != TokenType.RPAREN) {
+            advance();
+            indexed = true;
+        }
         Token type = consumeType("Expected type in parameter declaration.");
         Token name = consume(TokenType.IDENTIFIER, "Expected parameter name.");
         VarDecl varDecl = new VarDecl(type.getLexeme(), name.getLexeme(), null);
         varDecl.setSourceLocation(type.getLocation());
+        varDecl.setIndexed(indexed);
         return varDecl;
     }
 
@@ -1074,11 +1107,12 @@ public class Parser {
     }
 
     private Token syntheticToken(String lexeme, Token ref) {
-        return new Token(TokenType.IDENTIFIER, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+        return syntheticToken(lexeme, ref, TokenType.IDENTIFIER);
     }
 
     private Token syntheticToken(String lexeme, Token ref, TokenType type) {
-        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset());
+        return new Token(type, lexeme, ref.getLine(), ref.getColumn(), ref.getStartOffset(), ref.getEndOffset())
+                .inFile(ref.getLocation().getFilename());
     }
 
     /**
@@ -1514,7 +1548,7 @@ public class Parser {
                 }
             }
             mappingType.append(")");
-            return new Token(TokenType.IDENTIFIER, mappingType.toString(), baseType.getLine());
+            return syntheticToken(mappingType.toString(), baseType, TokenType.IDENTIFIER);
         }
 
         if (check(TokenType.LBRACKET)) {
@@ -1525,7 +1559,7 @@ public class Parser {
                 consume(TokenType.RBRACKET, "Expected ']' after '[' in array type.");
                 typeLex.append("[]");
             }
-            return new Token(baseType.getType(), typeLex.toString(), baseType.getLine());
+            return syntheticToken(typeLex.toString(), baseType, baseType.getType());
         }
         
         if (check(TokenType.LESS)) {
@@ -1549,7 +1583,7 @@ public class Parser {
                 }
             }
             
-            return new Token(TokenType.IDENTIFIER, genericTypeName.toString(), baseType.getLine());
+            return syntheticToken(genericTypeName.toString(), baseType, TokenType.IDENTIFIER);
         }
 
         return baseType;
@@ -1606,17 +1640,37 @@ public class Parser {
     private ParsedModifiers parseAllModifiers() {
         Set<Modifier> modifiers = new HashSet<>();
         Set<ContractAnnotation> contractAnnotations = EnumSet.noneOf(ContractAnnotation.class);
-        
-        // Parse contract annotations first
-        while (match(TokenType.CONTRACT, TokenType.STORAGE, TokenType.VIEW, TokenType.PURE, 
-                     TokenType.PAYABLE, TokenType.NONREENTRANT, TokenType.CONSTRUCTOR,
-                     TokenType.EVENT, TokenType.IMMUTABLE, TokenType.INVARIANT)) {
-            TokenType tokenType = previous().getType();
-            ContractAnnotation annotation = ContractAnnotation.fromTokenType(tokenType);
-            if (contractAnnotations.contains(annotation)) {
-                throw error(previous(), "Duplicate contract annotation: " + annotation);
+        List<Expression> requires = new ArrayList<>();
+        List<Expression> ensures = new ArrayList<>();
+        List<Expression> invariants = new ArrayList<>();
+
+        // Parse contract annotations first (including expression-carrying
+        // design-by-contract annotations: @requires/@ensures/@invariant).
+        while (true) {
+            if (match(TokenType.REQUIRES)) {
+                requires.add(parseSpecCondition("@requires"));
+            } else if (match(TokenType.ENSURES)) {
+                ensures.add(parseSpecCondition("@ensures"));
+            } else if (match(TokenType.INVARIANT)) {
+                // @invariant(expr) is the explicit, runtime-enforced form.
+                // Bare @invariant remains a legacy marker annotation.
+                if (check(TokenType.LPAREN)) {
+                    invariants.add(parseSpecCondition("@invariant"));
+                }
+                contractAnnotations.add(ContractAnnotation.INVARIANT);
+            } else if (match(TokenType.CONTRACT, TokenType.STORAGE, TokenType.VIEW, TokenType.PURE,
+                             TokenType.PAYABLE, TokenType.NONREENTRANT, TokenType.CONSTRUCTOR,
+                             TokenType.EVENT, TokenType.ERROR, TokenType.CHECKED, TokenType.UNCHECKED,
+                             TokenType.IMMUTABLE)) {
+                TokenType tokenType = previous().getType();
+                ContractAnnotation annotation = ContractAnnotation.fromTokenType(tokenType);
+                if (contractAnnotations.contains(annotation)) {
+                    throw error(previous(), "Duplicate contract annotation: " + annotation);
+                }
+                contractAnnotations.add(annotation);
+            } else {
+                break;
             }
-            contractAnnotations.add(annotation);
         }
         
         // Parse @Override annotation
@@ -1638,7 +1692,18 @@ public class Parser {
             modifiers.add(Modifier.PUBLIC);
         }
         
-        return new ParsedModifiers(modifiers, contractAnnotations);
+        return new ParsedModifiers(modifiers, contractAnnotations, requires, ensures, invariants);
+    }
+
+    /**
+     * Parse the parenthesised boolean condition of a design-by-contract
+     * annotation: {@code (expression)}.
+     */
+    private Expression parseSpecCondition(String annotation) {
+        consume(TokenType.LPAREN, "Expected '(' after " + annotation + " annotation.");
+        Expression condition = parseExpression();
+        consume(TokenType.RPAREN, "Expected ')' after " + annotation + " condition.");
+        return condition;
     }
     
     /**

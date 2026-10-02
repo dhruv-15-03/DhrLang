@@ -16,10 +16,10 @@ java -version
 ### Option A: Download release JAR (Recommended)
 1. Download the latest release JAR from:
    https://github.com/dhruv-15-03/DhrLang/releases/latest
-2. Download `DhrLang-3.0.0.jar` (fat JAR with all dependencies)
+2. Download `DhrLang-4.0.2.jar` (fat JAR with all dependencies)
 3. Run directly:
 ```powershell
-java -jar DhrLang-3.0.0.jar input\sample.dhr
+java -jar DhrLang-4.0.2.jar input\sample.dhr
 ```
 
 ### Option B: Build from source
@@ -32,7 +32,7 @@ Set-Location DhrLang
 ./gradlew.bat shadowJar
 
 # Run a program with the fat JAR
-java -jar build\libs\DhrLang-3.0.0.jar input\sample.dhr
+java -jar build\libs\DhrLang-4.0.2.jar input\sample.dhr
 
 # Or run via Gradle
 ./gradlew.bat run --args="input\sample.dhr"
@@ -53,34 +53,34 @@ class Main {
 Run it:
 ```powershell
 # Using fat JAR
-java -jar build\libs\DhrLang-3.0.0.jar hello.dhr
+java -jar build\libs\DhrLang-4.0.2.jar hello.dhr
 
 # Or using Gradle
 ./gradlew.bat run --args="hello.dhr"
 ```
 
-## CLI flags youâ€™ll use often
-- `--help` / `-h` â€” show usage
-- `--version` / `-v` â€” show version
-- `--json` â€” emit diagnostics as JSON (see Diagnostics section)
-- `--time` â€” print phase timings (also included in JSON when `--json`)
-- `--no-color` â€” disable ANSI colors
-- `--backend=ast|ir|bytecode` â€” choose execution backend
-- `--emit-ir` â€” dump lowered IR
-- `--emit-bc` â€” write compiled bytecode to `build/bytecode/Main.dbc`
+## CLI flags youÃ¢â‚¬â„¢ll use often
+- `--help` / `-h` Ã¢â‚¬â€ show usage
+- `--version` / `-v` Ã¢â‚¬â€ show version
+- `--json` Ã¢â‚¬â€ emit diagnostics as JSON (see Diagnostics section)
+- `--time` Ã¢â‚¬â€ print phase timings (also included in JSON when `--json`)
+- `--no-color` Ã¢â‚¬â€ disable ANSI colors
+- `--backend=ast|ir|bytecode` Ã¢â‚¬â€ choose execution backend
+- `--emit-ir` Ã¢â‚¬â€ dump lowered IR
+- `--emit-bc` Ã¢â‚¬â€ write compiled bytecode to `build/bytecode/Main.dbc`
 
 Notes:
-- If you donâ€™t pass a file, the CLI defaults to `input/sample.dhr`.
+- If you donÃ¢â‚¬â„¢t pass a file, the CLI defaults to `input/sample.dhr`.
 - Exit codes: 0 success, 1 compile error, 2 runtime/system error.
 
 ## Switch execution backends
 The default backend is the AST interpreter. You can select the IR or bytecode backend with flags:
 ```powershell
 # IR backend
-java -jar build\libs\DhrLang-3.0.0.jar --backend=ir input\test_arrays.dhr
+java -jar build\libs\DhrLang-4.0.2.jar --backend=ir input\test_arrays.dhr
 
 # Bytecode backend
-java -jar build\libs\DhrLang-3.0.0.jar --backend=bytecode input\test_arrays.dhr
+java -jar build\libs\DhrLang-4.0.2.jar --backend=bytecode input\test_arrays.dhr
 
 # Using Gradle
 ./gradlew.bat run --args="--backend=ir input\test_arrays.dhr"
@@ -93,15 +93,15 @@ Notes:
 ## Running untrusted programs (bytecode)
 If you execute untrusted code, prefer the bytecode backend with the built-in verifier and conservative defaults:
 ```powershell
-java -Ddhrlang.bytecode.untrusted=true -jar build\libs\DhrLang-3.0.0.jar --backend=bytecode input\sample.dhr
+java -Ddhrlang.bytecode.untrusted=true -jar build\libs\DhrLang-4.0.2.jar --backend=bytecode input\sample.dhr
 ```
 Key runtime flags (as JVM system properties):
-- `dhrlang.bytecode.untrusted` (default: false) â€” enables conservative limits and strict entry validation.
-- `dhrlang.backend.maxSteps` â€” instruction step limit (shared by IR and bytecode).
-- `dhrlang.bytecode.strictEntry` â€” require an entrypoint (`Main.main` or any `*.main`).
-- `dhrlang.bytecode.maxBytes`, `dhrlang.bytecode.maxConstPool`, `dhrlang.bytecode.maxFunctions`, `dhrlang.bytecode.maxInstructionsPerFunction` â€” size/shape caps for bytecode input.
-- `dhrlang.bytecode.maxCallDepth`, `dhrlang.bytecode.maxHandlersPerFrame` â€” execution caps.
-- `dhrlang.bytecode.verifyControlFlow` (default: true) â€” validates try/catch control-flow structure.
+- `dhrlang.bytecode.untrusted` (default: false) Ã¢â‚¬â€ enables conservative limits and strict entry validation.
+- `dhrlang.backend.maxSteps` Ã¢â‚¬â€ instruction step limit (shared by IR and bytecode).
+- `dhrlang.bytecode.strictEntry` Ã¢â‚¬â€ require an entrypoint (`Main.main` or any `*.main`).
+- `dhrlang.bytecode.maxBytes`, `dhrlang.bytecode.maxConstPool`, `dhrlang.bytecode.maxFunctions`, `dhrlang.bytecode.maxInstructionsPerFunction` Ã¢â‚¬â€ size/shape caps for bytecode input.
+- `dhrlang.bytecode.maxCallDepth`, `dhrlang.bytecode.maxHandlersPerFrame` Ã¢â‚¬â€ execution caps.
+- `dhrlang.bytecode.verifyControlFlow` (default: true) Ã¢â‚¬â€ validates try/catch control-flow structure.
 
 ## Inspect IR and Bytecode
 ```powershell
@@ -128,9 +128,9 @@ The JSON schema is validated in tests; see `diagnostics.schema.json` and `Diagno
 - Java not found:
   Ensure Java 17+ is on your PATH, or set `JAVA_HOME` to a JDK install.
 - Colored output looks odd:
-  Add `--no-color` to disable ANSI sequences in terminals that donâ€™t support them.
+  Add `--no-color` to disable ANSI sequences in terminals that donÃ¢â‚¬â„¢t support them.
 
-## Whatâ€™s implemented in IR/Bytecode backends
+## WhatÃ¢â‚¬â„¢s implemented in IR/Bytecode backends
 - Literals, locals (load/store), arithmetic (+ - * /), comparisons (== != < <= > >=)
 - Control-flow: if/else, while, short-circuit `&&` and `||`, `break`/`continue`
 - Print/printLine, return (with/without value)

@@ -29,6 +29,30 @@ class MsgContextTest {
         }
 
         @Test
+        @DisplayName("msg.data returns the calldata synthetic type")
+        void msgDataIsCallData() {
+            assertEquals(MsgContext.CALLDATA_TYPE, MsgContext.getMsgPropertyType("data"));
+        }
+
+        @Test
+        @DisplayName("msg.sig returns uint256 type")
+        void msgSigIsUint256() {
+            assertEquals("uint256", MsgContext.getMsgPropertyType("sig"));
+        }
+
+        @Test
+        @DisplayName("msg.data.length returns uint256 type")
+        void callDataLengthIsUint256() {
+            assertEquals("uint256", MsgContext.getCallDataPropertyType("length"));
+        }
+
+        @Test
+        @DisplayName("unknown msg.data property returns null")
+        void unknownCallDataPropertyReturnsNull() {
+            assertNull(MsgContext.getCallDataPropertyType("size"));
+        }
+
+        @Test
         @DisplayName("unknown msg property returns null")
         void unknownMsgPropertyReturnsNull() {
             assertNull(MsgContext.getMsgPropertyType("unknown"));
@@ -39,12 +63,14 @@ class MsgContextTest {
         void isMsgPropertyValid() {
             assertTrue(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "sender"));
             assertTrue(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "value"));
+            assertTrue(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "data"));
+            assertTrue(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "sig"));
         }
 
         @Test
         @DisplayName("isMsgProperty returns false for invalid property")
         void isMsgPropertyInvalid() {
-            assertFalse(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "data"));
+            assertFalse(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, "gas"));
             assertFalse(MsgContext.isMsgProperty(MsgContext.MSG_TYPE, ""));
         }
     }
@@ -132,12 +158,14 @@ class MsgContextTest {
     class PropertyNameTests {
 
         @Test
-        @DisplayName("getMsgPropertyNames returns sender and value")
+        @DisplayName("getMsgPropertyNames returns sender, value, data and sig")
         void msgPropertyNames() {
             var names = MsgContext.getMsgPropertyNames();
             assertTrue(names.contains("sender"));
             assertTrue(names.contains("value"));
-            assertEquals(2, names.size());
+            assertTrue(names.contains("data"));
+            assertTrue(names.contains("sig"));
+            assertEquals(4, names.size());
         }
 
         @Test

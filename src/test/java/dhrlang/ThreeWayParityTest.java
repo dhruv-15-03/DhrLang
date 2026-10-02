@@ -326,6 +326,25 @@ public class ThreeWayParityTest {
     }
 
     @Test
+    @DisplayName("Numeric as-casts: duo<->num truncation/widening")
+    void numericCasts() throws Exception {
+        assertParity("""
+                class Main {
+                    static kaam main() {
+                        printLine(7.9 as num);
+                        printLine(-7.9 as num);
+                        num a = 7;
+                        num b = 2;
+                        printLine((a / b) as num);
+                        printLine(a as duo);
+                        printLine(toNum(3.9));
+                        printLine(toDuo(5));
+                    }
+                }
+                """, "Numeric casts");
+    }
+
+    @Test
     @DisplayName("Hex literals")
     void hexLiterals() throws Exception {
         assertParity("""

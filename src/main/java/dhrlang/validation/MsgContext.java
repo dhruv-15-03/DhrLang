@@ -14,6 +14,8 @@ import java.util.Set;
  * <ul>
  *   <li>{@code msg.sender} - Address of the account that called the contract</li>
  *   <li>{@code msg.value} - Amount of ETH (in wei) sent with the transaction</li>
+ *   <li>{@code msg.data} - Complete calldata; supports {@code msg.data.length}</li>
+ *   <li>{@code msg.sig} - First four bytes of the calldata (the function selector)</li>
  *   <li>{@code block.timestamp} - Current block timestamp (seconds since epoch)</li>
  *   <li>{@code block.number} - Current block number</li>
  * </ul>
@@ -48,6 +50,14 @@ public final class MsgContext {
      * Synthetic type name for the 'block' global object.
      */
     public static final String BLOCK_TYPE = "$BlockContext";
+
+    /**
+     * Synthetic type name for the value of {@code msg.data} (the transaction
+     * calldata). It is not a real DhrLang value type: only {@code .length}
+     * (a uint256) may be read from it. Using {@code msg.data} as a bare scalar
+     * is rejected by the type checker.
+     */
+    public static final String CALLDATA_TYPE = "$CallData";
     
     // msg properties and their types
     private static final Map<String, String> MSG_PROPERTIES;
@@ -55,7 +65,17 @@ public final class MsgContext {
         Map<String, String> props = new LinkedHashMap<>();
         props.put("sender", BlockchainTypes.ADDRESS);
         props.put("value", BlockchainTypes.UINT256);
+        props.put("data", CALLDATA_TYPE);
+        props.put("sig", BlockchainTypes.UINT256);
         MSG_PROPERTIES = Collections.unmodifiableMap(props);
+    }
+
+    // msg.data properties and their types
+    private static final Map<String, String> CALLDATA_PROPERTIES;
+    static {
+        Map<String, String> props = new LinkedHashMap<>();
+        props.put("length", BlockchainTypes.UINT256);
+        CALLDATA_PROPERTIES = Collections.unmodifiableMap(props);
     }
     
     // block properties and their types
@@ -77,6 +97,14 @@ public final class MsgContext {
      */
     public static String getMsgPropertyType(String propertyName) {
         return MSG_PROPERTIES.get(propertyName);
+    }
+
+    /**
+     * Get the type of a msg.data property (e.g., "length" → "uint256").
+     * @return the type string, or null if the property doesn't exist
+     */
+    public static String getCallDataPropertyType(String propertyName) {
+        return CALLDATA_PROPERTIES.get(propertyName);
     }
     
     /**

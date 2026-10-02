@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: LOCAL_CAP_MOCK_ADAPTER
+  profiles:
+    default: local-cap-mock
+  main:
+    banner-mode: "off"
+
+server:
+  address: 127.0.0.1
+  port: 0
+
+cds:
+  security:
+    xsuaa:
+      enabled: false
+    identity:
+      enabled: false
+    authentication:
+      mode: always
+    mock:
+      enabled: false
+      defaultUsers: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local-cap-mock
+cds:
+  security:
+    mock:
+      enabled: true
+      defaultUsers: false
+      users:
+        - name: bob-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Approver]
+        - name: alice-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Approver]
+        - name: reviewer-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Approver]
+        - name: sales-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Approver]
+        - name: viewer-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Viewer]
+        - name: bob-b
+          password: local-test-only
+          tenant: training-b
+          roles: [Approver]
+        - name: unmapped-a
+          password: local-test-only
+          tenant: training-a
+          roles: [Approver]
+        - name: foreign
+          password: local-test-only
+          tenant: unconfigured-tenant
+          roles: [Approver]

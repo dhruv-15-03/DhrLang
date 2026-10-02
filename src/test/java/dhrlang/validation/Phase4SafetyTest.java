@@ -112,6 +112,212 @@ class Phase4SafetyTest {
             List<InvariantChecker.Violation> violations = checker.getViolations();
             assertNotNull(violations);
         }
+
+        // ── Guard recognition for NON_NEGATIVE ───────────────────────
+
+        private long nonNegativeViolations(String source) {
+            ClassDecl cls = parseContract(source);
+            assertNotNull(cls);
+            return new InvariantChecker().check(cls).stream()
+                    .filter(v -> v.getInvariant().getKind()
+                            == InvariantChecker.Invariant.Kind.NON_NEGATIVE)
+                    .count();
+        }
+
+        @Test
+        @DisplayName("Subtraction bounded by an if-guard is not reported")
+        void guardedSubtractionIsAccepted() {
+            // This is the exact shape of ERC20Token.burn(), which the checker
+            // used to flag while simultaneously recommending the guard it has.
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (amount <= 0) {
+                            throw "Amount must be positive";
+                        }
+                        if (amount > totalSupply) {
+                            throw "Insufficient supply";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("Guard written with operands reversed is still recognised")
+        void reversedGuardIsAccepted() {
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (totalSupply < amount) {
+                            throw "Insufficient supply";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("require(...) form is recognised as a guard")
+        void requireGuardIsAccepted() {
+            assertEquals(0, nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        require(amount <= totalSupply, "Insufficient supply");
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """));
+        }
+
+        @Test
+        @DisplayName("Unguarded subtraction is still reported")
+        void unguardedSubtractionIsStillReported() {
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """) > 0, "An unbounded subtraction must remain a violation");
+        }
+
+        @Test
+        @DisplayName("Unrelated sanity check does not count as a bounds check")
+        void unrelatedGuardDoesNotSuppress() {
+            // `amount <= 0` constrains amount but says nothing about how it
+            // compares to totalSupply, so the subtraction can still underflow.
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam burn(num amount) {
+                        if (amount <= 0) {
+                            throw "Amount must be positive";
+                        }
+                        totalSupply = totalSupply - amount;
+                    }
+                }
+                """) > 0, "A guard unrelated to the field must not suppress the report");
+        }
+
+        @Test
+        @DisplayName("Direct negative assignment is still reported")
+        void negativeAssignmentIsStillReported() {
+            assertTrue(nonNegativeViolations("""
+                @contract
+                class Token {
+                    @storage num totalSupply;
+
+                    kaam wipe() {
+                        totalSupply = -1;
+                    }
+                }
+                """) > 0, "Assigning a negative literal must remain a violation");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  GuardAnalysis Tests
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("GuardAnalysis")
+    class GuardAnalysisTests {
+
+        private List<GuardAnalysis.Write> writesOf(String source) {
+            ClassDecl cls = parseContract(source);
+            assertNotNull(cls);
+            return GuardAnalysis.analyze(cls.getFunctions().get(0),
+                    cls.getVariables().stream().map(dhrlang.ast.VarDecl::getName)
+                            .collect(java.util.stream.Collectors.toSet()));
+        }
+
+        @Test
+        @DisplayName("A rejecting comparison bounds the subsequent subtraction")
+        void collectsGuardedWrites() {
+            var writes = writesOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount > balance) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            assertEquals(1, writes.size());
+            assertTrue(writes.get(0).bounds().guards((dhrlang.ast.BinaryExpr) writes.get(0).value()));
+        }
+
+        @Test
+        @DisplayName("A relation must bound the actual subtraction operands")
+        void relationalGuardNeedsBothNames() {
+            var related = writesOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount > balance) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            assertTrue(related.get(0).bounds().guards((dhrlang.ast.BinaryExpr) related.get(0).value()));
+
+            var unrelated = writesOf("""
+                @contract
+                class C {
+                    @storage num balance;
+                    kaam f(num amount) {
+                        if (amount <= 0) {
+                            throw "no";
+                        }
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            assertFalse(unrelated.get(0).bounds().guards((dhrlang.ast.BinaryExpr) unrelated.get(0).value()));
+        }
+
+        @Test
+        @DisplayName("A nested capacity expression is recognised only after its own bound")
+        void nestedCapacityBoundIsRecognised() {
+            var writes = writesOf("""
+                @contract
+                class C {
+                    @storage num totalSupply;
+                    @storage num maxSupply;
+                    kaam f(num amount) {
+                        if (totalSupply > maxSupply) { throw "invalid supply"; }
+                        if (amount > maxSupply - totalSupply) {
+                            throw "no";
+                        }
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """);
+            assertTrue(writes.get(0).bounds().guards((dhrlang.ast.BinaryExpr) writes.get(0).value()));
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════

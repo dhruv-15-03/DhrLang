@@ -31,8 +31,22 @@ public class ContractFuzzer {
 
     // ── Result types ─────────────────────────────────────
 
-    /** Outcome of a single fuzz iteration. */
-    public enum FuzzOutcome { OK, INVARIANT_VIOLATION, REVERT, EXCEPTION }
+    /**
+     * Outcome of a single fuzz iteration.
+     *
+     * <ul>
+     *   <li>{@code OK} — the call completed and every specification held.</li>
+     *   <li>{@code INVARIANT_VIOLATION} — a concrete counterexample falsified an
+     *       {@code @ensures} postcondition or an {@code @invariant}.</li>
+     *   <li>{@code REVERT} — the call reverted (failed {@code require}/{@code revert}
+     *       or checked-arithmetic overflow). Acceptable behaviour, not a bug.</li>
+     *   <li>{@code SKIPPED} — the run was inconclusive (precondition not met, or the
+     *       body used a construct the engine cannot model precisely). Sound: never a
+     *       false positive.</li>
+     *   <li>{@code EXCEPTION} — an unexpected internal error.</li>
+     * </ul>
+     */
+    public enum FuzzOutcome { OK, INVARIANT_VIOLATION, REVERT, SKIPPED, EXCEPTION }
 
     /** A single fuzz finding. */
     public static final class FuzzResult {
@@ -83,6 +97,7 @@ public class ContractFuzzer {
         private int okCount;
         private int invariantViolations;
         private int reverts;
+        private int skipped;
         private int exceptions;
 
         public FuzzStats(String contractName, String functionName) {
@@ -96,6 +111,7 @@ public class ContractFuzzer {
                 case OK -> okCount++;
                 case INVARIANT_VIOLATION -> invariantViolations++;
                 case REVERT -> reverts++;
+                case SKIPPED -> skipped++;
                 case EXCEPTION -> exceptions++;
             }
         }
@@ -106,6 +122,7 @@ public class ContractFuzzer {
         public int getOkCount() { return okCount; }
         public int getInvariantViolations() { return invariantViolations; }
         public int getReverts() { return reverts; }
+        public int getSkipped() { return skipped; }
         public int getExceptions() { return exceptions; }
         public boolean hasFailures() {
             return invariantViolations > 0 || exceptions > 0;
@@ -207,19 +224,46 @@ public class ContractFuzzer {
     }
 
     /**
-     * Execute one fuzz iteration.
+     * Execute one fuzz iteration: run the function under test over a simulated
+     * EVM state and check its design-by-contract specifications.
+     *
+     * <p>Functions whose contract declares no {@code @ensures}/{@code @invariant}
+     * have nothing a fuzzer could falsify, so they short-circuit to {@code OK}.
+     * Otherwise the {@link SpecFuzzEngine} executes the body and reports the
+     * outcome; a violation is minimized toward a smaller counterexample before
+     * being recorded.
      */
     private FuzzResult executeFuzzIteration(ClassDecl cls, FunctionDecl fn,
                                              List<Object> args) {
         try {
-            // Simulate execution — the actual interpreter call would go here.
-            // For now, we validate that arguments were generated correctly.
             if (args.size() != fn.getParameters().size()) {
                 return new FuzzResult(cls.getName(), fn.getName(), args,
                         FuzzOutcome.EXCEPTION, "Argument count mismatch");
             }
-            return new FuzzResult(cls.getName(), fn.getName(), args,
-                    FuzzOutcome.OK, "Execution completed");
+
+            boolean hasSpecs = !fn.getEnsures().isEmpty() || !cls.getInvariants().isEmpty();
+            if (!hasSpecs) {
+                return new FuzzResult(cls.getName(), fn.getName(), args,
+                        FuzzOutcome.OK, "No specifications to check");
+            }
+
+            SpecFuzzEngine.Result r = new SpecFuzzEngine(cls).run(fn, args);
+            return switch (r.outcome) {
+                case OK -> new FuzzResult(cls.getName(), fn.getName(), args,
+                        FuzzOutcome.OK, r.detail);
+                case REVERT -> new FuzzResult(cls.getName(), fn.getName(), args,
+                        FuzzOutcome.REVERT, r.detail);
+                case PRECONDITION_SKIP, UNSUPPORTED -> new FuzzResult(
+                        cls.getName(), fn.getName(), args, FuzzOutcome.SKIPPED, r.detail);
+                case VIOLATION -> {
+                    List<Object> minimal = minimizeCounterexample(cls, fn, args);
+                    SpecFuzzEngine.Result mr = new SpecFuzzEngine(cls).run(fn, minimal);
+                    String detail = mr.outcome == SpecFuzzEngine.Outcome.VIOLATION
+                            ? mr.detail : r.detail;
+                    yield new FuzzResult(cls.getName(), fn.getName(), minimal,
+                            FuzzOutcome.INVARIANT_VIOLATION, detail);
+                }
+            };
 
         } catch (ContractAssertions.AssertionError e) {
             return new FuzzResult(cls.getName(), fn.getName(), args,
@@ -229,6 +273,41 @@ public class ContractFuzzer {
             return new FuzzResult(cls.getName(), fn.getName(), args,
                     FuzzOutcome.EXCEPTION, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Greedily shrink a failing argument vector toward zero/one while the
+     * specification violation still reproduces. Deterministic: the engine runs
+     * from a fixed genesis state, so each trial is reproducible.
+     */
+    private List<Object> minimizeCounterexample(ClassDecl cls, FunctionDecl fn,
+                                                 List<Object> args) {
+        List<Object> current = new ArrayList<>(args);
+        for (int i = 0; i < current.size(); i++) {
+            for (Object candidate : simplerValues(current.get(i))) {
+                List<Object> trial = new ArrayList<>(current);
+                trial.set(i, candidate);
+                SpecFuzzEngine.Result r = new SpecFuzzEngine(cls).run(fn, trial);
+                if (r.outcome == SpecFuzzEngine.Outcome.VIOLATION) {
+                    current = trial;
+                    break;
+                }
+            }
+        }
+        return current;
+    }
+
+    /** Candidate simpler values (0 then 1) for a numeric argument, preserving its type. */
+    private static List<Object> simplerValues(Object v) {
+        List<Object> out = new ArrayList<>();
+        if (v instanceof Integer i) {
+            if (i != 0) out.add(0);
+            if (i != 0 && i != 1) out.add(1);
+        } else if (v instanceof Long l) {
+            if (l != 0L) out.add(0L);
+            if (l != 0L && l != 1L) out.add(1L);
+        }
+        return out;
     }
 
     // ── Random input generation ──────────────────────────
@@ -342,14 +421,18 @@ public class ContractFuzzer {
         return Collections.unmodifiableMap(statsMap);
     }
 
+    /** A failure is a genuine bug signal: a spec violation or an internal error. Reverts and skips are not failures. */
+    private static boolean isFailure(FuzzResult r) {
+        return r.getOutcome() == FuzzOutcome.INVARIANT_VIOLATION
+                || r.getOutcome() == FuzzOutcome.EXCEPTION;
+    }
+
     public long totalFailures() {
-        return results.stream()
-                .filter(r -> r.getOutcome() != FuzzOutcome.OK)
-                .count();
+        return results.stream().filter(ContractFuzzer::isFailure).count();
     }
 
     public boolean hasFailures() {
-        return results.stream().anyMatch(r -> r.getOutcome() != FuzzOutcome.OK);
+        return results.stream().anyMatch(ContractFuzzer::isFailure);
     }
 
     // ── Report ───────────────────────────────────────────
@@ -366,10 +449,11 @@ public class ContractFuzzer {
 
         for (var entry : statsMap.entrySet()) {
             FuzzStats s = entry.getValue();
-            sb.append(String.format("  %s::%s — %d runs: %d ok, %d violations, %d reverts, %d errors\n",
+            sb.append(String.format(
+                    "  %s::%s — %d runs: %d ok, %d violations, %d reverts, %d skipped, %d errors\n",
                     s.getContractName(), s.getFunctionName(),
                     s.getTotalRuns(), s.getOkCount(),
-                    s.getInvariantViolations(), s.getReverts(), s.getExceptions()));
+                    s.getInvariantViolations(), s.getReverts(), s.getSkipped(), s.getExceptions()));
         }
 
         sb.append('\n');
@@ -379,7 +463,7 @@ public class ContractFuzzer {
         if (failures > 0) {
             sb.append("\nFailing inputs:\n");
             results.stream()
-                    .filter(r -> r.getOutcome() != FuzzOutcome.OK)
+                    .filter(ContractFuzzer::isFailure)
                     .limit(20)
                     .forEach(r -> sb.append("  ✗ ").append(r).append('\n'));
         }

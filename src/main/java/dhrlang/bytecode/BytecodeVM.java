@@ -60,7 +60,16 @@ public class BytecodeVM {
         BcObjectInstance(BcClassDef klass){ this.klass=klass; klass.populateDefaultFields(fields); }
     }
 
+    @FunctionalInterface
+    public interface InstructionObserver {
+        void beforeInstruction(int functionIndex, String function, int instruction, BytecodeOpcode opcode, int depth);
+    }
+
     public void execute(byte[] code){
+        execute(code, null);
+    }
+
+    public void execute(byte[] code, InstructionObserver observer){
         try{
             boolean untrusted = Boolean.getBoolean("dhrlang.bytecode.untrusted");
 
@@ -93,6 +102,9 @@ public class BytecodeVM {
             }
             // Read class definitions
             int classCount = in.readInt();
+            if(classCount < 0) throw new IllegalArgumentException("Invalid class count: "+classCount);
+            int maxClasses = Integer.getInteger("dhrlang.bytecode.maxClasses", untrusted ? 2_000 : 10_000);
+            if(classCount > maxClasses) throw new IllegalArgumentException("Too many classes: "+classCount+" (max: "+maxClasses+")");
             BcClassDef[] classDefs = new BcClassDef[classCount];
             java.util.Map<String,BcClassDef> classTable = new java.util.HashMap<>();
             for(int c=0; c<classCount; c++){
@@ -256,7 +268,7 @@ public class BytecodeVM {
                 if(++safetyCounter > maxSteps){
                     throw dhrlang.error.ErrorFactory.runtimeError("Execution aborted: exceeded max instruction steps ("+maxSteps+") - possible infinite loop.", (dhrlang.error.SourceLocation) null);
                 }
-                if(pc >= cur.insCount){
+                if(pc >= cur.insCount && pendingEx == null){
                     // Implicit return
                     if(stackFunc.isEmpty()) return; else {
                         stackRetDest.pop();
@@ -272,8 +284,6 @@ public class BytecodeVM {
                         slots = prevSlots; curFunc = prevFunc; cur = funcs[curFunc]; pc = prevPc; continue;
                     }
                 }
-                BytecodeOpcode opc = cur.op[pc];
-                int[] a = cur.args[pc];
                 // If an exception is pending, attempt to transfer to nearest matching handler
                 if(pendingEx != null){
                     if(!handlers.isEmpty()){
@@ -284,14 +294,14 @@ public class BytecodeVM {
                             if(matchesCatch(h.type, pendingEx)) { target = h; it.remove(); break; }
                         }
                         if(target!=null){
-                            catchValue = pendingEx;
+                            catchValue = dhrlang.runtime.RuntimeExceptions.payload(pendingEx);
                             pendingEx = null;
                             pc = target.pc;
                             continue;
                         }
                     }
                     // Unwind: pop frame
-                    if(stackFunc.isEmpty()) return; else {
+                    if(stackFunc.isEmpty()) throw dhrlang.runtime.RuntimeExceptions.propagate(pendingEx); else {
                         stackRetDest.pop();
                         int prevFunc = stackFunc.pop();
                         int prevPc = stackPc.pop();
@@ -304,6 +314,9 @@ public class BytecodeVM {
                         slots = prevSlots; curFunc = prevFunc; cur = funcs[curFunc]; pc = prevPc; continue;
                     }
                 }
+                BytecodeOpcode opc = cur.op[pc];
+                int[] a = cur.args[pc];
+                if(observer != null) observer.beforeInstruction(curFunc, cur.name, pc, opc, stackFunc.size());
                 try {
                 switch(opc){
                     case CONST -> slots[a[0]] = cp[a[1]];
@@ -517,7 +530,7 @@ public class BytecodeVM {
                         if(handlers.isEmpty()) throw new IllegalArgumentException("Invalid bytecode in "+cur.name+" @pc="+pc+": TRY_POP with empty handler stack");
                         handlers.pop();
                     }
-                    case THROW -> { pendingEx = slots[a[0]]; }
+                    case THROW -> { pendingEx = dhrlang.runtime.RuntimeExceptions.propagate(slots[a[0]]); }
                     case CATCH_BIND -> { slots[a[0]] = catchValue; catchValue = null; }
                     case NEW_OBJ -> {
                         String className = (String) cp[a[0]];
@@ -567,7 +580,7 @@ public class BytecodeVM {
                     }
                 }
                 } catch (dhrlang.interpreter.DhrRuntimeException ex) {
-                    pendingEx = ex.getMessage();
+                    pendingEx = ex;
                     continue;
                 }
                 if(handlers.size() > maxHandlersPerFrame){
@@ -815,17 +828,7 @@ public class BytecodeVM {
 
     // Typed catch matching similar to IR interpreter
     private static boolean matchesCatch(String catchType, Object exceptionValue){
-        if("any".equals(catchType)) return true;
-        Object payload = exceptionValue;
-        if(payload instanceof dhrlang.stdlib.exceptions.ErrorException){
-            if("Error".equals(catchType) || "DhrException".equals(catchType)) return true;
-        }
-        if(payload instanceof dhrlang.stdlib.exceptions.DhrException dhrEx){
-            String simple = dhrEx.getExceptionType();
-            if(simple!=null && (simple.equals(catchType) || (catchType.endsWith("Exception") && simple.endsWith(catchType)))) return true;
-            if("DhrException".equals(catchType)) return true;
-        }
-        return false;
+        return dhrlang.runtime.RuntimeExceptions.matches(catchType, exceptionValue);
     }
 
     private static boolean truthy(Object v){ if(v==null) return false; if(v instanceof Boolean b) return b; return true; }

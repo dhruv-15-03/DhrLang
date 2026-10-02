@@ -1,0 +1,54 @@
+class PurchasePolicy {
+    static sab reason(num amount, num available, num limit, sab currency, sab budgetCurrency, sab limitCurrency,
+                      sab requester, sab approver, kya allowedRole, kya allowedCostCenter,
+                      kya activeSupplier, sab state) {
+        // Exact-integer profile bound, not a business spending limit.
+        if (amount < -9007199254740991 || amount > 9007199254740991 ||
+            available < 0 || available > 9007199254740991 ||
+            limit < 0 || limit > 9007199254740991) {
+            throw "Money value is outside the lab's exact-integer profile";
+        }
+        if (!allowedRole) { return "NOT_AUTHORIZED"; }
+        if (!allowedCostCenter) { return "WRONG_COST_CENTER"; }
+        if (requester == approver) { return "SELF_APPROVAL"; }
+        if (state != "SUBMITTED" && state != "NEEDS_REVIEW") { return "INVALID_STATE"; }
+        if (amount <= 0) { return "INVALID_AMOUNT"; }
+        if (!activeSupplier) { return "INVALID_SUPPLIER"; }
+        if (currency != budgetCurrency || currency != limitCurrency) { return "CURRENCY_MISMATCH"; }
+        if (amount > available) { return "EXCEEDS_BUDGET"; }
+        if (amount > limit) { return "APPROVAL_LIMIT"; }
+        return "WITHIN_POLICY";
+    }
+}
+
+class Main {
+    static kaam main() {
+        num amount = toNum(readLine());
+        num available = toNum(readLine());
+        num limit = toNum(readLine());
+        sab currency = readLine();
+        sab budgetCurrency = readLine();
+        sab limitCurrency = readLine();
+        sab requester = readLine();
+        sab approver = readLine();
+        kya allowedRole = readLine() == "true";
+        kya allowedCostCenter = readLine() == "true";
+        kya activeSupplier = readLine() == "true";
+        sab state = readLine();
+
+        sab reason = PurchasePolicy.reason(amount, available, limit, currency, budgetCurrency, limitCurrency,
+                                           requester, approver, allowedRole, allowedCostCenter,
+                                           activeSupplier, state);
+        num remaining = available;
+        if (reason == "WITHIN_POLICY") {
+            printLine("APPROVED");
+            remaining = available - amount;
+        } else if (reason == "APPROVAL_LIMIT") {
+            printLine("NEEDS_REVIEW");
+        } else {
+            printLine("REJECTED");
+        }
+        printLine(reason);
+        printLine(remaining);
+    }
+}

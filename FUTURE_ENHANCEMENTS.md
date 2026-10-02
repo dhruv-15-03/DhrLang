@@ -15,10 +15,16 @@ DhrLang is evolving into a **production-ready smart contract language** designed
 
 | Priority | Feature | Target Version | Status |
 |----------|---------|----------------|--------|
-| 🥇 **P0** | Smart Contracts + EVM Compilation | v2.0 | 🔵 Active |
-| 🥈 **P1** | Interactive Debugging (inspect, trace) | v2.0 | 🔵 Active |
-| 🥉 **P2** | AI Agent Orchestration | v3.0 | ⚪ Planned |
-| 4️⃣ **P3** | Data Pipeline DSL | v3.0 | ⚪ Planned |
+| 🥇 **P0** | Smart Contracts + EVM Compilation | v3.0 | ✅ Shipped |
+| 🥈 **P1** | Interactive Debugging (inspect, trace) | v3.0 | ✅ Shipped |
+| 🥉 **P2** | AI Agent Orchestration | v3.0 | ✅ Shipped |
+| 4️⃣ **P3** | Data Pipeline DSL | v3.0 | ✅ Shipped |
+
+> **Status update (v3.0.0):** P0-P3 above are now implemented and shipped in v3.0.0.
+> The smart-contract / EVM path lives in `src/main/java/dhrlang/evm/`, interactive
+> debugging in `debug/`, AI agent orchestration in `agent/`, and the data-pipeline DSL in
+> `pipeline/`. The iteration plans below are retained as design notes and history; active
+> forward work is tracked in `NEXT_STEPS.md`.
 
 ### Why Smart Contracts First?
 
@@ -762,7 +768,7 @@ class ContractValidatorTest {
 
 ## 🗂️ Future Roadmap (Post v2.0)
 
-### v3.0: AI Agent Orchestration (Q4 2026)
+### v3.0: AI Agent Orchestration (✅ Shipped in v3.0.0 — see `src/main/java/dhrlang/agent/`)
 
 ```dhrlang
 @agent
@@ -779,7 +785,7 @@ class ResearchAgent {
 }
 ```
 
-### v3.0: Data Pipeline DSL (Q4 2026)
+### v3.0: Data Pipeline DSL (✅ Shipped in v3.0.0 — see `src/main/java/dhrlang/pipeline/`)
 
 ```dhrlang
 @pipeline

@@ -932,18 +932,26 @@ class Iteration3EvmBackendTest {
         }
 
         @Test
-        @DisplayName("ABI generator marks first event param as indexed")
+        @DisplayName("ABI generator honors explicit indexed event params")
         void eventParamIndexed() {
-            ClassDecl contract = makeContractWithEvent();
+            VarDecl from = makeVarDecl("Address", "from");
+            from.setIndexed(true);
+            FunctionDecl event = makeEventFunction("Transfer",
+                    List.of(from, makeVarDecl("uint256", "amount")));
+            ClassDecl contract = makeContract("TokenWithEvents",
+                    List.of(makeStorageVarDecl("uint256", "totalSupply")),
+                    List.of(event, makeViewFunction("getBalance", "uint256")));
             List<Map<String, Object>> abi = AbiGenerator.generate(contract, Map.of());
             Map<String, Object> eventEntry = findAbiEntry(abi, "event", "Transfer");
             assertNotNull(eventEntry, "Should have Transfer event in ABI");
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> inputs = (List<Map<String, Object>>) eventEntry.get("inputs");
             assertNotNull(inputs);
-            assertTrue(inputs.size() >= 1);
+            assertEquals(2, inputs.size());
             assertEquals(true, inputs.get(0).get("indexed"),
-                    "First event parameter should be indexed");
+                    "Explicitly indexed parameter should be indexed");
+            assertEquals(false, inputs.get(1).get("indexed"),
+                    "Non-indexed parameter should not be indexed");
         }
 
         @Test

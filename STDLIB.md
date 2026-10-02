@@ -14,8 +14,8 @@ Stability Levels:
 | print | Prints a value without newline | any | void | Stable |
 | printLine | Prints a value with newline | any | void | Stable |
 | arrayLength | Returns length of 1D array | array | num | Stable |
-| toNum | Convert string to integer | sab | num | Stable |
-| toDuo | Convert string to float | sab | duo | Stable |
+| toNum | Convert string/duo to integer (duo truncates toward zero) | sab, num, duo | num | Stable |
+| toDuo | Convert string/num to float | sab, num, duo | duo | Stable |
 | toString | Convert any value to string | any | sab | Stable |
 | isNum | Check if value is integer | any | kya | Stable |
 | isDuo | Check if value is float | any | kya | Stable |
@@ -27,7 +27,9 @@ Stability Levels:
 | replace | Replace substring | sab, sab, sab | sab | Provisional |
 
 > **Note:** `toNum`, `toDuo`, and `toString` are also accessible via the `as` cast syntax:
-> `expr as num`, `expr as duo`, `expr as sab`
+> `expr as num`, `expr as duo`, `expr as sab`. Casts accept numeric operands as well as
+> strings: `duo as num` truncates toward zero, and `num as duo` widens. Truncating a
+> division — e.g. `(7 / 2) as num` → `3` — is the supported way to get integer division.
 
 ## Types / Keywords (Core)
 `num`, `duo`, `sab`, `kya`, `ek`, `kaam`, `class`, `extends`, `static`, access modifiers, control flow (`if`, `for`, `while`, `try/catch/finally`).

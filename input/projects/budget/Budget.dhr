@@ -1,0 +1,5 @@
+class Budget {
+    static kya fits(num amountMinor, num availableMinor) {
+        return amountMinor > 0 && availableMinor >= amountMinor;
+    }
+}

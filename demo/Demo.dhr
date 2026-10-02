@@ -1,0 +1,18 @@
+class Point {
+  num x;
+  num y;
+  kaam distance() { return 0; }
+}
+
+class Shape extends Point {
+  num area;
+}
+
+class Main {
+  static kaam main() {
+    Shape s = new Shape();
+    num total = 1;
+    s.distance();
+
+  }
+}

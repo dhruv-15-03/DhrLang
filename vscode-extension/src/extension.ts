@@ -2,23 +2,64 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import {
+    LanguageClient,
+    LanguageClientOptions,
+    ServerOptions
+} from 'vscode-languageclient/node';
 
 const execAsync = promisify(exec);
 
 let extensionContext: vscode.ExtensionContext;
 let diagnosticCollection: vscode.DiagnosticCollection;
 let outputChannel: vscode.OutputChannel;
+let languageClient: LanguageClient | undefined;
 
-export function activate(context: vscode.ExtensionContext) {
+/**
+ * Public API returned from activate(). Exists mainly so the integration test
+ * suite (src/test/suite) can assert the real LanguageClient actually reaches
+ * the "Running" state, instead of only statically checking that the code to
+ * start one exists.
+ */
+export interface DhrLangExtensionApi {
+    getLanguageClient(): LanguageClient | undefined;
+}
+
+/**
+ * vscode-languageclient forwards the spawned server process's stderr into
+ * clientOptions.outputChannel, but VS Code's OutputChannel API has no way to
+ * read its content back out — so that text is invisible in a headless CI run
+ * (there's no UI to look at). When DHRLANG_LSP_DEBUG_STDERR is set (the
+ * integration test CI job sets it), also echo every write to process.stderr
+ * so `java -jar DhrLang.jar --lsp` failures show up directly in CI logs.
+ */
+function wrapOutputChannelForDebug(oc: vscode.OutputChannel): vscode.OutputChannel {
+    return {
+        get name() { return oc.name; },
+        append(value: string) { process.stderr.write(value); oc.append(value); },
+        appendLine(value: string) { process.stderr.write(value + '\n'); oc.appendLine(value); },
+        replace(value: string) { oc.replace(value); },
+        clear() { oc.clear(); },
+        show(...args: any[]) { (oc.show as (...a: any[]) => void)(...args); },
+        hide() { oc.hide(); },
+        dispose() { oc.dispose(); }
+    };
+}
+
+export function activate(context: vscode.ExtensionContext): DhrLangExtensionApi {
     extensionContext = context;
     console.log('DhrLang extension is now active!');
 
-    // Create diagnostic collection for error squiggles
+    // Create diagnostic collection for the fallback error-squiggle path
+    // (only used when the Language Server can't start — see startLanguageClient).
     diagnosticCollection = vscode.languages.createDiagnosticCollection('dhrlang');
     context.subscriptions.push(diagnosticCollection);
 
     // Create output channel
     outputChannel = vscode.window.createOutputChannel('DhrLang');
+    if (process.env.DHRLANG_LSP_DEBUG_STDERR) {
+        outputChannel = wrapOutputChannelForDebug(outputChannel);
+    }
     context.subscriptions.push(outputChannel);
 
     // Register commands
@@ -51,22 +92,106 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize status bar early
     ensureStatusBar();
 
-    // Register completion provider
-    const completionProvider = vscode.languages.registerCompletionItemProvider(
-        'dhrlang',
-        new DhrLangCompletionProvider(),
-        '.',
-        '('
+    // Start the real DhrLang Language Server (go-to-definition, hover, rename,
+    // find references, scope-aware completion, diagnostics). If Java or the
+    // jar can't be found, fall back to the older in-process providers below
+    // instead of crashing activation.
+    startLanguageClient(context).then((started) => {
+        if (!started) {
+            registerFallbackProviders(context);
+        }
+    });
+
+    return {
+        getLanguageClient: () => languageClient
+    };
+}
+
+/**
+ * Resolves java/jar the same way the run/compile commands do, then spawns
+ * `java -jar <DhrLang.jar> --lsp` and connects a LanguageClient to it over
+ * stdio. Returns true if the client was started, false if it couldn't be
+ * (missing Java/jar) — callers should register the fallback providers in
+ * that case so the extension still degrades gracefully.
+ */
+async function startLanguageClient(context: vscode.ExtensionContext): Promise<boolean> {
+    const jarResolved = await resolveJarPath();
+    if (!jarResolved) {
+        outputChannel.appendLine('[DhrLang LSP] DhrLang.jar not found — falling back to basic in-editor completion/diagnostics. Set dhrlang.jarPath or enable autoDetectJar.');
+        return false;
+    }
+
+    const config = vscode.workspace.getConfiguration('dhrlang');
+    const javaPath = config.get<string>('javaPath', 'java');
+
+    // NOTE: deliberately no `transport` field here. For an Executable
+    // ServerOptions, vscode-languageclient only spawns via stdio when
+    // `transport` is undefined OR TransportKind.stdio — but in BOTH cases it
+    // still unconditionally appends `--stdio` to args when `transport` is
+    // explicitly TransportKind.stdio (see vscode-languageclient's
+    // createMessageTransports: `if (transport === TransportKind.stdio) {
+    // args.push('--stdio'); }`, unlike the "only if args unset" behavior for
+    // NodeModule servers). DhrLang's Main.java doesn't recognize --stdio
+    // (its `--lsp` flag already implies stdio transport), so an explicit
+    // `transport: TransportKind.stdio` here caused the java process to exit
+    // immediately with "Unknown option: --stdio" and the connection to
+    // close ~instantly. Omitting `transport` still spawns over stdio
+    // (undefined defaults to stdio) without injecting the extra flag.
+    const serverOptions: ServerOptions = {
+        command: javaPath,
+        args: ['-jar', jarResolved, '--lsp']
+    };
+
+    const clientOptions: LanguageClientOptions = {
+        documentSelector: [{ scheme: 'file', language: 'dhrlang' }],
+        outputChannel,
+        synchronize: {
+            fileEvents: vscode.workspace.createFileSystemWatcher('**/*.dhr')
+        }
+    };
+
+    languageClient = new LanguageClient(
+        'dhrlangLanguageServer',
+        'DhrLang Language Server',
+        serverOptions,
+        clientOptions
     );
 
-    context.subscriptions.push(completionProvider);
+    try {
+        await languageClient.start();
+        context.subscriptions.push({ dispose: () => languageClient?.stop() });
+        outputChannel.appendLine(`[DhrLang LSP] Started: ${javaPath} -jar "${jarResolved}" --lsp`);
+        return true;
+    } catch (e: any) {
+        outputChannel.appendLine(`[DhrLang LSP] Failed to start Language Server: ${e?.message ?? e}. Falling back to basic in-editor completion/diagnostics.`);
+        vscode.window.showWarningMessage('DhrLang: could not start the Language Server (check Java is installed and on PATH). Falling back to basic completion/diagnostics.');
+        languageClient = undefined;
+        return false;
+    }
+}
 
-    // Register hover provider
+/**
+ * Older, weaker in-process completion/hover/diagnostics path. Only used when
+ * the real Language Server (startLanguageClient) couldn't start, so the
+ * extension is still useful without a working Java/jar setup.
+ */
+function registerFallbackProviders(context: vscode.ExtensionContext) {
+    const config = vscode.workspace.getConfiguration('dhrlang');
+
+    if (config.get<boolean>('enableAutoCompletion', true)) {
+        const completionProvider = vscode.languages.registerCompletionItemProvider(
+            'dhrlang',
+            new DhrLangCompletionProvider(),
+            '.',
+            '('
+        );
+        context.subscriptions.push(completionProvider);
+    }
+
     const hoverProvider = vscode.languages.registerHoverProvider('dhrlang', new DhrLangHoverProvider());
     context.subscriptions.push(hoverProvider);
 
     // Run diagnostics on save and on open
-    const config = vscode.workspace.getConfiguration('dhrlang');
     if (config.get<boolean>('enableErrorSquiggles', true)) {
         context.subscriptions.push(
             vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -91,6 +216,10 @@ export function activate(context: vscode.ExtensionContext) {
             }
         });
     }
+}
+
+export function deactivate(): Thenable<void> | undefined {
+    return languageClient ? languageClient.stop() : undefined;
 }
 
 let statusItem: vscode.StatusBarItem | undefined;

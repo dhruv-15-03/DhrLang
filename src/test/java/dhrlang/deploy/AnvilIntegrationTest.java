@@ -1,6 +1,5 @@
 package dhrlang.deploy;
 
-import dhrlang.stdlib.ContractStdlib;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -11,7 +10,13 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>These tests are <b>disabled by default</b> — they only run when the
  * environment variable {@code DHRLANG_ANVIL_TEST=true} is set and a local
- * Ethereum node is running on port 8545.</p>
+ * Ethereum node is running on port 8545. CI has no Ethereum node, so gating
+ * them here keeps the default suite hermetic.</p>
+ *
+ * <p>Every test in this class genuinely requires the live node. A
+ * {@code stdlibCatalog} test previously lived here and did not — it only read a
+ * static catalog, so it was skipped for no reason. That assertion is covered by
+ * {@code ContractStdlibTest.catalogConsistency}, which runs unconditionally.</p>
  *
  * <h3>How to run:</h3>
  * <pre>
@@ -77,8 +82,7 @@ class AnvilIntegrationTest {
 
     @Test
     @DisplayName("Deploy a minimal contract and verify code exists")
-    void deployMinimalContract() {
-        // Minimal EVM bytecode: PUSH1 0x00 PUSH1 0x00 RETURN
+    void deployMinimalContract() {        // Minimal EVM bytecode: PUSH1 0x00 PUSH1 0x00 RETURN
         // This deploys an empty contract (no runtime code)
         // Better: deploy a contract that returns some code
         // PUSH1 0x01 PUSH1 0x00 MSTORE8 PUSH1 0x01 PUSH1 0x00 RETURN
@@ -124,14 +128,5 @@ class AnvilIntegrationTest {
         System.out.println("  Address:  " + receipt.contractAddress);
         System.out.println("  Gas used: " + receipt.gasUsed);
         System.out.println("  Block:    " + receipt.blockNumber);
-    }
-
-    @Test
-    @DisplayName("Standard library catalog is available")
-    void stdlibCatalog() {
-        var catalog = ContractStdlib.catalog();
-        assertTrue(catalog.size() >= 8);
-        assertNotNull(catalog.get("ERC20"));
-        assertNotNull(catalog.get("Ownable"));
     }
 }

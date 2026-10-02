@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "profile": "jvm-bytecode-v1",
+  "source": "class Main { static kaam main() { printLine(toNum(readLine()) + 2); } }",
+  "input": "5\n",
+  "limits": {
+    "timeoutMs": 5000,
+    "maxSteps": 1000000,
+    "heapMb": 128,
+    "maxOutputBytes": 65536
+  }
+}

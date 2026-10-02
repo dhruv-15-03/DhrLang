@@ -9,6 +9,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class LexerTest {
 
     @Test
+    void unterminatedBlockCommentReportsItsOpeningLocation() {
+        var errors = new dhrlang.error.ErrorReporter();
+        new Lexer("\n  /* never closed\n", errors).scanTokens();
+        assertEquals(1, errors.getErrorCount());
+        var error = errors.getErrors().get(0);
+        assertTrue(error.getMessage().contains("Unterminated block comment"));
+        assertEquals(2, error.getLocation().getLine());
+        assertEquals(3, error.getLocation().getColumn());
+    }
+
+    @Test
+    void terminatedBlockCommentPreservesTheNextTokenAndLine() {
+        var errors = new dhrlang.error.ErrorReporter();
+        var tokens = new Lexer("/* comment\n*/ class Main {}", errors).scanTokens();
+        assertFalse(errors.hasErrors());
+        assertEquals(TokenType.CLASS, tokens.get(0).getType());
+        assertEquals(2, tokens.get(0).getLine());
+    }
+
+    @Test
     void testBasicTokenization() {
         String code = """
             class Main {

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "4.0.2",
+  "profile": "jvm-bytecode-v1",
+  "sources": ["Budget.dhr", "Main.dhr"],
+  "input": "12500\n50000\n"
+}

@@ -46,6 +46,15 @@ class EvmCodeGenPhase2Test {
         return artifacts.get(0);
     }
 
+    private static int countOccurrences(String haystack, String needle) {
+        int count = 0, idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
+            count++;
+            idx += needle.length();
+        }
+        return count;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Basic Contract Compilation
     // ═══════════════════════════════════════════════════════════════
@@ -349,6 +358,299 @@ class EvmCodeGenPhase2Test {
             String abi = artifact.getAbiJson();
             assertTrue(abi.contains("indexed"), "First event param should be indexed");
         }
+
+        @Test
+        @DisplayName("Explicit indexed event params are honored in ABI")
+        void indexedEventParamsHonored() {
+            var artifact = compileOne("""
+                @contract
+                class Token {
+                    @storage num supply;
+
+                    @event
+                    kaam Transfer(indexed Address from, indexed Address to, num amount) {}
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertEquals(2, countOccurrences(abi, "\"indexed\":true"),
+                    "from and to are declared indexed; ABI: " + abi);
+            assertEquals(1, countOccurrences(abi, "\"indexed\":false"),
+                    "amount is not indexed; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("Event params default to non-indexed")
+        void eventParamsDefaultNonIndexed() {
+            var artifact = compileOne("""
+                @contract
+                class Token {
+                    @storage num supply;
+
+                    @event
+                    kaam Ping(num a, num b) {}
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertEquals(0, countOccurrences(abi, "\"indexed\":true"),
+                    "No params declared indexed; ABI: " + abi);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Custom Errors + revert
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Custom Errors")
+    class CustomErrors {
+
+        private static String toHex(byte[] bytes) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) sb.append(String.format("%02x", b));
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@error declaration produces an ABI error entry")
+        void customErrorInAbi() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @storage num balance;
+
+                    @error
+                    kaam InsufficientBalance(num available, num required) {}
+
+                    kaam withdraw(num amount) {
+                        revert(InsufficientBalance(amount, amount));
+                    }
+                }
+                """);
+            String abi = artifact.getAbiJson();
+            assertTrue(abi.contains("\"type\":\"error\""),
+                    "ABI should contain an error entry; ABI: " + abi);
+            assertTrue(abi.contains("InsufficientBalance"),
+                    "ABI should contain the error name; ABI: " + abi);
+            // Error inputs are never indexed (that flag is event-only).
+            assertEquals(0, countOccurrences(abi, "\"type\":\"error\",\"name\":\"InsufficientBalance\",\"inputs\":[{\"name\":\"available\",\"type\":\"uint256\",\"indexed\""),
+                    "Error inputs must not carry an indexed flag; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("@error declaration is not emitted as a callable function")
+        void customErrorNotDispatchable() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam Boom(num code) {}
+
+                    kaam ping() {
+                        revert(Boom(1));
+                    }
+                }
+                """);
+            // The error selector must not appear as a dispatchable function in the ABI.
+            String abi = artifact.getAbiJson();
+            assertEquals(0, countOccurrences(abi, "\"type\":\"function\",\"name\":\"Boom\""),
+                    "Error must not be a dispatchable function; ABI: " + abi);
+        }
+
+        @Test
+        @DisplayName("revert with custom error encodes its 4-byte selector")
+        void revertCustomErrorEmitsSelector() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam InsufficientBalance(num available, num required) {}
+
+                    kaam withdraw(num amount) {
+                        revert(InsufficientBalance(amount, amount));
+                    }
+                }
+                """);
+            byte[] selector = FunctionSelector.compute("InsufficientBalance(uint256,uint256)");
+            String selHex = toHex(selector);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(selHex),
+                    "Runtime bytecode should embed the custom-error selector " + selHex);
+            assertTrue(code.contains("fd"), "Runtime bytecode should contain a REVERT (0xfd)");
+        }
+
+        @Test
+        @DisplayName("revert(\"message\") and bare revert() compile to REVERT")
+        void revertStringAndBare() {
+            var artifact = compileOne("""
+                @contract
+                class Guard {
+                    kaam checkOne(num x) {
+                        revert("nope");
+                    }
+
+                    kaam checkTwo() {
+                        revert();
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains("fd"), "Runtime bytecode should contain a REVERT (0xfd)");
+            // Error(string) selector 0x08c379a0 from revert("nope").
+            assertTrue(code.contains("08c379a0"),
+                    "revert(\"message\") should encode the Error(string) selector");
+        }
+
+        @Test
+        @DisplayName("require(cond, CustomError(args)) reverts with the custom error selector")
+        void requireWithCustomError() {
+            var artifact = compileOne("""
+                @contract
+                class Vault {
+                    @error
+                    kaam Unauthorized(Address who) {}
+
+                    kaam guard(Address caller) {
+                        require(1 == 1, Unauthorized(caller));
+                    }
+                }
+                """);
+            byte[] selector = FunctionSelector.compute(
+                    "Unauthorized(" + AbiGenerator.solidityType("Address") + ")");
+            String selHex = toHex(selector);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(selHex),
+                    "require(..., CustomError) should embed the error selector " + selHex);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Checked / Wrapping Arithmetic
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Checked Arithmetic")
+    class CheckedArithmetic {
+
+        // Error(string) selector emitted by every revert-with-message.
+        private static final String ERROR_STRING_SELECTOR = "08c379a0";
+
+        private static String strHex(String s) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@checked add emits an overflow guard")
+        void checkedAddEmitsOverflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@checked add should embed a revert-with-message overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "@checked add should revert with 'arithmetic overflow'");
+        }
+
+        @Test
+        @DisplayName("Default add is checked (emits an overflow guard)")
+        void defaultAddIsChecked() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "Default add is checked as of v4.0.0 and should emit an overflow guard");
+        }
+
+        @Test
+        @DisplayName("@unchecked add wraps (no overflow guard)")
+        void uncheckedAddIsWrapping() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @unchecked
+                    kaam add(num a, num b) {
+                        result = a + b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(strHex("arithmetic overflow")),
+                    "@unchecked add should wrap, not emit an overflow guard");
+        }
+
+        @Test
+        @DisplayName("@checked subtract emits an underflow guard")
+        void checkedSubEmitsUnderflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam sub(num a, num b) {
+                        result = a - b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(strHex("arithmetic underflow")),
+                    "@checked subtract should revert with 'arithmetic underflow'");
+        }
+
+        @Test
+        @DisplayName("@checked multiply emits an overflow guard")
+        void checkedMulEmitsOverflowGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    @checked
+                    kaam mul(num a, num b) {
+                        result = a * b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@checked multiply should embed an overflow guard");
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "@checked multiply should revert with 'arithmetic overflow'");
+        }
+
+        @Test
+        @DisplayName("Default multiply is checked (emits an overflow guard)")
+        void defaultMulIsChecked() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @storage num result;
+                    kaam mul(num a, num b) {
+                        result = a * b;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(strHex("arithmetic overflow")),
+                    "Default multiply is checked as of v4.0.0 and should emit an overflow guard");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -566,5 +868,355 @@ class EvmCodeGenPhase2Test {
             if (b == target) return true;
         }
         return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Design-by-Contract spec annotations (@requires/@ensures/@invariant)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("Spec Annotations (DbC)")
+    class SpecAnnotations {
+
+        private static final String ERROR_STRING_SELECTOR = "08c379a0";
+
+        private static String specHex(String s) {
+            StringBuilder sb = new StringBuilder();
+            for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        }
+
+        @Test
+        @DisplayName("@requires emits a precondition revert guard")
+        void requiresEmitsGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @requires(amount > 0)
+                    kaam deposit(num amount) {
+                        balance = balance + amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(ERROR_STRING_SELECTOR),
+                    "@requires should embed a revert-with-message guard");
+            assertTrue(code.contains(specHex("precondition failed")),
+                    "@requires should revert with 'precondition failed'");
+        }
+
+        @Test
+        @DisplayName("@ensures emits a postcondition revert guard")
+        void ensuresEmitsGuard() {
+            var artifact = compileOne("""
+                @contract
+                class Bank {
+                    @storage num balance;
+                    @ensures(balance >= 0)
+                    kaam withdraw(num amount) {
+                        balance = balance - amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("postcondition failed")),
+                    "@ensures should revert with 'postcondition failed'");
+        }
+
+        @Test
+        @DisplayName("@ensures can reference the result keyword on a value return")
+        void ensuresResultBinding() {
+            var artifact = compileOne("""
+                @contract
+                class Calc {
+                    @ensures(result >= a)
+                    @view
+                    num maxZero(num a) {
+                        return a;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("postcondition failed")),
+                    "@ensures(result ...) on a value return should emit a postcondition guard");
+        }
+
+        @Test
+        @DisplayName("contract-level @invariant emits a revert guard on mutators")
+        void invariantEmitsGuard() {
+            var artifact = compileOne("""
+                @invariant(totalSupply >= 0)
+                @contract
+                class Token {
+                    @storage num totalSupply;
+                    kaam mint(num amount) {
+                        totalSupply = totalSupply + amount;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(code.contains(specHex("invariant violated")),
+                    "@invariant should revert with 'invariant violated' on a mutator");
+        }
+
+        @Test
+        @DisplayName("functions without specs emit no spec guards")
+        void noSpecsNoGuards() {
+            var artifact = compileOne("""
+                @contract
+                class Plain {
+                    @storage num x;
+                    kaam set(num v) {
+                        x = v;
+                    }
+                }
+                """);
+            String code = artifact.getRuntimeBytecodeHex().toLowerCase();
+            assertFalse(code.contains(specHex("precondition failed")),
+                    "no @requires should mean no precondition guard");
+            assertFalse(code.contains(specHex("postcondition failed")),
+                    "no @ensures should mean no postcondition guard");
+            assertFalse(code.contains(specHex("invariant violated")),
+                    "no @invariant should mean no invariant guard");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  address(num) builtin — numeric→Address cast (e.g. zero address)
+    // ═══════════════════════════════════════════════════════════════
+
+    @Nested
+    @DisplayName("address() builtin")
+    class AddressBuiltin {
+
+        @Test
+        @DisplayName("address(0) compiles and assigns to an Address field")
+        void zeroAddressAssign() {
+            var artifact = compileOne("""
+                @contract
+                class Owned {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address(0);
+                    }
+                }
+                """);
+            assertNotNull(artifact.getRuntimeBytecode());
+            assertTrue(artifact.getCreationBytecode().length > 0);
+            // The 160-bit mask (0x00..ff*20) must be embedded for the cast.
+            String code = artifact.getCreationBytecodeHex().toLowerCase();
+            assertTrue(code.contains("ffffffffffffffffffffffffffffffffffffffff"),
+                    "address(x) should emit a 160-bit AND mask");
+        }
+
+        @Test
+        @DisplayName("address(0) compares equal against an Address param")
+        void zeroAddressCompare() {
+            // Mirrors the Ownable stdlib guard: newOwner == address(0).
+            var artifact = compileOne("""
+                @contract
+                class Guard {
+                    @storage num flagged;
+                    kaam check(Address who) {
+                        if (who == address(0)) {
+                            flagged = 1;
+                        }
+                    }
+                }
+                """);
+            assertNotNull(artifact.getRuntimeBytecode());
+            assertTrue(artifact.getRuntimeBytecode().length > 0);
+        }
+
+        @Test
+        @DisplayName("address(x) with wrong arity is rejected")
+        void wrongArityRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class Bad {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address(0, 1);
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, errors);
+            Program program = parser.parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "address(0, 1) should be a type error");
+        }
+
+        @Test
+        @DisplayName("address(string) is rejected (non-numeric argument)")
+        void nonNumericRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class Bad {
+                    @storage Address owner;
+                    @constructor
+                    kaam init() {
+                        owner = address("0x0");
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Parser parser = new Parser(tokens, errors);
+            Program program = parser.parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "address with a string argument should be a type error");
+        }
+    }
+
+    // ===============================================================
+    //  msg.data / msg.sig builtins (calldata size + function selector)
+    // ===============================================================
+
+    @Nested
+    @DisplayName("msg.data / msg.sig")
+    class MsgData {
+
+        @Test
+        @DisplayName("msg.data.length lowers to CALLDATASIZE (0x36)")
+        void msgDataLengthLowersToCalldatasize() {
+            // Differential check: msg.data.length and msg.value compile to byte-identical
+            // contracts except for one opcode (CALLDATASIZE 0x36 vs CALLVALUE 0x34),
+            // so the data.length variant carries exactly one extra 0x36.
+            // Same class/function name in both => byte-identical dispatcher; the only
+            // differing byte is the returned global's opcode.
+            String withLen = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num f() {
+                        return msg.data.length;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            String withValue = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num f() {
+                        return msg.value;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            assertTrue(countOccurrences(withLen, "36") > countOccurrences(withValue, "36"),
+                    "msg.data.length should emit CALLDATASIZE (0x36)");
+        }
+
+        @Test
+        @DisplayName("msg.sig lowers to calldataload(0) >> 224 (selector)")
+        void msgSigLowersToSelectorShift() {
+            String code = compileOne("""
+                @contract
+                class C {
+                    @view
+                    num selector() {
+                        return msg.sig;
+                    }
+                }
+                """).getRuntimeBytecodeHex().toLowerCase();
+            // Selector extraction = PUSH0, CALLDATALOAD, PUSH1 0xE0, SHR = 5f 35 60e0 1c.
+            // The dispatcher emits this once; reading msg.sig adds a second occurrence.
+            assertTrue(countOccurrences(code, "5f3560e01c") >= 2,
+                    "msg.sig should emit the selector shift calldataload(0) >> 224");
+        }
+
+        @Test
+        @DisplayName("num n = msg.data.length typechecks as a number")
+        void msgDataLengthTypechecks() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num len() {
+                        num n = msg.data.length;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertFalse(errors.hasErrors(), "msg.data.length should typecheck as a number");
+        }
+
+        @Test
+        @DisplayName("num s = msg.sig typechecks as a number")
+        void msgSigTypechecks() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num selector() {
+                        num s = msg.sig;
+                        return s;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertFalse(errors.hasErrors(), "msg.sig should typecheck as a number");
+        }
+
+        @Test
+        @DisplayName("bare msg.data is rejected (calldata is not a scalar)")
+        void bareMsgDataRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num bad() {
+                        num n = msg.data;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "bare msg.data assigned to num should be a type error");
+        }
+
+        @Test
+        @DisplayName("unknown msg.data property is rejected")
+        void unknownMsgDataPropertyRejected() {
+            ErrorReporter errors = new ErrorReporter();
+            Lexer lexer = new Lexer("""
+                @contract
+                class C {
+                    @constructor
+                    kaam init() {}
+                    @view
+                    num bad() {
+                        num n = msg.data.size;
+                        return n;
+                    }
+                }
+                """, errors);
+            List<Token> tokens = lexer.scanTokens();
+            Program program = new Parser(tokens, errors).parse();
+            new TypeChecker(errors).check(program);
+            assertTrue(errors.hasErrors(), "msg.data.size (unknown property) should be a type error");
+        }
     }
 }

@@ -105,7 +105,7 @@ public class IrInterpreter {
                         if(matchesCatch(h.type, bubblingException)) { target = h; it.remove(); break; }
                     }
                     if(target!=null){
-                        frame.pendingException = bubblingException;
+                        frame.pendingException = dhrlang.runtime.RuntimeExceptions.payload(bubblingException);
                         bubblingException = null;
                         frame.pc = target.pc;
                         advance = false;
@@ -341,7 +341,7 @@ public class IrInterpreter {
                 frame.slots[cb.targetSlot] = frame.pendingException;
                 frame.pendingException = null;
             } else if(ins instanceof IrThrow thr){
-                Object ex = frame.slots[thr.valueSlot];
+                Object ex = dhrlang.runtime.RuntimeExceptions.propagate(frame.slots[thr.valueSlot]);
                 // Begin unwinding: find nearest handler in current or outer frames
                 // Try to match in current frame stack first
                 if(!frame.handlerStack.isEmpty()){
@@ -352,7 +352,7 @@ public class IrInterpreter {
                         if(matchesCatch(h.type, ex)) { target = h; it.remove(); break; }
                     }
                     if(target!=null){
-                        frame.pendingException = ex;
+                        frame.pendingException = dhrlang.runtime.RuntimeExceptions.payload(ex);
                         frame.pc = target.pc;
                         advance = false;
                     } else {
@@ -402,10 +402,13 @@ public class IrInterpreter {
             } catch (dhrlang.interpreter.DhrRuntimeException ex) {
                 // Convert Java-level runtime exceptions to IR-level bubbling exceptions
                 // so that IR try/catch handlers can intercept them.
-                bubblingException = ex.getMessage();
+                bubblingException = ex;
                 continue;
             }
             if(advance){ frame.pc++; }
+        }
+        if (bubblingException != null) {
+            throw dhrlang.runtime.RuntimeExceptions.propagate(bubblingException);
         }
     }
 
@@ -459,17 +462,6 @@ public class IrInterpreter {
 
     // Match semantics aligned with Evaluator.canCatch
     private boolean matchesCatch(String catchType, Object exceptionValue){
-        if("any".equals(catchType)) return true;
-        Object payload = exceptionValue;
-        if(payload instanceof dhrlang.stdlib.exceptions.ErrorException){
-            if("Error".equals(catchType) || "DhrException".equals(catchType)) return true;
-        }
-        if(payload instanceof dhrlang.stdlib.exceptions.DhrException dhrEx){
-            String simple = dhrEx.getExceptionType();
-            if(simple!=null && (simple.equals(catchType) || (catchType.endsWith("Exception") && simple.endsWith(catchType)))) return true;
-            if("DhrException".equals(catchType)) return true;
-        }
-        // As IR doesn't carry category, restrict remaining types to DhrException umbrella
-        return false;
+        return dhrlang.runtime.RuntimeExceptions.matches(catchType, exceptionValue);
     }
 }

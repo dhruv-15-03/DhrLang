@@ -1,112 +1,114 @@
-# DhrLang Release Checklist
+# DhrLang release checklist
 
-## Pre-Release Steps
+Use this checklist for a new release. Completing a build does not authorize a
+tag push or publication. Do not replace an existing release's artifacts.
 
-### 1. Version Management
-- [x] Update `version` in `build.gradle` to `3.0.0`
-- [x] Update `SPEC.md` version to `3.0.0`
-- [x] Update `README.md` version references to `3.0.0`
-- [x] Update `vscode-extension/package.json` version to `3.0.0`
-- [x] Ensure `verifySpecVersion` task passes (SPEC.md matches build.gradle)
+## 1. Prepare and review
 
-### 2. Build and Test
+- Align `build.gradle`, `SPEC.md`, `CHANGELOG.md`, the extension package version
+  and its lockfile. Use a new version; do not republish 4.0.2 with different bytes.
+- Record supported and experimental features accurately in the changelog.
+- Review the source commit and all release-workflow changes.
+- Before any commit or remote write, verify the active GitHub and Git identities
+  are `dhruv-15-03`, with Git email `dhruvrastogi2004@gmail.com`. Clear injected
+  `GH_TOKEN`, `GITHUB_TOKEN`, `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT` in the
+  same shell as an authenticated write. Abort on an identity mismatch.
+
+## 2. Build and verify locally
+
+Requires JDK 17 and Node.js 22+ for the locked VSIX packaging tools. Users of the
+extension need Java 17+, not Node.js or the packaging toolchain.
+
+From the repository root in PowerShell:
+
 ```powershell
-# Clean build with all tests
-./gradlew.bat clean test shadowJar --no-daemon
+.\gradlew.bat clean check stageCompiler distZip distTar
+if ($LASTEXITCODE -ne 0) { throw "Compiler verification failed" }
 
-# Verify test results
-# All 1,034 tests should pass with 0 failures
+Set-Location vscode-extension
+npm ci
+if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed" }
+npm run test:packaging
+if ($LASTEXITCODE -ne 0) { throw "Packaging tests failed" }
+npm run package
+if ($LASTEXITCODE -ne 0) { throw "VSIX packaging failed" }
+npm run verify:package
+if ($LASTEXITCODE -ne 0) { throw "Artifact verification failed" }
+Set-Location ..
 ```
 
-### 3. Verify Production Artifact
+On Linux/macOS, use `./gradlew` instead of `.\gradlew.bat`.
+
+| Path | Purpose |
+|---|---|
+| `build/libs/DhrLang-<version>.jar` | Standalone fat JAR, from `shadowJar` |
+| `build/libs/plain/DhrLang-<version>.jar` | Thin JAR for Maven and the application distribution; not standalone |
+| `build/compiler/DhrLang.jar` | Exact fat JAR staged by Gradle, independent of directory ordering |
+| `build/release/DhrLang.jar` | Compiler packaged alongside the verified VSIX |
+| `build/release/dhrlang-vscode-<version>.vsix` | Extension containing the same compiler bytes |
+| `build/release/release-manifest.json` | Versions, source revision and SHA-256 hashes for the JAR and VSIX |
+
+Local builds without a supplied `RELEASE_COMMIT`/CI revision record a null source
+revision. Publication requires the exact tagged commit in the manifest.
+
+`check` runs packaged-compiler regressions with no fallback to the test classpath.
+It also checks that thin/fat outputs and Maven publication coordinates are distinct.
+The crypto test uses the public secp256k1 test scalar 1, never a real wallet,
+credentials, RPC endpoint or transaction. It also tests all three JVM backends
+and a framed LSP completion request from a temporary directory.
+
+To verify a downloaded JAR without rebuilding that artifact:
+
 ```powershell
-# Check the JAR exists
-ls build\libs\DhrLang-*.jar
-
-# Test version
-java -jar build\libs\DhrLang-3.0.0.jar --version
-
-# Test help
-java -jar build\libs\DhrLang-3.0.0.jar --help
-
-# Test a working program
-java -jar build\libs\DhrLang-3.0.0.jar input\sample.dhr
-
-# Test JSON diagnostics (should output clean JSON only)
-java -jar build\libs\DhrLang-3.0.0.jar --json --time input\demo.dhr
+.\gradlew.bat verifyCompilerArtifact "-PcompilerJar=C:\downloads\DhrLang.jar"
 ```
 
-### 4. Quality Checks
-- [x] All 1,034 tests passing (0 failures)
-- [x] CLI options work correctly (`--help`, `--version`, `--json`, `--time`, `--no-color`, `--backend`, `--emit-ir`, `--emit-bc`)
-- [x] JSON output is clean (no banners mixed in)
-- [x] Version is correct in `--version` output ("DhrLang version 3.0.0")
-- [x] Shadow JAR, Javadoc JAR, and Sources JAR all build successfully
-- [ ] No critical Gradle deprecations from our own scripts
+## 3. Publish the compiler release
 
-## Release Steps
+Only `.github/workflows/release.yml` owns compiler-release publication. The CI
+workflow tests and builds artifacts but must not publish a second release.
 
-### 1. Create Git Tag
-```bash
-git tag -a v3.0.0 -m "Release version 3.0.0 - Major release with 7 iterations"
-git push origin v3.0.0
-```
+- Obtain approval for the exact new version and commit.
+- Push `v<version>` under the verified identity, or manually dispatch `Release`
+  with an already-existing `v<version>` tag.
+- The requested tag, build version and extension version must agree.
+- The workflow runs `check`, packages the canonical VSIX, verifies archive contents
+  and attaches the JAR, VSIX, manifest, archives and checksums.
+- It refuses to overwrite an existing release.
+- It downloads the published JAR and VSIX and reruns their integrity checks.
+- Confirm the workflow and the downloaded-artifact checks succeeded before
+  announcing the release or starting Marketplace publication.
 
-### 2. Create GitHub Release
-1. Go to: https://github.com/dhruv-15-03/DhrLang/releases/new
-2. Choose tag: `v3.0.0`
-3. Release title: `DhrLang v3.0.0 â€” Major Release`
-4. Description: Include highlights from `CHANGELOG.md` and `RELEASE_NOTES.md`
-5. Upload assets:
-   - `build/libs/DhrLang-3.0.0.jar` (fat JAR, ~1.3 MB)
-   - `build/libs/DhrLang-3.0.0-javadoc.jar`
-   - `build/libs/DhrLang-3.0.0-sources.jar`
+The application ZIP contains its dependency JARs and launchers. The standalone
+JAR and the portable Linux/Windows archives must contain the fat compiler.
+`checksums.txt` uses artifact basenames so it can be checked after downloading.
 
-### 3. Verify Release
-- [ ] Download the release JAR from GitHub
-- [ ] Test it on a clean machine (if possible)
-- [ ] Verify README instructions work with the released artifact
+## 4. Publish the same VSIX to the Marketplace
 
-## Post-Release
+The compiler release must exist first. `VSCE_PAT` must be available for the
+`EnggWithDhruv` publisher. Do not print or store the token in project files.
 
-### 1. Documentation
-- [x] Update `CHANGELOG.md` with all 7 iterations
-- [x] Update `RELEASE_NOTES.md` with v3.0.0 section
-- [ ] Consider updating badges if version is shown anywhere
+- Push `vscode-v<version>` pointing to the same source commit as `v<version>`, or
+  dispatch `VS Code Extension Release` with `<version>` (without a `v` prefix).
+- The workflow downloads the canonical JAR, VSIX and manifest from `v<version>`.
+  It does not change package versions, rebuild the compiler or repackage the VSIX.
+- It checks source revision, versions, publisher, runtime files, dependency
+  presence and the exact embedded-compiler hash before `vsce publish --packagePath`.
+- It queries the Marketplace for the published version before creating the
+  extension GitHub release. Inspect failed steps instead of assuming a tag means
+  the extension was published.
+- If Marketplace publication succeeded but indexing/release creation failed,
+  inspect the live version before retrying. Never rebuild different bytes with
+  the same extension version.
 
-### 2. Communication
-- [ ] Announce release (if applicable)
-- [ ] Update any external documentation or project pages
+## 5. Post-release evidence
 
-## Current Release Status (v3.0.0)
+- Download the standalone compiler and install the released VSIX on clean
+  supported machines.
+- Verify version, a sample program, crypto/signing availability and LSP behavior.
+- Confirm the Marketplace version matches the intended compiler release.
+- Retain the manifest, checksums and CI results with the release.
+- Update public instructions only after the corresponding release exists.
 
-### Completed
-- Build configuration finalized (`shadowJar` produces fat JAR ~1.3 MB)
-- Manifest attributes set correctly (`Main-Class`, `Implementation-Version`)
-- JSON diagnostics contract documented and tested
-- CLI options documented in README
-- All 1,034 tests passing (0 failures)
-- 3 JARs generated: fat JAR, javadoc, sources
-- Version aligned across build.gradle, SPEC.md, README.md, vscode-extension
-
-### Release Artifacts
-- **Version**: `3.0.0`
-- **Fat JAR**: `build/libs/DhrLang-3.0.0.jar` (~1.3 MB)
-- **Javadoc**: `build/libs/DhrLang-3.0.0-javadoc.jar` (~5.1 MB)
-- **Sources**: `build/libs/DhrLang-3.0.0-sources.jar` (~292 KB)
-- **Java requirement**: Java 17+
-- **Platforms**: Windows, Linux, macOS (JVM-based)
-
-### Feature Summary (7 Iterations)
-1. Enhanced Error Reporting â€” unique error codes, contextual hints
-2. Smart Contract Safety â€” view/pure checks, reentrancy analysis, storage layout
-3. EVM Backend â€” opcodes, assembler, ABI encoding, bytecode optimizer
-4. Interactive Debugging â€” breakpoints, debug sessions, REPL, source maps
-5. Testing & Verification â€” fuzzing, property-based testing, coverage, gas profiling
-6. Production & Deployment â€” audit reports, doc generation, multi-chain deploy
-7. AI Agent & Data Pipeline â€” agent orchestration, planning, streaming pipelines
-
-### Future Improvements (Not Blockers)
-- Plugin deprecations (Shadow, SpotBugs) â€” wait for plugin updates
-- Raise Jacoco coverage thresholds as test coverage improves
-- Add platform-specific launcher scripts (e.g., `dhr.bat`, `dhr.sh`)
+Passing these distribution checks does not certify EVM semantics or incomplete
+contract scaffolds for real-money use. Those have separate correctness gates.

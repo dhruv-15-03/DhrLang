@@ -1,5 +1,19 @@
 # DhrLang Package Manager Guide
 
+## Verified artifact contract
+
+The standalone release asset is `DhrLang.jar`. Build it with `stageCompiler`,
+which copies the `shadowJar` task output to `build/compiler/DhrLang.jar`.
+The thin JAR under `build/libs/plain/` is not a standalone distribution.
+Do not select compiler artifacts with a wildcard or `head`.
+
+Compiler releases are owned by `release.yml`. The Marketplace workflow publishes
+the exact VSIX attached to that compiler release, including the same JAR bytes.
+Both are covered by `release-manifest.json`; all release downloads are covered by
+`checksums.txt`. See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the canonical
+build, verification and publication order. The package-manager examples below
+are templates, not evidence that those registries have been published.
+
 ## ðŸš€ Distribution Strategy
 
 To make DhrLang truly accessible to users worldwide, we need to distribute it through popular package managers and provide easy installation methods.
@@ -15,16 +29,16 @@ Create a Homebrew formula for easy installation on macOS and Linux.
 class Dhrlang < Formula
   desc "DhrLang programming language (JVM, modern static typing)"
   homepage "https://github.com/dhruv-15-03/DhrLang"
-  # Prefer a tagged release asset (single JAR): DhrLang-<version>.jar
+  # Use the verified standalone asset from the exact compiler release.
   version "<version>"
-  url "https://github.com/dhruv-15-03/DhrLang/releases/download/v#{version}/DhrLang-#{version}.jar"
+  url "https://github.com/dhruv-15-03/DhrLang/releases/download/v#{version}/DhrLang.jar"
   sha256 "REPLACE_WITH_ACTUAL_SHA256"
   license "MIT"
 
   depends_on "openjdk@17"
 
   def install
-    libexec.install "DhrLang-#{version}.jar" => "DhrLang.jar"
+    libexec.install "DhrLang.jar"
     (bin/"dhrlang").write <<~EOS
       #!/bin/bash
       exec "#{Formula["openjdk@17"].opt_bin}/java" -jar "#{libexec}/DhrLang.jar" "$@"
@@ -90,7 +104,7 @@ Create a Chocolatey package for Windows users.
 ```powershell
 $ErrorActionPreference = 'Stop'
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
-$url64 = 'https://github.com/dhruv-15-03/DhrLang/releases/download/v<version>/DhrLang-<version>.jar'
+$url64 = 'https://github.com/dhruv-15-03/DhrLang/releases/download/v<version>/DhrLang.jar'
 
 $packageArgs = @{
   packageName   = $env:ChocolateyPackageName

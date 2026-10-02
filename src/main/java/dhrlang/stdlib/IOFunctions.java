@@ -86,9 +86,13 @@ public class IOFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
+                if (arg instanceof Number) {
+                    // num -> identity; duo -> truncate toward zero (Java (long) cast semantics)
+                    return ((Number) arg).longValue();
+                }
                 if (!(arg instanceof String)) {
                     throw ErrorFactory.typeError(
-                        "toNum() requires a string argument",
+                        "toNum() requires a num, duo, or string argument",
                         interpreter.getCurrentCallLocation()
                     );
                 }
@@ -120,9 +124,13 @@ public class IOFunctions {
             @Override
             public Object call(Interpreter interpreter, List<Object> arguments) {
                 Object arg = arguments.get(0);
+                if (arg instanceof Number) {
+                    // duo -> identity; num -> widen to double
+                    return ((Number) arg).doubleValue();
+                }
                 if (!(arg instanceof String)) {
                     throw ErrorFactory.typeError(
-                        "toDuo() requires a string argument",
+                        "toDuo() requires a num, duo, or string argument",
                         interpreter.getCurrentCallLocation()
                     );
                 }

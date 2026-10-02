@@ -6,10 +6,10 @@ import dhrlang.evm.FunctionSelector;
 import java.util.*;
 
 /**
- * DhrLang contract standard library — production-ready base contracts.
+ * DhrLang contract teaching templates and experimental base patterns.
  *
- * <p>Equivalent to OpenZeppelin for Solidity: provides audited, reusable
- * base contract patterns that DhrLang developers can extend.</p>
+ * <p>These templates are not audited substitutes for production libraries.
+ * Token, role and governance entries are incomplete scaffolds.</p>
  *
  * <p>Each method returns a DhrLang source string that can be prepended to
  * user contracts or imported via a future module system.</p>
@@ -20,8 +20,8 @@ import java.util.*;
  *   <li>{@link #reentrancyGuard()} — Reentrancy protection</li>
  *   <li>{@link #pausable()} — Emergency pause mechanism</li>
  *   <li>{@link #safemath()} — Checked arithmetic for uint256</li>
- *   <li>{@link #erc20Base()} — Full ERC-20 token implementation</li>
- *   <li>{@link #erc721Base()} — Full ERC-721 NFT implementation</li>
+ *   <li>{@link #erc20Base()} — Fungible-token scaffold</li>
+ *   <li>{@link #erc721Base()} — NFT scaffold</li>
  *   <li>{@link #accessControl()} — Role-based access control</li>
  *   <li>{@link #timelockController()} — Timelock for governance</li>
  * </ul>
@@ -61,7 +61,9 @@ public final class ContractStdlib {
                 }
             
                 kaam transferOwnership(Address newOwner) {
-                    onlyOwner();
+                    if (msg.sender != owner) {
+                        throw "Ownable: caller is not the owner";
+                    }
                     if (newOwner == address(0)) {
                         throw "Ownable: new owner is the zero address";
                     }
@@ -69,7 +71,9 @@ public final class ContractStdlib {
                 }
             
                 kaam renounceOwnership() {
-                    onlyOwner();
+                    if (msg.sender != owner) {
+                        throw "Ownable: caller is not the owner";
+                    }
                     owner = address(0);
                 }
             
@@ -189,6 +193,9 @@ public final class ContractStdlib {
         return """
             @contract
             class SafeMath {
+                @constructor
+                kaam init() {}
+            
                 @pure
                 static kaam add(num a, num b) {
                     num c = a + b;
@@ -240,9 +247,7 @@ public final class ContractStdlib {
     // ── ERC-20 Base ──────────────────────────────────────────────────────
 
     /**
-     * Full ERC-20 token implementation.
-     *
-     * <p>Compliant with the EIP-20 standard. Includes mint (owner only) and burn.</p>
+     * Fungible-token teaching scaffold. Does not implement balances or allowances.
      */
     public static String erc20Base() {
         return """
@@ -295,7 +300,7 @@ public final class ContractStdlib {
     // ── ERC-721 Base ─────────────────────────────────────────────────────
 
     /**
-     * Full ERC-721 NFT implementation.
+     * NFT teaching scaffold. Does not implement ownership or approvals.
      */
     public static String erc721Base() {
         return """
@@ -361,12 +366,16 @@ public final class ContractStdlib {
                 }
             
                 kaam grantRole(Address account, num roleId) {
-                    onlyAdmin();
+                    if (msg.sender != admin) {
+                        throw "AccessControl: caller is not admin";
+                    }
                     roleCount = roleCount + 1;
                 }
             
                 kaam revokeRole(Address account, num roleId) {
-                    onlyAdmin();
+                    if (msg.sender != admin) {
+                        throw "AccessControl: caller is not admin";
+                    }
                     if (roleCount > 0) {
                         roleCount = roleCount - 1;
                     }
@@ -468,10 +477,10 @@ public final class ContractStdlib {
         catalog.put("ReentrancyGuard", "Runtime reentrancy protection mutex");
         catalog.put("Pausable", "Emergency pause/unpause mechanism");
         catalog.put("SafeMath", "Checked arithmetic (add, sub, mul, div, mod)");
-        catalog.put("ERC20", "Standard fungible token (EIP-20 compliant)");
-        catalog.put("ERC721", "Standard non-fungible token (EIP-721 compliant)");
-        catalog.put("AccessControl", "Role-based access control (grant, revoke, check)");
-        catalog.put("TimelockController", "Governance timelock (schedule, execute, cancel)");
+        catalog.put("ERC20", "Fungible-token scaffold; balances and allowances are not implemented");
+        catalog.put("ERC721", "NFT scaffold; ownership and approvals are not implemented");
+        catalog.put("AccessControl", "Role-counter scaffold; per-account role assignments are not implemented");
+        catalog.put("TimelockController", "Proposal-counter scaffold; scheduled execution is not implemented");
         return catalog;
     }
 }

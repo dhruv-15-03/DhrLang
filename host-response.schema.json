@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DhrLang bounded host response v1 (experimental)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profile", "compilerVersion", "sourceSha256", "status", "stdout", "stderr", "diagnostics", "message", "workerExitCode", "elapsedMs"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profile": { "const": "jvm-bytecode-v1" },
+    "compilerVersion": { "type": "string" },
+    "sourceSha256": { "type": "string", "pattern": "^([0-9a-f]{64})?$" },
+    "status": { "enum": ["SUCCESS", "COMPILE_ERROR", "RUNTIME_ERROR", "INVALID_REQUEST", "TIME_LIMIT", "OUTPUT_LIMIT", "WORKER_ERROR"] },
+    "stdout": { "type": "string" },
+    "stderr": { "type": "string" },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "message", "line", "column"],
+        "properties": {
+          "severity": { "enum": ["ERROR", "WARNING"] },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "line": { "type": "integer", "minimum": 0 },
+          "column": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "message": { "type": "string" },
+    "workerExitCode": { "type": "integer" },
+    "elapsedMs": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -1,0 +1,11 @@
+class Main {
+    static kaam main() {
+        num amount = toNum(readLine());
+        num available = toNum(readLine());
+        if (Budget.fits(amount, available)) {
+            printLine("WITHIN_BUDGET");
+        } else {
+            printLine("REJECTED");
+        }
+    }
+}

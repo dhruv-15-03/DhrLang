@@ -588,8 +588,9 @@ public class TypeChecker {
 
         if (function.getBody() != null) {
             checkBlock(function.getBody(), local);
-            // Skip unused-param warnings for @event functions (they're declarations, not implementations)
-            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+            // Skip unused-param warnings for @event/@error functions (they're declarations, not implementations)
+            boolean isEvent = function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || function.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR);
             if(errorReporter!=null && !isEvent){
                 for (VarDecl param : function.getParameters()) {
                     Boolean used = local.getLocalUsageMap().get(param.getName());
@@ -608,9 +609,10 @@ public class TypeChecker {
     private void checkBlock(Block block, TypeEnvironment env) {
         TypeEnvironment blockEnv = new TypeEnvironment(env);
         boolean unreachable = false;
-        // Empty block (no statements) warning — skip for @event functions (they're declarations)
+        // Empty block (no statements) warning — skip for @event/@error functions (they're declarations)
         boolean isEventBody = currentFunction != null
-                && currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT);
+                && (currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.EVENT)
+                    || currentFunction.hasContractAnnotation(dhrlang.ast.ContractAnnotation.ERROR));
         if(block.getStatements().isEmpty() && errorReporter!=null && !isEventBody){
             errorReporter.warning(block.getSourceLocation(), "Empty block.", "Remove or add statements", ErrorCode.EMPTY_BLOCK);
         }
@@ -1489,7 +1491,17 @@ public class TypeChecker {
                 return resolvedType;
             }
             errorWithHint("Unknown property 'msg." + propName + "'.", expr.getSourceLocation(),
-                         "Available msg properties: sender (Address), value (uint256)");
+                         "Available msg properties: sender (Address), value (uint256), data (calldata), sig (uint256)");
+            return "unknown";
+        }
+        // Handle msg.data.length (calldata size) for smart contracts
+        if (objectType.equals(MsgContext.CALLDATA_TYPE)) {
+            String resolvedType = MsgContext.getCallDataPropertyType(propName);
+            if (resolvedType != null) {
+                return resolvedType;
+            }
+            errorWithHint("Unknown property 'msg.data." + propName + "'.", expr.getSourceLocation(),
+                         "msg.data only supports '.length' (uint256); use msg.sig for the function selector");
             return "unknown";
         }
         if (objectType.equals(MsgContext.BLOCK_TYPE)) {
@@ -1730,6 +1742,36 @@ public class TypeChecker {
             funcName = ((VariableExpr) callee).getName().getLexeme();
             if (isNativeFunction(funcName)) {
                 return checkNativeFunction(funcName, call.getArguments(), call, env);
+            }
+            // Contract built-in: `revert(...)` lowers to an EVM REVERT — a custom
+            // error, a string message, or a bare revert. Validate argument
+            // expressions (including any inner @error call) without requiring a
+            // user-declared `revert` function.
+            if ("revert".equals(funcName)) {
+                for (Expression arg : call.getArguments()) {
+                    checkExpr(arg, env);
+                }
+                return "kaam";
+            }
+            // Contract built-in: `address(x)` casts a numeric value to an Address
+            // (e.g. the zero address `address(0)`). Lowered on the EVM to a 160-bit
+            // mask. There is no user-declarable `address` function.
+            if ("address".equals(funcName)) {
+                if (call.getArguments().size() != 1) {
+                    errorWithHint("address(x) takes exactly one argument.", call.getSourceLocation(),
+                                 "Use address(0) for the zero address, or address(n) to cast a number",
+                                 ErrorCode.NATIVE_ARITY);
+                } else {
+                    String argType = checkExpr(call.getArguments().get(0), env);
+                    TypeDesc argDesc = TypeDesc.parse(argType);
+                    if (!"Address".equals(argType) && !"unknown".equals(argType)
+                            && !isAssignable(argDesc, TypeDesc.parse("num"))) {
+                        errorWithHint("address(x) expects a numeric argument, got '" + argType + "'.",
+                                     call.getSourceLocation(), "Pass a num, e.g. address(0)",
+                                     ErrorCode.TYPE_MISMATCH);
+                    }
+                }
+                return "Address";
             }
             try {
                 signature = env.getFunction(funcName);
@@ -2098,9 +2140,11 @@ public class TypeChecker {
                                  "Use " + name + "(string) to convert a string to a number");
                 }
                 String parseType = checkExpr(args.get(0), env);
-                if (!parseType.equals("sab")) {
-                    errorWithHint("'" + name + "' requires a string argument, got '" + parseType + "'.", call.getSourceLocation(),
-                                 "Number conversion only works with strings: " + name + "('42')");
+                if (!parseType.equals("sab") && !parseType.equals("num") && !parseType.equals("duo")) {
+                    errorWithHint("'" + name + "' requires a num, duo, or sab argument, got '" + parseType + "'.", call.getSourceLocation(),
+                                 name.equals("toNum")
+                                     ? "Parse a string or truncate a duo to an integer: " + name + "('42') or (3.9 as num)"
+                                     : "Parse a string or widen a num to a duo: " + name + "('4.2') or (3 as duo)");
                 }
                 return name.equals("toNum") ? "num" : "duo";
                 

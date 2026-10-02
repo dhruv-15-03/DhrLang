@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "within-policy",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"APPROVED","reason":"WITHIN_POLICY","remainingBudgetMinor":37500}
+    },
+    {
+      "id": "exact-budget",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":50000,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"APPROVED","reason":"WITHIN_POLICY","remainingBudgetMinor":0}
+    },
+    {
+      "id": "over-budget",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":50001,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"EXCEEDS_BUDGET","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "zero-amount",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":0,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"INVALID_AMOUNT","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "negative-amount",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":-100,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"INVALID_AMOUNT","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "inactive-supplier",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":false,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"INVALID_SUPPLIER","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "currency-mismatch",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"USD","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"CURRENCY_MISMATCH","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "self-approval",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"alice","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"SELF_APPROVAL","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "missing-role",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":false,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"NOT_AUTHORIZED","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "wrong-cost-center",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["sales"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"WRONG_COST_CENTER","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "needs-review",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":10000},
+      "expected": {"outcome":"NEEDS_REVIEW","reason":"APPROVAL_LIMIT","remainingBudgetMinor":50000}
+    },
+    {
+      "id": "closed-state",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"APPROVED","version":1},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":37500,"version":1}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"INVALID_STATE","remainingBudgetMinor":37500}
+    },
+    {
+      "id": "exact-integer-boundary",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":9007199254740991,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":9007199254740991,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":9007199254740991},
+      "expected": {"outcome":"APPROVED","reason":"WITHIN_POLICY","remainingBudgetMinor":0}
+    },
+    {
+      "id": "adjacent-boundary-over-budget",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":9007199254740991,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":9007199254740990,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"INR","approvalLimitMinor":9007199254740991},
+      "expected": {"outcome":"REJECTED","reason":"EXCEEDS_BUDGET","remainingBudgetMinor":9007199254740990}
+    },
+    {
+      "id": "approval-limit-currency-mismatch",
+      "snapshot": {
+        "request": {"id":"purchase-001","requester":"alice","supplier":"supplier-a","costCenter":"engineering","currency":"INR","amountMinor":12500,"supplierActive":true,"state":"SUBMITTED","version":0},
+        "budget": {"costCenter":"engineering","currency":"INR","availableMinor":50000,"version":0}
+      },
+      "actor": {"tenant":"training","id":"bob","mayApprove":true,"costCenters":["engineering"],"approvalCurrency":"USD","approvalLimitMinor":50000},
+      "expected": {"outcome":"REJECTED","reason":"CURRENCY_MISMATCH","remainingBudgetMinor":50000}
+    }
+  ]
+}

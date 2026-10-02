@@ -6,6 +6,8 @@ import dhrlang.validation.StorageLayouter;
 import dhrlang.validation.StorageLayouter.ContractLayout;
 import dhrlang.validation.StorageLayouter.SlotInfo;
 
+import java.math.BigInteger;
+
 import java.util.*;
 
 /**
@@ -87,6 +89,20 @@ public final class EvmCodeGen {
 
     // Reentrancy guard state — true when inside a @nonreentrant function
     private boolean insideNonReentrant = false;
+
+    /**
+     * Compiler-wide default for {@code num}/{@code duo} arithmetic.
+     * {@code true} = checked (revert on overflow/underflow) by default;
+     * {@code false} = wrapping (modulo 2^256). As of v4.0.0 DhrLang is
+     * checked-by-default, matching Solidity 0.8+. Opt back into wrapping per
+     * method with {@code @unchecked}; per-method {@code @checked}/{@code @unchecked}
+     * always override this default.
+     */
+    private static final boolean CHECKED_ARITHMETIC_BY_DEFAULT = true;
+
+    // True while emitting a function body whose num/duo +,-,* must revert on
+    // overflow/underflow. Resolved per function from annotations + the default.
+    private boolean checkedArithmetic = CHECKED_ARITHMETIC_BY_DEFAULT;
 
     // ── Constructor ──────────────────────────────────────────────────────
 
@@ -181,17 +197,17 @@ public final class EvmCodeGen {
 
         // ── Function bodies ──────────────────────────────────────
         for (int i = 0; i < publicFunctions.size(); i++) {
-            emitFunction(publicFunctions.get(i), functionLabels[i]);
+            emitFunction(publicFunctions.get(i), functionLabels[i], true);
         }
 
         // ── Receive function body ────────────────────────────────
         if (receiveFunc != null) {
-            emitFunction(receiveFunc, receiveLabel);
+            emitFunction(receiveFunc, receiveLabel, false);
         }
 
         // ── Fallback function body ───────────────────────────────
         if (fallbackFunc != null) {
-            emitFunction(fallbackFunc, fallbackLabel);
+            emitFunction(fallbackFunc, fallbackLabel, false);
         }
 
         return buf.resolve();
@@ -208,6 +224,8 @@ public final class EvmCodeGen {
 
         // Run constructor if it exists
         FunctionDecl ctor = findConstructor();
+        List<Integer> argumentOffsets = new ArrayList<>();
+        int argumentSizeCheck = -1;
 
         // Auto-store msg.sender as contract owner for access control
         creation.emit(EvmOpcode.CALLER);
@@ -217,17 +235,30 @@ public final class EvmCodeGen {
         if (ctor != null) {
             EvmCodeGen ctorGen = new EvmCodeGen(contract, layout, classRegistry);
             ctorGen.buf = creation;
+            ctorGen.currentFn = ctor;
 
-            // Decode constructor parameters from calldata.
-            // At deploy time, constructor args are ABI-encoded in calldata
-            // (no 4-byte selector prefix for constructors).
+            // Constructor arguments are appended to initcode, not supplied as
+            // calldata. Patch their absolute code offsets after assembly.
             List<VarDecl> ctorParams = ctor.getParameters();
+            if (!ctorParams.isEmpty()) {
+                argumentSizeCheck = creation.pc() + 1;
+                creation.push4(0);
+                creation.emit(EvmOpcode.CODESIZE);
+                creation.emit(EvmOpcode.LT);
+                creation.emit(EvmOpcode.ISZERO);
+                String argumentsPresent = creation.newLabel();
+                creation.jumpIf(argumentsPresent);
+                creation.revertWithMessage("missing constructor arguments");
+                creation.placeLabel(argumentsPresent);
+            }
             for (int i = 0; i < ctorParams.size(); i++) {
                 String name = ctorParams.get(i).getName();
                 int offset = ctorGen.allocLocal(name);
-                creation.pushInt(i * 32);
-                creation.emit(EvmOpcode.CALLDATALOAD);
-                creation.mstoreAt(offset);
+                creation.pushInt(32);
+                argumentOffsets.add(creation.pc() + 1);
+                creation.push4(0);
+                creation.pushInt(offset);
+                creation.emit(EvmOpcode.CODECOPY);
             }
 
             ctorGen.emitFunctionBody(ctor);
@@ -266,17 +297,27 @@ public final class EvmCodeGen {
         byte[] full = new byte[creationBytes.length + rtLen];
         System.arraycopy(creationBytes, 0, full, 0, creationBytes.length);
         System.arraycopy(runtimeBytecode, 0, full, creationBytes.length, rtLen);
+        for (int i = 0; i < argumentOffsets.size(); i++) {
+            patchWordOffset(full, argumentOffsets.get(i), full.length + i * 32);
+        }
+        if (argumentSizeCheck >= 0) {
+            patchWordOffset(full, argumentSizeCheck, full.length + argumentOffsets.size() * 32);
+        }
         return full;
+    }
+
+    private static void patchWordOffset(byte[] code, int position, int value) {
+        for (int i = 0; i < 4; i++) code[position + i] = (byte) (value >>> ((3 - i) * 8));
     }
 
     // ── Function emission ────────────────────────────────────────────────
 
-    private void emitFunction(FunctionDecl fn, String label) {
+    private void emitFunction(FunctionDecl fn, String label, boolean selectorOnStack) {
         resetLocals();
         buf.placeLabel(label);
 
         // Pop the selector from the stack (left over from dispatch)
-        buf.emit(EvmOpcode.POP);
+        if (selectorOnStack) buf.emit(EvmOpcode.POP);
 
         // Check payable
         if (!fn.isPayable()) {
@@ -302,6 +343,16 @@ public final class EvmCodeGen {
 
         // Decode parameters from calldata
         List<VarDecl> params = fn.getParameters();
+        if (!params.isEmpty()) {
+            buf.pushInt(4 + params.size() * 32);
+            buf.emit(EvmOpcode.CALLDATASIZE);
+            buf.emit(EvmOpcode.LT);
+            buf.emit(EvmOpcode.ISZERO);
+            String argumentsPresent = buf.newLabel();
+            buf.jumpIf(argumentsPresent);
+            buf.revertWithMessage("missing function arguments");
+            buf.placeLabel(argumentsPresent);
+        }
         for (int i = 0; i < params.size(); i++) {
             String name = params.get(i).getName();
             int offset = allocLocal(name);
@@ -309,6 +360,24 @@ public final class EvmCodeGen {
             buf.pushInt(4 + i * 32);
             buf.emit(EvmOpcode.CALLDATALOAD);
             buf.mstoreAt(offset);
+        }
+
+        // Track current function for return-type / spec awareness
+        currentFn = fn;
+        if (!fn.getEnsures().isEmpty()) {
+            int resultOffset = allocLocal(RESULT_LOCAL);
+            buf.pushInt(0);
+            buf.mstoreAt(resultOffset);
+        }
+
+        // @requires preconditions: revert at entry if any condition is false.
+        // Checked after parameters are decoded so conditions can reference them.
+        for (Expression pre : fn.getRequires()) {
+            emitExpression(pre);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("precondition failed");
+            buf.placeLabel(ok);
         }
 
         // @nonreentrant guard: check lock, set lock, emit body, clear lock
@@ -327,9 +396,6 @@ public final class EvmCodeGen {
             insideNonReentrant = true;
         }
 
-        // Track current function for return type awareness
-        currentFn = fn;
-
         // Emit function body
         emitFunctionBody(fn);
 
@@ -340,14 +406,78 @@ public final class EvmCodeGen {
             insideNonReentrant = false;
         }
 
+        // Fall-through epilogue: enforce postconditions + invariants on the
+        // implicit (void) return path. Explicit returns are handled in
+        // emitReturnStmt; at runtime each path reaches exactly one exit.
+        emitEnsuresChecks();
+        emitInvariantChecks();
+
         // Implicit return (stop) if no explicit return was encountered
         buf.emit(EvmOpcode.STOP);
     }
 
-    private void emitFunctionBody(FunctionDecl fn) {
-        if (fn.getBody() != null) {
-            emitBlock(fn.getBody());
+    /** Memory-backed local holding the return value, bound to {@code result} in @ensures. */
+    private static final String RESULT_LOCAL = "result";
+
+    /**
+     * Emit {@code @ensures} postcondition guards for {@link #currentFn}. Each
+     * condition is evaluated and, if false, reverts. Postconditions may
+     * reference {@code result}; callers that return a value must store it into
+     * the {@link #RESULT_LOCAL} memory slot before invoking this.
+     */
+    private void emitEnsuresChecks() {
+        if (currentFn == null) return;
+        for (Expression post : currentFn.getEnsures()) {
+            emitExpression(post);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("postcondition failed");
+            buf.placeLabel(ok);
         }
+    }
+
+    /**
+     * Emit contract-level {@code @invariant} guards. Each invariant is
+     * evaluated against current storage and, if false, reverts. Skipped for
+     * {@code @view}/{@code @pure} functions, which cannot mutate state.
+     */
+    private void emitInvariantChecks() {
+        if (currentFn != null && (currentFn.isView() || currentFn.isPure())) return;
+        for (Expression inv : contract.getInvariants()) {
+            emitExpression(inv);
+            String ok = buf.newLabel();
+            buf.jumpIf(ok);
+            buf.revertWithMessage("invariant violated");
+            buf.placeLabel(ok);
+        }
+    }
+
+    private void emitFunctionBody(FunctionDecl fn) {
+        boolean prevChecked = checkedArithmetic;
+        checkedArithmetic = resolveCheckedArithmetic(fn);
+        try {
+            if (fn.getBody() != null) {
+                emitBlock(fn.getBody());
+            }
+        } finally {
+            checkedArithmetic = prevChecked;
+        }
+    }
+
+    /**
+     * Decide whether {@code num}/{@code duo} {@code + - *} inside this function
+     * should revert on overflow/underflow (checked) or wrap (unchecked).
+     * {@code @checked}/{@code @unchecked} on the method override the compiler
+     * default; if both are absent the compiler default applies.
+     */
+    private boolean resolveCheckedArithmetic(FunctionDecl fn) {
+        if (fn.hasContractAnnotation(ContractAnnotation.UNCHECKED)) {
+            return false;
+        }
+        if (fn.hasContractAnnotation(ContractAnnotation.CHECKED)) {
+            return true;
+        }
+        return CHECKED_ARITHMETIC_BY_DEFAULT;
     }
 
     // ── Statement emission ───────────────────────────────────────────────
@@ -363,32 +493,46 @@ public final class EvmCodeGen {
             emitWhileStmt((WhileStmt) stmt);
         } else if (stmt instanceof ReturnStmt) {
             emitReturnStmt((ReturnStmt) stmt);
+        } else if (stmt instanceof ThrowStmt thrown) {
+            if (thrown.getValue() instanceof LiteralExpr literal && literal.getValue() instanceof String message) {
+                buf.revertWithMessage(message);
+            } else if (thrown.getValue() instanceof CallExpr call
+                    && call.getCallee() instanceof VariableExpr name
+                    && isErrorFunction(name.getName().getLexeme())) {
+                emitCustomErrorRevert(name.getName().getLexeme(), call.getArguments());
+            } else {
+                throw unsupported(stmt, "Only string literals and declared custom errors can be thrown on EVM");
+            }
         } else if (stmt instanceof Block) {
             emitBlock((Block) stmt);
         } else if (stmt instanceof BreakStmt) {
             if (!breakLabels.isEmpty()) {
                 buf.jumpTo(breakLabels.peek());
-            }
+            } else throw unsupported(stmt, "break outside an EVM loop");
         } else if (stmt instanceof ContinueStmt) {
             if (!continueLabels.isEmpty()) {
                 buf.jumpTo(continueLabels.peek());
-            }
+            } else throw unsupported(stmt, "continue outside an EVM loop");
+        } else {
+            throw unsupported(stmt, "Statement " + stmt.getClass().getSimpleName() + " is not supported on EVM");
         }
-        // FunctionDecl nested inside body — skip (EVM doesn't support nested functions)
     }
 
     private void emitBlock(Block block) {
-        for (Statement stmt : block.getStatements()) {
-            emitStatement(stmt);
+        Map<String, Integer> enclosing = new LinkedHashMap<>(locals);
+        try {
+            for (Statement stmt : block.getStatements()) emitStatement(stmt);
+        } finally {
+            locals.clear();
+            locals.putAll(enclosing);
         }
     }
 
     private void emitVarDecl(VarDecl decl) {
-        int offset = allocLocal(decl.getName());
         if (decl.getInitializer() != null) {
             emitExpression(decl.getInitializer());
-            buf.mstoreAt(offset);
-        }
+        } else buf.pushInt(0);
+        buf.mstoreAt(allocLocal(decl.getName()));
     }
 
     private void emitExpressionStmt(ExpressionStmt stmt) {
@@ -445,13 +589,29 @@ public final class EvmCodeGen {
             buf.pushInt(0);
             buf.sstoreSlot(REENTRANCY_LOCK_SLOT);
         }
+        boolean hasSpecExits = currentFn != null
+                && (!currentFn.getEnsures().isEmpty() || !contract.getInvariants().isEmpty());
         if (stmt.getValue() != null) {
             // Check if return type is string (sab) — requires dynamic ABI encoding
             String retType = currentFn != null ? currentFn.getReturnType() : null;
             if ("sab".equals(retType) || "string".equals(retType)) {
+                // Postconditions/invariants run before the dynamic-string return.
+                // `result` binding is not supported for sab returns.
+                emitEnsuresChecks();
+                emitInvariantChecks();
                 emitDynamicStringReturn(stmt.getValue());
             } else {
                 emitExpression(stmt.getValue());
+                if (hasSpecExits) {
+                    // Bind the return value to `result` (a memory local) so
+                    // @ensures can reference it, keeping a copy on the stack.
+                    int rslot = locals.containsKey(RESULT_LOCAL)
+                            ? locals.get(RESULT_LOCAL) : allocLocal(RESULT_LOCAL);
+                    buf.emit(EvmOpcode.DUP1);
+                    buf.mstoreAt(rslot);
+                    emitEnsuresChecks();
+                    emitInvariantChecks();
+                }
                 // ABI-encode return value: store at memory offset 0, return 32 bytes
                 buf.pushInt(0);
                 buf.emit(EvmOpcode.MSTORE);
@@ -460,6 +620,8 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.RETURN);
             }
         } else {
+            emitEnsuresChecks();
+            emitInvariantChecks();
             buf.emit(EvmOpcode.STOP);
         }
     }
@@ -605,10 +767,13 @@ public final class EvmCodeGen {
         } else if (value instanceof Integer) {
             buf.pushInt((Integer) value);
         } else if (value instanceof Long) {
-            buf.pushInt(((Long) value).intValue());
+            buf.pushInt((Long) value);
         } else if (value instanceof Double) {
-            // EVM doesn't have floating point — truncate
-            buf.pushInt(((Double) value).intValue());
+            throw unsupported(expr, "Floating-point literals are not supported on EVM");
+        } else if (value instanceof BigInteger integer) {
+            buf.push32(integer);
+        } else if (value instanceof Character character) {
+            buf.pushInt(character);
         } else if (value instanceof Boolean) {
             buf.pushInt((Boolean) value ? 1 : 0);
         } else if (value instanceof String) {
@@ -617,17 +782,16 @@ public final class EvmCodeGen {
                     ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             buf.push32(new java.math.BigInteger(1, hash));
         } else {
-            buf.pushInt(0);
+            throw unsupported(expr, "Literal type " + value.getClass().getSimpleName() + " is not supported on EVM");
         }
     }
 
     private void emitVariable(VariableExpr expr) {
         String name = expr.getName().getLexeme();
-        // Check storage first
-        if (storageSlots.containsKey(name)) {
-            buf.sloadSlot(storageSlots.get(name));
-        } else if (locals.containsKey(name)) {
+        if (locals.containsKey(name)) {
             buf.mloadAt(locals.get(name));
+        } else if (storageSlots.containsKey(name)) {
+            buf.sloadSlot(storageSlots.get(name));
         } else if ("msg.sender".equals(name)) {
             buf.emit(EvmOpcode.CALLER);
         } else if ("msg.value".equals(name)) {
@@ -647,8 +811,7 @@ public final class EvmCodeGen {
         } else if ("tx.gasprice".equals(name)) {
             buf.emit(EvmOpcode.GASPRICE);
         } else {
-            // Unknown variable — push 0
-            buf.pushInt(0);
+            throw unsupported(expr, "Unknown EVM variable '" + name + "'");
         }
     }
 
@@ -692,93 +855,76 @@ public final class EvmCodeGen {
 
         switch (op) {
             case PLUS:
-                // SafeMath: checked add — revert on overflow
-                // Stack: [a, b] → DUP2, ADD, DUP1, SWAP2, GT → if a > result, overflow
-                buf.emit(EvmOpcode.DUP2);     // [a, b, a]
-                buf.emit(EvmOpcode.ADD);       // [a, a+b]
-                buf.emit(EvmOpcode.DUP1);      // [a, a+b, a+b]
-                buf.emit(EvmOpcode.SWAP2);     // [a+b, a+b, a]
-                buf.emit(EvmOpcode.SGT);       // [a+b, a > result?]  (signed)
-                {
+                if (checkedArithmetic) {
+                    // Checked add (unsigned): c = a + b; revert if c < a (overflow).
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+                    buf.emit(EvmOpcode.ADD);      // [a, c]   (c = a+b)
+                    buf.emit(EvmOpcode.DUP1);     // [a, c, c]
+                    buf.emit(EvmOpcode.SWAP2);    // [c, c, a]
+                    buf.emit(EvmOpcode.GT);       // [c, (a > c)?]  overflow iff a > c
                     String okAdd = buf.newLabel();
                     buf.emit(EvmOpcode.ISZERO);
                     buf.jumpIf(okAdd);
                     buf.revertWithMessage("arithmetic overflow");
-                    buf.placeLabel(okAdd);
+                    buf.placeLabel(okAdd);        // [c]
+                } else {
+                    buf.emit(EvmOpcode.ADD);      // wrapping add (mod 2^256)
                 }
-                // result (a+b) on stack
                 break;
             case MINUS:
-                // SafeMath: checked sub — revert on underflow
-                // Stack: [a, b] → DUP2, DUP2, SLT → if a < b (signed), underflow
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a]
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a, b]
-                buf.emit(EvmOpcode.SGT);       // [a, b, b > a?]  (signed: underflow if b > a)
-                {
+                if (checkedArithmetic) {
+                    // Checked sub (unsigned): revert if b > a (underflow).
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+                    buf.emit(EvmOpcode.DUP2);     // [a, b, a, b]
+                    buf.emit(EvmOpcode.GT);       // [a, b, (b > a)?]  underflow iff b > a
                     String okSub = buf.newLabel();
                     buf.emit(EvmOpcode.ISZERO);
                     buf.jumpIf(okSub);
                     buf.revertWithMessage("arithmetic underflow");
-                    buf.placeLabel(okSub);
+                    buf.placeLabel(okSub);        // [a, b]
                 }
-                buf.emit(EvmOpcode.SUB);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.SUB);          // a - b
                 break;
             case STAR:
-                // SafeMath: checked mul — revert on overflow
-                // Stack: [a, b] → DUP2, DUP2, MUL, DUP1 → if a != 0 && result/a != b → overflow
-                buf.emit(EvmOpcode.DUP2);      // [a, b, a]
-                buf.emit(EvmOpcode.DUP1);      // [a, b, a, a]
-                buf.emit(EvmOpcode.ISZERO);    // [a, b, a, a==0?]
-                {
-                    String mulOk = buf.newLabel();
-                    String doMul = buf.newLabel();
-                    buf.jumpIf(doMul);         // if a==0, skip check (0*anything=0)
-                    // a != 0: compute a*b, check result/a == b
-                    buf.emit(EvmOpcode.DUP2);  // [a, b, a, b]
-                    buf.emit(EvmOpcode.MUL);   // [a, b, a*b]
-                    buf.emit(EvmOpcode.DUP1);  // [a, b, a*b, a*b]
-                    buf.emit(EvmOpcode.SWAP2); // [a, b, a*b, a*b] → [a, a*b, a*b, b]
-                    buf.emit(EvmOpcode.SWAP1); // [a, a*b, b, a*b]
-                    buf.emit(EvmOpcode.SWAP3); // [a*b, a*b, b, a]
-                    buf.emit(EvmOpcode.SWAP2); // [a*b, a, b, a*b]
-                    buf.emit(EvmOpcode.SWAP1); // [a*b, a, a*b, b]
-                    buf.emit(EvmOpcode.POP);   // [a*b, a, a*b]
-                    buf.emit(EvmOpcode.SWAP1); // [a*b, a*b, a]
-                    buf.emit(EvmOpcode.SDIV);  // [a*b, (a*b)/a]
-                    buf.emit(EvmOpcode.SWAP1); // [(a*b)/a, a*b] → wait, this is getting complex
-                    // Simpler approach: just do the mul, leave result
-                    // For now, just emit MUL (Solidity 0.8+ uses compiler-level checks)
-                    buf.emit(EvmOpcode.POP);
-                    buf.emit(EvmOpcode.POP);
-                    buf.jumpTo(mulOk);
-                    buf.placeLabel(doMul);
-                    // a was 0 — result is 0
-                    buf.emit(EvmOpcode.POP);   // pop a
-                    buf.emit(EvmOpcode.POP);   // pop b
-                    buf.pushInt(0);
-                    buf.jumpTo(mulOk);
-                    buf.placeLabel(mulOk);
+                if (checkedArithmetic) {
+                    emitCheckedMul();             // [a*b] with overflow revert
+                } else {
+                    buf.emit(EvmOpcode.MUL);      // wrapping mul (mod 2^256)
                 }
-                // fallback: just do the multiply for non-zero case
-                // Actually, the above logic is too complex for direct stack manipulation.
-                // Use the simpler pattern: emit MUL then verify.
                 break;
-            case SLASH:    buf.emit(EvmOpcode.SDIV);    break;
-            case MOD:      buf.emit(EvmOpcode.SMOD);    break;
+            case SLASH:
+                emitNonzeroDivisor();
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.DIV);          // a / b (unsigned)
+                break;
+            case MOD:
+                emitNonzeroDivisor();
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.MOD);          // a % b (unsigned)
+                break;
             case EQUALITY: buf.emit(EvmOpcode.EQ);      break;
             case NEQ:
                 buf.emit(EvmOpcode.EQ);
                 buf.emit(EvmOpcode.ISZERO);
                 break;
-            case LESS:     buf.emit(EvmOpcode.SLT);     break;
-            case GREATER:  buf.emit(EvmOpcode.SGT);     break;
+            case LESS:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.LT);           // a < b (unsigned)
+                break;
+            case GREATER:
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.GT);           // a > b (unsigned)
+                break;
             case LEQ:
-                buf.emit(EvmOpcode.SGT);
-                buf.emit(EvmOpcode.ISZERO);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.GT);           // a > b
+                buf.emit(EvmOpcode.ISZERO);       // a <= b
                 break;
             case GEQ:
-                buf.emit(EvmOpcode.SLT);
-                buf.emit(EvmOpcode.ISZERO);
+                buf.emit(EvmOpcode.SWAP1);        // [b, a]
+                buf.emit(EvmOpcode.LT);           // a < b
+                buf.emit(EvmOpcode.ISZERO);       // a >= b
                 break;
             case BIT_AND:  buf.emit(EvmOpcode.AND);     break;
             case BIT_OR:   buf.emit(EvmOpcode.OR);      break;
@@ -786,10 +932,47 @@ public final class EvmCodeGen {
             case LSHIFT:   buf.emit(EvmOpcode.SHL);     break;
             case RSHIFT:   buf.emit(EvmOpcode.SHR);     break;
             default:
-                // Fallback: pop one operand, leave the other
-                buf.emit(EvmOpcode.POP);
-                break;
+                throw unsupported(expr, "Binary operator " + op + " is not supported on EVM");
         }
+    }
+
+    private void emitNonzeroDivisor() {
+        buf.emit(EvmOpcode.DUP1);
+        String nonzero = buf.newLabel();
+        buf.jumpIf(nonzero);
+        buf.revertWithMessage("division by zero");
+        buf.placeLabel(nonzero);
+    }
+
+    /**
+     * Emit a checked unsigned multiply: {@code c = a * b}, reverting on overflow.
+     * Uses the standard SafeMath identity: overflow iff
+     * {@code a != 0 && (a * b) / a != b}. Stack in: {@code [a, b]};
+     * stack out: {@code [a*b]}.
+     */
+    private void emitCheckedMul() {
+        String zeroLbl = buf.newLabel();
+        String okLbl = buf.newLabel();
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+        buf.emit(EvmOpcode.ISZERO);   // [a, b, (a==0)?]
+        buf.jumpIf(zeroLbl);          // [a, b]   (a==0 → product is 0)
+        // a != 0: compute c = a*b and verify c/a == b
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a]
+        buf.emit(EvmOpcode.DUP2);     // [a, b, a, b]
+        buf.emit(EvmOpcode.MUL);      // [a, b, c]
+        buf.emit(EvmOpcode.DUP3);     // [a, b, c, a]
+        buf.emit(EvmOpcode.DUP2);     // [a, b, c, a, c]
+        buf.emit(EvmOpcode.DIV);      // [a, b, c, c/a]
+        buf.emit(EvmOpcode.DUP3);     // [a, b, c, c/a, b]
+        buf.emit(EvmOpcode.EQ);       // [a, b, c, (c/a == b)?]
+        buf.jumpIf(okLbl);            // [a, b, c]   (check passed)
+        buf.revertWithMessage("arithmetic overflow");
+        buf.placeLabel(zeroLbl);      // [a, b]
+        buf.pushInt(0);               // [a, b, 0]
+        buf.placeLabel(okLbl);        // [a, b, c]   (c = product, or 0 when a==0)
+        buf.emit(EvmOpcode.SWAP2);    // [c, b, a]
+        buf.emit(EvmOpcode.POP);      // [c, b]
+        buf.emit(EvmOpcode.POP);      // [c]
     }
 
     private void emitUnary(UnaryExpr expr) {
@@ -812,7 +995,7 @@ public final class EvmCodeGen {
                 buf.emit(EvmOpcode.NOT);
                 break;
             default:
-                break;
+                throw unsupported(expr, "Unary operator " + op + " is not supported on EVM");
         }
     }
 
@@ -832,13 +1015,14 @@ public final class EvmCodeGen {
     private void emitAssignment(AssignmentExpr expr) {
         emitExpression(expr.getValue());
         String name = expr.getName().getLexeme();
-        if (storageSlots.containsKey(name)) {
+        if (locals.containsKey(name)) {
+            buf.emit(EvmOpcode.DUP1);
+            buf.mstoreAt(locals.get(name));
+        } else if (storageSlots.containsKey(name)) {
             buf.emit(EvmOpcode.DUP1);        // keep value on stack as expression result
             buf.sstoreSlot(storageSlots.get(name));
         } else {
-            int offset = locals.containsKey(name) ? locals.get(name) : allocLocal(name);
-            buf.emit(EvmOpcode.DUP1);
-            buf.mstoreAt(offset);
+            throw unsupported(expr, "Assignment to unknown EVM variable '" + name + "'");
         }
     }
 
@@ -852,6 +1036,17 @@ public final class EvmCodeGen {
             return;
         }
 
+        // Pattern: address(x) → cast a numeric value to an Address by masking to
+        // 160 bits. address(0) yields the zero address. Leaves one word on the stack.
+        if (callee instanceof VariableExpr
+                && "address".equals(((VariableExpr) callee).getName().getLexeme())
+                && expr.getArguments().size() == 1) {
+            emitExpression(expr.getArguments().get(0));
+            buf.push32(BigInteger.TWO.pow(160).subtract(BigInteger.ONE));
+            buf.emit(EvmOpcode.AND);
+            return;
+        }
+
         // Pattern: require(condition) or require(condition, "message") → revert if false
         if (callee instanceof VariableExpr
                 && "require".equals(((VariableExpr) callee).getName().getLexeme())) {
@@ -859,8 +1054,13 @@ public final class EvmCodeGen {
                 emitExpression(expr.getArguments().get(0));
                 String okLabel = buf.newLabel();
                 buf.jumpIf(okLabel);
-                // Revert with message if second arg is a string literal
+                // Revert with a custom error, a string message, or plain revert
                 if (expr.getArguments().size() >= 2
+                        && expr.getArguments().get(1) instanceof CallExpr errCall
+                        && errCall.getCallee() instanceof VariableExpr errVar
+                        && isErrorFunction(errVar.getName().getLexeme())) {
+                    emitCustomErrorRevert(errVar.getName().getLexeme(), errCall.getArguments());
+                } else if (expr.getArguments().size() >= 2
                         && expr.getArguments().get(1) instanceof LiteralExpr lit
                         && lit.getValue() instanceof String msg) {
                     buf.revertWithMessage(msg);
@@ -870,6 +1070,26 @@ public final class EvmCodeGen {
                 buf.placeLabel(okLabel);
             }
             buf.pushInt(1);  // require returns a truthy value for expression context
+            return;
+        }
+
+        // Pattern: revert(), revert("message"), or revert(CustomError(args...))
+        if (callee instanceof VariableExpr
+                && "revert".equals(((VariableExpr) callee).getName().getLexeme())) {
+            List<Expression> revertArgs = expr.getArguments();
+            if (revertArgs.isEmpty()) {
+                buf.revert0();
+            } else if (revertArgs.get(0) instanceof CallExpr errCall
+                    && errCall.getCallee() instanceof VariableExpr errVar
+                    && isErrorFunction(errVar.getName().getLexeme())) {
+                emitCustomErrorRevert(errVar.getName().getLexeme(), errCall.getArguments());
+            } else if (revertArgs.get(0) instanceof LiteralExpr lit
+                    && lit.getValue() instanceof String msg) {
+                buf.revertWithMessage(msg);
+            } else {
+                buf.revert0();
+            }
+            buf.pushInt(1);  // expression-context balance (revert never returns)
             return;
         }
 
@@ -919,9 +1139,7 @@ public final class EvmCodeGen {
             }
         }
 
-        // Generic internal call — not directly supported in EVM (functions 
-        // are inlined or dispatched). Push 0 as fallback.
-        buf.pushInt(0);
+        throw unsupported(expr, "Internal or unresolved calls are not supported on EVM");
     }
 
     private void emitGet(GetExpr expr) {
@@ -937,7 +1155,23 @@ public final class EvmCodeGen {
             } else if ("value".equals(member)) {
                 buf.emit(EvmOpcode.CALLVALUE);
                 return;
+            } else if ("sig".equals(member)) {
+                // First 4 calldata bytes (function selector), right-aligned: calldataload(0) >> 224
+                buf.pushInt(0);
+                buf.emit(EvmOpcode.CALLDATALOAD);
+                buf.pushInt(0xE0);
+                buf.emit(EvmOpcode.SHR);
+                return;
             }
+        }
+
+        // msg.data.length → CALLDATASIZE
+        if ("length".equals(member) && obj instanceof GetExpr inner
+                && inner.getObject() instanceof VariableExpr dv
+                && "msg".equals(dv.getName().getLexeme())
+                && "data".equals(inner.getName().getLexeme())) {
+            buf.emit(EvmOpcode.CALLDATASIZE);
+            return;
         }
 
         // block.timestamp, block.number, block.coinbase, block.gaslimit, block.chainid
@@ -978,8 +1212,7 @@ public final class EvmCodeGen {
             }
         }
 
-        // Fallback
-        buf.pushInt(0);
+        throw unsupported(expr, "Member '" + member + "' is not supported on EVM");
     }
 
     private void emitSet(SetExpr expr) {
@@ -991,8 +1224,7 @@ public final class EvmCodeGen {
             buf.sstoreSlot(storageSlots.get(member));
             return;
         }
-        // Fallback
-        emitExpression(expr.getValue());
+        throw unsupported(expr, "Member assignment is not supported on EVM");
     }
 
     private void emitIndexAccess(IndexExpr expr) {
@@ -1039,8 +1271,7 @@ public final class EvmCodeGen {
             // 4. SLOAD from computed slot
             buf.emit(EvmOpcode.SLOAD);
         } else {
-            // Fallback: treat as array-like access (push 0 for now)
-            buf.pushInt(0);
+            throw unsupported(expr, "Non-storage index access is not supported on EVM");
         }
     }
 
@@ -1088,8 +1319,7 @@ public final class EvmCodeGen {
             buf.emit(EvmOpcode.SWAP1);
             buf.emit(EvmOpcode.SSTORE);
         } else {
-            // Fallback: just evaluate value (no storage)
-            emitExpression(expr.getValue());
+            throw unsupported(expr, "Non-storage index assignment is not supported on EVM");
         }
     }
 
@@ -1216,50 +1446,33 @@ public final class EvmCodeGen {
     }
 
     private void emitPrefixIncrement(PrefixIncrementExpr expr) {
-        Expression target = expr.getTarget();
-        if (target instanceof VariableExpr) {
-            String name = ((VariableExpr) target).getName().getLexeme();
-            if (locals.containsKey(name)) {
-                int offset = locals.get(name);
-                buf.mloadAt(offset);
-                buf.pushInt(1);
-                if (expr.isIncrement()) {
-                    buf.emit(EvmOpcode.ADD);
-                } else {
-                    buf.emit(EvmOpcode.SUB);
-                }
-                buf.emit(EvmOpcode.DUP1);
-                buf.mstoreAt(offset);
-            } else {
-                buf.pushInt(0);
-            }
-        } else {
-            buf.pushInt(0);
-        }
+        emitIncrement(expr.getTarget(), expr.isIncrement(), false);
     }
 
     private void emitPostfixIncrement(PostfixIncrementExpr expr) {
-        Expression target = expr.getTarget();
-        if (target instanceof VariableExpr) {
-            String name = ((VariableExpr) target).getName().getLexeme();
-            if (locals.containsKey(name)) {
-                int offset = locals.get(name);
-                buf.mloadAt(offset);       // push old value
-                buf.emit(EvmOpcode.DUP1);  // dup for return
-                buf.pushInt(1);
-                if (expr.isIncrement()) {
-                    buf.emit(EvmOpcode.ADD);
-                } else {
-                    buf.emit(EvmOpcode.SUB);
-                }
-                buf.mstoreAt(offset);      // store new value
-                // Old value is left on stack
-            } else {
-                buf.pushInt(0);
-            }
-        } else {
-            buf.pushInt(0);
+        emitIncrement(expr.getTarget(), expr.isIncrement(), true);
+    }
+
+    private void emitIncrement(Expression target, boolean addition, boolean postfix) {
+        Integer local = null;
+        Integer slot = null;
+        if (target instanceof VariableExpr variable) {
+            String name = variable.getName().getLexeme();
+            local = locals.get(name);
+            if (local == null) slot = storageSlots.get(name);
+        } else if (target instanceof GetExpr get && get.getObject() instanceof ThisExpr) {
+            slot = storageSlots.get(get.getName().getLexeme());
         }
+        if (local == null && slot == null) {
+            throw unsupported(target, "Increment target is not supported on EVM");
+        }
+        if (postfix) emitExpression(target);
+        emitBinary(new BinaryExpr(target,
+                new dhrlang.lexer.Token(addition ? TokenType.PLUS : TokenType.MINUS, addition ? "+" : "-", 0),
+                new LiteralExpr(1L)));
+        if (!postfix) buf.emit(EvmOpcode.DUP1);
+        if (local != null) buf.mstoreAt(local);
+        else buf.sstoreSlot(slot);
     }
 
     // ── Event emission ───────────────────────────────────────────────────
@@ -1279,18 +1492,24 @@ public final class EvmCodeGen {
         byte[] topicHash = FunctionSelector.keccak256(
                 sig.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
-        // Determine indexed parameters (first N params, up to 3 max for LOG4)
-        int maxIndexed = Math.min(args.size(), 3); // LOG4 supports at most 4 topics = 1 sig + 3 indexed
-        int indexedCount = maxIndexed;
-        // Separate indexed and non-indexed args
+        // Determine indexed parameters from the event declaration's `indexed`
+        // modifiers. When the declaration can't be resolved, no parameters are
+        // treated as indexed (the correct Solidity default).
         List<Integer> indexedIndices = new ArrayList<>();
         List<Integer> dataIndices = new ArrayList<>();
         for (int i = 0; i < args.size(); i++) {
-            if (i < indexedCount) {
+            boolean isIndexed = params != null && i < params.size()
+                    && params.get(i).isIndexed();
+            if (isIndexed) {
                 indexedIndices.add(i);
             } else {
                 dataIndices.add(i);
             }
+        }
+        if (indexedIndices.size() > 3) {
+            throw new IllegalStateException("Event '" + eventName + "' declares "
+                    + indexedIndices.size() + " indexed parameters; the EVM allows"
+                    + " at most 3 (LOG4 = 1 signature topic + 3 indexed).");
         }
 
         // Store non-indexed args in memory as 32-byte words
@@ -1313,7 +1532,7 @@ public final class EvmCodeGen {
         buf.pushInt(0);
 
         // Emit appropriate LOG opcode: LOG1 (sig only) .. LOG4 (sig + 3 indexed)
-        int totalTopics = 1 + indexedCount; // sig topic + indexed params
+        int totalTopics = 1 + indexedIndices.size(); // sig topic + indexed params
         switch (totalTopics) {
             case 1 -> buf.emit(EvmOpcode.LOG1);
             case 2 -> buf.emit(EvmOpcode.LOG2);
@@ -1333,6 +1552,65 @@ public final class EvmCodeGen {
             }
         }
         return null;
+    }
+
+    private FunctionDecl findErrorFunction(String name) {
+        for (FunctionDecl fn : contract.getFunctions()) {
+            if (fn.getName().equals(name)
+                    && fn.hasContractAnnotation(ContractAnnotation.ERROR)) {
+                return fn;
+            }
+        }
+        return null;
+    }
+
+    private boolean isErrorFunction(String name) {
+        return findErrorFunction(name) != null;
+    }
+
+    /**
+     * Emit a revert with a custom error: {@code revert ErrName(args...)}.
+     *
+     * <p>ABI encoding mirrors Solidity custom errors — a 4-byte selector
+     * (left-aligned in the first word) followed by each argument ABI-encoded as
+     * a 32-byte word, then {@code REVERT(0, 4 + 32*nargs)}. Only value-type
+     * arguments (uint256/address/bool) are supported in this release, matching
+     * the indexed-event-parameter constraint.</p>
+     */
+    private void emitCustomErrorRevert(String errorName, List<Expression> args) {
+        FunctionDecl errorDecl = findErrorFunction(errorName);
+
+        // Compute the 4-byte selector from the declared error signature using
+        // the canonical ABI type mapping, so the on-chain selector matches the
+        // error entry in the generated ABI (off-chain decoders rely on this).
+        byte[] selector;
+        if (errorDecl != null) {
+            selector = AbiGenerator.functionSelector(errorDecl);
+        } else {
+            StringBuilder sig = new StringBuilder(errorName).append('(');
+            for (int i = 0; i < args.size(); i++) {
+                if (i > 0) sig.append(',');
+                sig.append(toSolidityType(null, i));
+            }
+            sig.append(')');
+            selector = FunctionSelector.compute(sig.toString());
+        }
+
+        // Store the selector left-aligned in the first memory word at offset 0.
+        buf.push32(new java.math.BigInteger(1, selector).shiftLeft(224));
+        buf.mstoreAt(0);
+
+        // Store each argument as a 32-byte word starting after the selector.
+        for (int i = 0; i < args.size(); i++) {
+            emitExpression(args.get(i));
+            buf.mstoreAt(4 + i * 32);
+        }
+
+        // REVERT(offset=0, size=4 + 32*nargs)
+        int size = 4 + args.size() * 32;
+        buf.pushInt(size);
+        buf.pushInt(0);
+        buf.emit(EvmOpcode.REVERT);
     }
 
     private String toSolidityType(List<VarDecl> params, int index) {
@@ -1521,6 +1799,13 @@ public final class EvmCodeGen {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
+    private IllegalStateException unsupported(ASTNode node, String message) {
+        var location = node.getSourceLocation() != null ? node.getSourceLocation()
+                : currentFn != null ? currentFn.getSourceLocation() : contract.getSourceLocation();
+        return new IllegalStateException("EVM codegen: " + message
+                + (location != null ? " at line " + location.getLine() : ""));
+    }
+
     private FunctionDecl findConstructor() {
         for (FunctionDecl fn : contract.getFunctions()) {
             if (fn.isContractConstructor()) return fn;
@@ -1542,6 +1827,7 @@ public final class EvmCodeGen {
         for (FunctionDecl fn : cls.getFunctions()) {
             if (fn.isContractConstructor()
                     || fn.hasContractAnnotation(ContractAnnotation.EVENT)
+                    || fn.hasContractAnnotation(ContractAnnotation.ERROR)
                     || "fallback".equals(fn.getName())
                     || "receive".equals(fn.getName())) {
                 continue;

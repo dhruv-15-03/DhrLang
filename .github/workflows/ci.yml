@@ -3,13 +3,14 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
-    tags: [ 'v*' ]
+    # Match JVM version tags (v1.2.3) only — not vscode-v* / other prefixed tags
+    tags: [ 'v[0-9]*' ]
   pull_request:
     branches: [ main ]
 
-# Required so dorny/test-reporter can create check runs and release job can publish
+# Releases are published only by release.yml.
 permissions:
-  contents: write
+  contents: read
   checks: write
   actions: read
 
@@ -22,16 +23,16 @@ jobs:
         java-version: [17]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     - name: Set up JDK ${{ matrix.java-version }}
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6.0.0
       with:
         java-version: ${{ matrix.java-version }}
         distribution: 'temurin'
     
     - name: Cache Gradle packages
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.gradle/caches
@@ -43,28 +44,18 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
-    - name: Run tests
+    - name: Run all verification gates
       uses: gradle/gradle-build-action@v3
       with:
-        arguments: test --info --stacktrace
-    
-    - name: Run integration tests
-      uses: gradle/gradle-build-action@v3
-      with:
-        arguments: integrationTest --info --stacktrace
-    
-    - name: Generate test report
-      uses: gradle/gradle-build-action@v3
-      with:
-        arguments: jacocoTestReport
+        arguments: check --info --stacktrace
     
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v7
       with:
         file: ./build/reports/jacoco/test/jacocoTestReport.xml
     
     - name: Upload test results (JUnit XML only for lightweight artifact)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: always()
       with:
         name: test-results-${{ matrix.java-version }}
@@ -76,16 +67,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6.0.0
       with:
         java-version: '17'
         distribution: 'temurin'
     
     - name: Cache Gradle packages
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.gradle/caches
@@ -100,7 +91,7 @@ jobs:
     - name: Build with Gradle
       uses: gradle/gradle-build-action@v3
       with:
-        arguments: assemble shadowJar -x test -x integrationTest -x jacocoTestCoverageVerification
+        arguments: assemble stageCompiler -x test -x integrationTest -x jacocoTestCoverageVerification
     
     - name: Build distribution
       uses: gradle/gradle-build-action@v3
@@ -108,12 +99,119 @@ jobs:
         arguments: distZip distTar -x test -x integrationTest
     
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: dhrlang-distribution
         path: |
           build/distributions/
           build/libs/
+          build/compiler/
+
+  packaged-compiler:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6.0.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: actions/download-artifact@v8
+        with:
+          name: dhrlang-distribution
+          path: build-artifacts
+      - name: Verify downloaded compiler (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x gradlew
+          ./gradlew verifyCompilerArtifact -PcompilerJar=build-artifacts/compiler/DhrLang.jar
+      - name: Verify downloaded compiler (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat verifyCompilerArtifact "-PcompilerJar=build-artifacts\compiler\DhrLang.jar"
+
+  evm-conformance:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6.0.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/test/evm/package-lock.json
+      - uses: actions/download-artifact@v8
+        with:
+          name: dhrlang-distribution
+          path: build-artifacts
+      - name: Execute compiled contracts on an independent in-memory EVM
+        working-directory: src/test/evm
+        env:
+          DHRLANG_TEST_JAR: ${{ github.workspace }}/build-artifacts/compiler/DhrLang.jar
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+  # Proves, in CI, that the VS Code extension's LanguageClient actually
+  # connects to a real `java -jar DhrLang.jar --lsp` process and that a real
+  # editor request (completion) is answered by that server rather than by
+  # the extension's static fallback provider. Static analysis (tsc / vsce
+  # package) can't prove this - only launching a real headless VS Code and
+  # exercising the extension end-to-end can.
+  vscode-lsp-integration:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v6.0.0
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: vscode-extension/package-lock.json
+
+    - name: Download built DhrLang.jar
+      uses: actions/download-artifact@v8
+      with:
+        name: dhrlang-distribution
+        path: build-artifacts
+
+    - name: Stage jar into the test fixture workspace (autoDetectJar picks it up)
+      run: |
+        test -f build-artifacts/compiler/DhrLang.jar
+        mkdir -p build/compiler
+        cp build-artifacts/compiler/DhrLang.jar build/compiler/DhrLang.jar
+        cp build/compiler/DhrLang.jar vscode-extension/src/test/fixtures/workspace/DhrLang.jar
+
+    - name: Install extension dependencies
+      working-directory: vscode-extension
+      run: npm ci
+
+    - name: Test packaging and build the self-contained VSIX
+      working-directory: vscode-extension
+      run: |
+        npm run test:packaging
+        npm run package
+
+    - name: Run headless VS Code integration tests (xvfb)
+      working-directory: vscode-extension
+      env:
+        DHRLANG_LSP_DEBUG_STDERR: '1'
+      run: xvfb-run -a npm test
 
   # Aggregate & publish test report as a separate job (fixes permission issues)
   test-report:
@@ -123,102 +221,38 @@ jobs:
     if: always()
     steps:
       - name: Checkout (fetch history for annotations)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Download test artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-results-17
           path: test-results
       - name: List downloaded test result files (debug)
         run: ls -al test-results || find test-results -maxdepth 2 -type f -print
       - name: Publish Test Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: DhrLang Tests
           path: test-results/*.xml
           reporter: java-junit
           fail-on-error: false
 
-  release:
-    needs: [build, test]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-      - name: Build distribution
-        uses: gradle/gradle-build-action@v3
-        with:
-          arguments: clean build distZip distTar
-      - name: Determine version
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-      - name: Locate artifacts
-        id: artifacts
-        run: |
-          ZIP=build/distributions/DhrLang-${{ steps.version.outputs.VERSION }}.zip
-          if [ ! -f "$ZIP" ]; then
-            echo "Expected distribution zip not found: $ZIP" >&2
-            exit 1
-          fi
-          JAR=$(ls build/libs/*.jar | head -n1)
-          echo "ZIP=$ZIP" >> $GITHUB_OUTPUT
-          echo "JAR=$JAR" >> $GITHUB_OUTPUT
-      - name: Generate Release Notes
-        id: notes
-        run: |
-          echo "## What's Changed" > RELEASE_NOTES.md
-          echo "- Automated release from CI/CD pipeline" >> RELEASE_NOTES.md
-          echo "- See CHANGELOG.md for detailed changes" >> RELEASE_NOTES.md
-          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
-          cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          name: DhrLang v${{ steps.version.outputs.VERSION }}
-          body: ${{ steps.notes.outputs.NOTES }}
-          files: |
-            ${{ steps.artifacts.outputs.ZIP }}
-            ${{ steps.artifacts.outputs.JAR }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   code-quality:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v6.0.0
       with:
         java-version: '17'
         distribution: 'temurin'
     
     - name: Cache Gradle packages
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.gradle/caches
@@ -240,7 +274,7 @@ jobs:
       run: ./gradlew -PenableQuality=true pmdMain
     
     - name: Upload code quality reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: always()
       with:
         name: code-quality-reports

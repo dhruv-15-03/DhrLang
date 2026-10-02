@@ -35,11 +35,9 @@ public class DeadStoreEliminationPass implements IrPass {
     }
 
     private boolean isDeadWrite(IrInstruction ins, Set<Integer> usedSlots) {
-        // Only remove pure computations (no side effects) writing to unused slots
+        // Arithmetic/comparisons can throw even when their result is unused.
+        // Constant folding can reduce proven-safe computations to IrConst first.
         if (ins instanceof IrConst c) return !usedSlots.contains(c.targetSlot);
-        if (ins instanceof IrBinOp b) return !usedSlots.contains(b.targetSlot);
-        if (ins instanceof IrUnaryOp u) return !usedSlots.contains(u.targetSlot);
-        if (ins instanceof IrCompare cmp) return !usedSlots.contains(cmp.targetSlot);
         if (ins instanceof IrLoadLocal ll) return !usedSlots.contains(ll.targetSlot);
         // Don't remove StoreLocal — those may be writing to named locals used later
         // Don't remove anything with side effects

@@ -1,0 +1,62 @@
+name: Local CAP Mock Adapter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/cap-java-mock/**'
+      - 'src/main/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/**'
+      - '.github/workflows/cap-mock.yml'
+  pull_request:
+    paths:
+      - 'examples/cap-java-mock/**'
+      - 'src/main/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'gradle/**'
+      - '.github/workflows/cap-mock.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-cap-mock-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  local-cap-mock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install compiler toolchain
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install isolated CAP toolchain
+        uses: actions/setup-java@v6.0.0
+        with:
+          distribution: temurin
+          java-version: '25.0.2'
+      - name: Verify local mock only
+        shell: pwsh
+        run: |
+          chmod +x ./gradlew ./examples/cap-java-mock/mvnw
+          ./examples/cap-java-mock/verify.ps1
+      - name: Preserve framework and packaged API evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: local-cap-mock-test-results
+          path: |
+            examples/cap-java-mock/srv/target/surefire-reports/
+            examples/cap-java-mock/srv/target/failsafe-reports/

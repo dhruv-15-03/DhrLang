@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 //  DhrLang ERC-721 NFT Contract
 //  A minimal non-fungible token with mint, transfer, and approvals.
+//  Teaching scaffold only: token ownership and approval bookkeeping are not implemented.
 //
 //  Compile:  java -jar DhrLang.jar contract compile input/contracts/ERC721NFT.dhr
 //  Gas:      java -jar DhrLang.jar contract gas input/contracts/ERC721NFT.dhr
@@ -13,14 +14,19 @@ class ERC721NFT {
     @storage sab name;
     @storage sab symbol;
     @storage num totalMinted;
+    @storage num maxSupply;
     @storage Address owner;
 
     // ── Constructor ──────────────────────────────────────────────
     @constructor
-    kaam init(sab _name, sab _symbol) {
+    kaam init(sab _name, sab _symbol, num _maxSupply) {
+        if (_maxSupply <= 0) {
+            throw "Max supply must be positive";
+        }
         name = _name;
         symbol = _symbol;
         owner = msg.sender;
+        maxSupply = _maxSupply;
         totalMinted = 0;
     }
 
@@ -44,6 +50,11 @@ class ERC721NFT {
     kaam mint(Address to) {
         if (msg.sender != owner) {
             throw "Only owner can mint";
+        }
+        // Bound the collection so the counter cannot wrap. The accumulator is the
+        // direct left operand so the guard is visible to the overflow analyser.
+        if (totalMinted >= maxSupply) {
+            throw "Collection is fully minted";
         }
         totalMinted = totalMinted + 1;
     }

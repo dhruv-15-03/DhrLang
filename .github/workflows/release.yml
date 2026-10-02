@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    # Match JVM version tags (v1.2.3) only — not vscode-v* / other prefixed tags
+    tags: ['v[0-9]*']
   workflow_dispatch:
     inputs:
       version:
@@ -15,21 +16,33 @@ permissions:
   packages: write
   checks: write   # Needed for dorny/test-reporter to create check run
 
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.inputs.version || github.ref }}
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.0.0
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
           
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
@@ -39,24 +52,43 @@ jobs:
         
       - name: Get version
         id: get_version
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RAW="${{ github.event.inputs.version }}"
-          else
-            RAW="${GITHUB_REF#refs/tags/}"
+          RAW="${DISPATCH_VERSION:-$GITHUB_REF_NAME}"
+          if [[ ! "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected an existing compiler release tag (vMAJOR.MINOR.PATCH), got $RAW" >&2
+            exit 1
           fi
           CLEAN=${RAW#v}
+          SHA=$(git rev-parse "$RAW^{commit}")
+          test "$SHA" = "$(git rev-parse HEAD)"
+          echo "RELEASE_COMMIT=$SHA" >> "$GITHUB_ENV"
           echo "RAW_TAG=$RAW" >> $GITHUB_OUTPUT
-            echo "VERSION=$CLEAN" >> $GITHUB_OUTPUT
+          echo "VERSION=$CLEAN" >> $GITHUB_OUTPUT
+          ./gradlew verifyReleaseConsistency "-PreleaseVersion=$CLEAN"
+
+      - name: Refuse to replace an existing release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ steps.get_version.outputs.RAW_TAG }}
+        with:
+          script: |
+            try {
+              await github.rest.repos.getReleaseByTag({
+                ...context.repo, tag: process.env.RELEASE_TAG
+              });
+            } catch (error) {
+              if (error.status === 404) return;
+              throw error;
+            }
+            core.setFailed("This release already exists. Publish a new version instead of replacing its artifacts.");
           
-      - name: Build JAR
-        run: ./gradlew clean shadowJar distZip distTar
-        
-      - name: Run tests
-        run: ./gradlew test
+      - name: Build and verify compiler and distributions
+        run: ./gradlew clean check stageCompiler distZip distTar
         
       - name: Generate test report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: success() || failure()
         with:
           name: DhrLang Tests
@@ -64,102 +96,94 @@ jobs:
           reporter: java-junit
           fail-on-error: false
           
-      - name: Prepare release artifacts
+      - name: Package and verify the canonical VSIX
+        working-directory: vscode-extension
         run: |
-          mkdir -p release
-          # Prefer shadow (fat) jar if present; fallback to any jar
-          JAR=$(ls build/libs/*-all.jar 2>/dev/null | head -n1)
-          if [ -z "$JAR" ]; then
-            JAR=$(ls build/libs/*.jar | head -n1)
-          fi
-          if [ -z "$JAR" ]; then
-            echo "No JAR found in build/libs" >&2
-            exit 1
-          fi
-          cp "$JAR" release/DhrLang.jar
-          cp README.md release/
-          cp LICENSE release/
-          cp GETTING_STARTED.md release/
-          cp INSTALL.md release/
-          cp TUTORIALS.md release/
-          cp EXAMPLES.md release/
-
-          # Create examples directory in release (using current input/ folder as canonical sample programs)
-          mkdir -p release/examples
-          cp input/* release/examples/ 2>/dev/null || true
-          
-          # Create release info
-          echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}" > release/RELEASE_NOTES.md
-          echo "" >> release/RELEASE_NOTES.md
-          echo "## Installation" >> release/RELEASE_NOTES.md
-          echo "" >> release/RELEASE_NOTES.md
-          echo "### Quick Start" >> release/RELEASE_NOTES.md
-          echo '```bash' >> release/RELEASE_NOTES.md
-          echo "# Download DhrLang.jar from this release" >> release/RELEASE_NOTES.md
-          echo "java -jar DhrLang.jar your_program.dhr" >> release/RELEASE_NOTES.md
-          echo '```' >> release/RELEASE_NOTES.md
-          echo "" >> release/RELEASE_NOTES.md
-          echo "### System Requirements" >> release/RELEASE_NOTES.md
-          echo "- Java 17 or higher" >> release/RELEASE_NOTES.md
-          echo "- Any operating system (Windows, macOS, Linux)" >> release/RELEASE_NOTES.md
-          echo "" >> release/RELEASE_NOTES.md
-          echo "## What's New" >> release/RELEASE_NOTES.md
-          echo "" >> release/RELEASE_NOTES.md
-          echo "See the [changelog](CHANGELOG.md) for detailed release notes." >> release/RELEASE_NOTES.md
-      - name: Package VS Code extension (vsix)
-        run: |
-          echo "Packaging VS Code extension..."
-          
-          # Copy the built JAR to the extension compiler directory
-          mkdir -p vscode-extension/compiler
-          cp release/DhrLang.jar vscode-extension/compiler/DhrLang.jar
-          
-          pushd vscode-extension
           npm ci --no-audit --no-fund
-          npx vsce package --no-yarn || (npm install -g @vscode/vsce && vsce package --no-yarn)
-          cp *.vsix ../release/ || true
-          popd
+          npm run test:packaging
+          npm run package
 
-      - name: List release directory (debug)
-        run: ls -l release
+      - name: Prepare documentation and examples
+        run: |
+          cp README.md LICENSE CHANGELOG.md GETTING_STARTED.md INSTALL.md TUTORIALS.md EXAMPLES.md \
+            HOST_EXECUTION.md PROJECTS.md LEARNING.md ENTERPRISE_LAB.md host-request.schema.json host-response.schema.json project.schema.json build/release/
+          mkdir -p build/release/examples
+          cp -R input/. build/release/examples/
+          mkdir -p build/release/design
+          cp design/compatibility-profiles.md build/release/design/
+          {
+            echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}"
+            echo ""
+            echo "Verified standalone compiler and self-contained VS Code extension."
+            echo "Run: java -jar DhrLang.jar examples/sample.dhr"
+            echo "Requires Java 17+. See CHANGELOG.md for changes and experimental feature limits."
+          } > build/release/RELEASE_NOTES.md
 
       - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dhrlang-jar
-          path: release/DhrLang.jar
+          path: build/release/DhrLang.jar
           retention-days: 2
           
       - name: Create release archives
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          cd release
-          tar -czf ../DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz *
-          zip -r ../DhrLang-${{ steps.get_version.outputs.VERSION }}-windows.zip *
-          cd ..
+          tar -czf "build/distributions/DhrLang-$VERSION-linux.tar.gz" -C build/release .
+          (cd build/release && zip -qr "../distributions/DhrLang-$VERSION-windows.zip" .)
+          mkdir -p build/archive-smoke
+          unzip -q "build/distributions/DhrLang-$VERSION-windows.zip" -d build/archive-smoke
+          ./gradlew verifyCompilerArtifact -PcompilerJar=build/archive-smoke/DhrLang.jar
+          cmp build/compiler/DhrLang.jar build/archive-smoke/DhrLang.jar
+          tar -xOf "build/distributions/DhrLang-$VERSION-linux.tar.gz" ./DhrLang.jar | cmp build/compiler/DhrLang.jar -
           
       - name: Generate checksums
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          sha256sum DhrLang-*.tar.gz DhrLang-*.zip release/DhrLang.jar > checksums.txt
+          mkdir -p build/release-assets
+          cp build/release/DhrLang.jar build/release/release-manifest.json \
+            "build/release/dhrlang-vscode-$VERSION.vsix" \
+            "build/distributions/DhrLang-$VERSION.zip" \
+            "build/distributions/DhrLang-$VERSION-linux.tar.gz" \
+            "build/distributions/DhrLang-$VERSION-windows.zip" build/release-assets/
+          cd build/release-assets
+          sha256sum DhrLang.jar release-manifest.json "dhrlang-vscode-$VERSION.vsix" \
+            "DhrLang-$VERSION.zip" "DhrLang-$VERSION-linux.tar.gz" "DhrLang-$VERSION-windows.zip" > checksums.txt
           
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: DhrLang v${{ steps.get_version.outputs.VERSION }}
-          body_path: release/RELEASE_NOTES.md
+          body_path: build/release/RELEASE_NOTES.md
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
           files: |
-            release/DhrLang.jar
-            DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz
-            DhrLang-${{ steps.get_version.outputs.VERSION }}-windows.zip
-            checksums.txt
-            release/*.vsix
+            build/release-assets/DhrLang.jar
+            build/release-assets/DhrLang-${{ steps.get_version.outputs.VERSION }}.zip
+            build/release-assets/DhrLang-${{ steps.get_version.outputs.VERSION }}-linux.tar.gz
+            build/release-assets/DhrLang-${{ steps.get_version.outputs.VERSION }}-windows.zip
+            build/release-assets/checksums.txt
+            build/release-assets/release-manifest.json
+            build/release-assets/dhrlang-vscode-${{ steps.get_version.outputs.VERSION }}.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the published downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir build/downloaded \
+            --pattern DhrLang.jar --pattern release-manifest.json --pattern "dhrlang-vscode-$VERSION.vsix"
+          (cd vscode-extension && npm run verify:package -- ../build/downloaded)
+          ./gradlew verifyCompilerArtifact -PcompilerJar=build/downloaded/DhrLang.jar
           
       - name: Publish to GitHub Packages
-        run: ./gradlew -Pversion=${{ steps.get_version.outputs.VERSION }} publish --info --stacktrace || echo 'Publish failed (likely 409 conflict for existing version). Continuing.'
+        run: ./gradlew publish --info --stacktrace
         env:
           GPR_USER: ${{ github.actor }}
           GPR_KEY: ${{ secrets.GITHUB_TOKEN }}
@@ -178,7 +202,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
       - name: Download JAR artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dhrlang-jar
           path: .
@@ -190,7 +214,7 @@ jobs:
           echo "SHA256=$SHA256" >> $GITHUB_ENV
           
       - name: Create Homebrew formula PR
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

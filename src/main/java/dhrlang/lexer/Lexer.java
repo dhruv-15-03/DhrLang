@@ -73,9 +73,14 @@ public class Lexer {
         keywords.put("@nonreentrant", TokenType.NONREENTRANT);
         keywords.put("@constructor", TokenType.CONSTRUCTOR);
         keywords.put("@event", TokenType.EVENT);
+        keywords.put("@error", TokenType.ERROR);
+        keywords.put("@checked", TokenType.CHECKED);
+        keywords.put("@unchecked", TokenType.UNCHECKED);
         keywords.put("emit", TokenType.EMIT);
         keywords.put("@immutable", TokenType.IMMUTABLE);
         keywords.put("@invariant", TokenType.INVARIANT);
+        keywords.put("@requires", TokenType.REQUIRES);
+        keywords.put("@ensures", TokenType.ENSURES);
         keywords.put("as", TokenType.AS);
         keywords.put("import", TokenType.IMPORT);
         keywords.put("enum", TokenType.ENUM);
@@ -150,13 +155,25 @@ public class Lexer {
                 if (match('/')) {
                     while (peek() != '\n' && !isAtEnd()) advance();
                 } else if (match('*')) {
+                    int commentLine = line;
+                    int commentColumn = start - lineStart + 1;
+                    boolean terminated = false;
                     while (!isAtEnd()) {
                         if (peek() == '*' && peekNext() == '/') {
                             advance(); // consume *
                             advance(); // consume /
+                            terminated = true;
                             break;
                         }
                         advance();
+                    }
+                    if (!terminated) {
+                        if (errorReporter != null) {
+                            errorReporter.error(new SourceLocation(null, commentLine, commentColumn, start, current),
+                                    "Unterminated block comment.", "Add */ to close the block comment in this file.");
+                        } else {
+                            System.err.println("[Line " + commentLine + "] Unterminated block comment.");
+                        }
                     }
                 } else {
                     addToken(TokenType.SLASH);

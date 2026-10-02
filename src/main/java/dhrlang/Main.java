@@ -21,11 +21,35 @@ public class Main {
     private static ErrorReporter errorReporter = new ErrorReporter();
 
     public static void main(String[] args) {
+        if (args.length > 0 && "host".equals(args[0])) {
+            System.exit(dhrlang.host.HostExecution.runCli(args));
+            return;
+        }
+        if (args.length > 0 && "project".equals(args[0])) {
+            System.exit(dhrlang.host.ProjectRunner.runCli(args));
+            return;
+        }
+        if (args.length > 0 && "learn".equals(args[0])) {
+            System.exit(dhrlang.learn.LearnCli.runCli(args));
+            return;
+        }
+        if (args.length > 0 && "doctor".equals(args[0])) {
+            System.exit(dhrlang.learn.DoctorCli.runCli(args));
+            return;
+        }
         CliOptions options = parseArgs(args);
         if (options.showHelp) { printHelp(); return; }
         if (options.showVersion) { printVersion(); return; }
         if (options.lspMode) {
-            try { dhrlang.lsp.DhrLangLspServer.startLsp(); } catch (Exception e) { System.exit(1); }
+            try {
+                dhrlang.lsp.DhrLangLspServer.startLsp();
+            } catch (Exception e) {
+                // Never fail silently here: stdout is the JSON-RPC channel to the client,
+                // so any diagnostic MUST go to stderr, never stdout.
+                System.err.println("[DhrLang LSP] Fatal error starting Language Server:");
+                e.printStackTrace();
+                System.exit(1);
+            }
             return;
         }
         if (options.replMode) {
@@ -33,10 +57,11 @@ public class Main {
             return;
         }
 
-        // Handle "contract" subcommand: wallet/networks don't need a .dhr file
+        // Handle "contract" subcommand: wallet/networks/stdlib/account don't need a .dhr file
         if (options.contractMode) {
             var bcOpts = dhrlang.deploy.BlockchainCLI.parseArgs(options.contractArgs, 1);
-            if ("wallet".equals(bcOpts.subcommand) || "networks".equals(bcOpts.subcommand)) {
+            if ("wallet".equals(bcOpts.subcommand) || "networks".equals(bcOpts.subcommand)
+                    || "stdlib".equals(bcOpts.subcommand) || "account".equals(bcOpts.subcommand)) {
                 dhrlang.deploy.BlockchainCLI.execute(null, null, bcOpts, errorReporter);
                 return;
             }
@@ -133,6 +158,10 @@ public class Main {
     private static void printHelp() {
         System.out.println("DhrLang - a compact statically typed language (num/duo/sab/kya/ek/kaam)\n");
         System.out.println("Usage: java -jar DhrLang.jar [options] <file.dhr>\n");
+        System.out.println("       java -jar DhrLang.jar host <request.json>  Bounded bytecode execution (experimental)\n");
+        System.out.println("       java -jar DhrLang.jar project <check|run> <dhrlang.json>  Ordered multi-file project\n");
+        System.out.println("       java -jar DhrLang.jar doctor  Check the local compiler installation\n");
+        System.out.println("       java -jar DhrLang.jar learn <list|show|hint|start|check|trace|progress|enterprise>  Offline practice\n");
         System.out.println("Options:");
         System.out.println("  --help               Show this help and exit");
         System.out.println("  --version            Print version and exit");
@@ -158,6 +187,12 @@ public class Main {
         System.out.println("  contract deploy      Build, sign, and deploy contracts to a network");
         System.out.println("  contract verify      Verify contract source on block explorer");
         System.out.println("  contract gas         Estimate deployment gas costs + ETH cost");
+        System.out.println("  contract fuzz        Property-fuzz @ensures/@invariant specs for counterexamples");
+        System.out.println("  contract prove       Statically prove @ensures/@invariant for all inputs (L2b)");
+        System.out.println("  contract safety      Unified safety report (audit + fuzzing) with a CI gate");
+        System.out.println("  contract export      Emit Hardhat/Foundry artifacts + viem/wagmi TS typings");
+        System.out.println("  contract stdlib      Browse & scaffold standard base contracts (Ownable, ERC20, ...)");
+        System.out.println("  contract account     ERC-4337 EntryPoint + offline userOpHash builder");
         System.out.println("  contract wallet      Manage wallet keys (create keystore, show address)");
         System.out.println("  contract networks    List all supported blockchain networks");
         System.out.println("  contract status      Check contract deployment status on-chain");
@@ -170,6 +205,12 @@ public class Main {
         System.out.println("  java -jar DhrLang.jar contract compile token.dhr");
         System.out.println("  java -jar DhrLang.jar contract deploy --network=sepolia token.dhr");
         System.out.println("  java -jar DhrLang.jar contract gas token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract fuzz --runs=512 --seed=42 token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract prove --bound=8 token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract safety --fail-on=high token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract export --format=all token.dhr");
+        System.out.println("  java -jar DhrLang.jar contract stdlib new Ownable --name=MyToken");
+        System.out.println("  java -jar DhrLang.jar contract account userop --sender=0x.. --network=base");
         System.out.println("  java -jar DhrLang.jar contract verify --address=0x... token.dhr");
         System.out.println("  java -jar DhrLang.jar contract wallet create");
         System.out.println("  java -jar DhrLang.jar contract networks");
@@ -252,8 +293,19 @@ public class Main {
                     opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
+<<<<<<< HEAD
                 case "--repl":
                     opts.replMode = true; break;
+=======
+                case "--stdio":
+                    // No-op: DhrLang's --lsp mode always communicates over
+                    // stdio already. Some LSP client libraries append
+                    // --stdio unconditionally when configured for stdio
+                    // transport, so accept and ignore it defensively rather
+                    // than failing with "Unknown option" and killing the
+                    // server before it can start.
+                    break;
+>>>>>>> 423e91d4567442bea367c345e5df29a4a05243ad
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
@@ -314,6 +366,19 @@ public class Main {
         TypeChecker typeChecker = new TypeChecker(errorReporter);
         typeChecker.check(program);
         pt.typeMs = msSince(s);
+
+        // --audit / --sarif is an ANALYSIS mode: it must run even when the
+        // type-checker or validator reported errors, because surfacing those
+        // problems as findings is its entire purpose. (Lexer/parser failures
+        // still short-circuit above, since findings need a usable AST.)
+        if(opts.audit) {
+            s = System.nanoTime();
+            handleAudit(program, opts);
+            pt.execMs = msSince(s);
+            pt.totalMs = msSince(tStart);
+            return pt;
+        }
+
         if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
 
         // --check mode: type-check passed, exit successfully
@@ -339,15 +404,6 @@ public class Main {
         if(opts.compileEvm) {
             s = System.nanoTime();
             handleCompileEvm(program, opts);
-            pt.execMs = msSince(s);
-            pt.totalMs = msSince(tStart);
-            return pt;
-        }
-
-        // --audit mode: generate security audit report
-        if(opts.audit) {
-            s = System.nanoTime();
-            handleAudit(program, opts);
             pt.execMs = msSince(s);
             pt.totalMs = msSince(tStart);
             return pt;
@@ -509,7 +565,9 @@ public class Main {
                     Files.writeString(outPath.resolve("audit-report.sarif"), sarif);
                     System.err.println("SARIF report written to: " + outPath.resolve("audit-report.sarif"));
                 }
-                return;
+                // Audit is a terminal analysis action: succeed cleanly so a
+                // non-empty findings list does not surface as a build failure.
+                System.exit(0);
             }
 
             if (opts.jsonMode) {
@@ -529,6 +587,7 @@ public class Main {
                 Files.writeString(outPath.resolve("audit-report" + ext), content);
                 System.out.println("\nAudit report written to: " + outPath.resolve("audit-report" + ext));
             }
+            System.exit(0);
         } catch (Exception e) {
             System.err.println("Audit failed: " + e.getMessage());
             System.err.println("Hint: Ensure your file contains @contract annotated classes for meaningful analysis.");

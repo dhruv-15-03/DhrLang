@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "exercises": [
+    {
+      "id": "01-input",
+      "title": "Read input and correct an arithmetic operation",
+      "goal": "Read one integer and print that value plus two. Predict the output before changing the program.",
+      "starter": "class Main {\n    static kaam main() {\n        num value = toNum(readLine());\n        printLine(value - 2);\n    }\n}\n",
+      "hints": [
+        "The input is already read and converted correctly. Compare the required operation with the expression passed to printLine.",
+        "Try input 5 by hand: the current program produces 3, not 7.",
+        "Use addition rather than subtraction in value - 2."
+      ],
+      "cases": [
+        { "name": "positive input", "input": "5\n", "expected": "7" },
+        { "name": "zero input", "input": "0\n", "expected": "2" },
+        { "name": "negative input", "input": "-3\n", "expected": "-1" }
+      ],
+      "transfer": "Implement the same input conversion and operation in Java or TypeScript, and explain how invalid input is handled."
+    },
+    {
+      "id": "02-bounds",
+      "title": "Enforce both budget conditions",
+      "goal": "Read an amount and a budget in integer minor units. Print APPROVE only when the amount is positive and fits the budget; otherwise print REJECT.",
+      "starter": "class Main {\n    static kaam main() {\n        num amount = toNum(readLine());\n        num budget = toNum(readLine());\n        if (amount > 0 || amount <= budget) {\n            printLine(\"APPROVE\");\n        } else {\n            printLine(\"REJECT\");\n        }\n    }\n}\n",
+      "hints": [
+        "Two independent requirements must both hold, not just either requirement.",
+        "An amount larger than the budget is still positive. Does the current condition admit it?",
+        "Join the comparisons with &&."
+      ],
+      "cases": [
+        { "name": "within budget", "input": "250\n500\n", "expected": "APPROVE" },
+        { "name": "over budget", "input": "600\n500\n", "expected": "REJECT" },
+        { "name": "zero is not positive", "input": "0\n500\n", "expected": "REJECT" }
+      ],
+      "transfer": "Write the same predicate in Java. Explain why money is represented in integer minor units rather than floating point."
+    },
+    {
+      "id": "03-boundary",
+      "title": "Test the boundary, not just typical inputs",
+      "goal": "Read an age. Print ELIGIBLE for ages at least 18, and INELIGIBLE otherwise.",
+      "starter": "class Main {\n    static kaam main() {\n        num age = toNum(readLine());\n        if (age > 18) {\n            printLine(\"ELIGIBLE\");\n        } else {\n            printLine(\"INELIGIBLE\");\n        }\n    }\n}\n",
+      "hints": [
+        "Test one value below the boundary, the boundary itself, and one above it.",
+        "The requirement includes age 18. The current comparison does not.",
+        "The operator for greater than or equal is >=."
+      ],
+      "cases": [
+        { "name": "below boundary", "input": "17\n", "expected": "INELIGIBLE" },
+        { "name": "exact boundary", "input": "18\n", "expected": "ELIGIBLE" },
+        { "name": "above boundary", "input": "19\n", "expected": "ELIGIBLE" }
+      ],
+      "transfer": "Add a boundary-focused unit test in a mainstream test framework and describe why it catches the bug."
+    },
+    {
+      "id": "04-arrays",
+      "title": "Keep array access inside its bounds",
+      "goal": "Read an index into [10, 20, 30]. Print the selected value for a valid index, or INVALID otherwise.",
+      "starter": "class Main {\n    static kaam main() {\n        num[] values = [10, 20, 30];\n        num index = toNum(readLine());\n        if (index >= 0 && index <= arrayLength(values)) {\n            printLine(values[index]);\n        } else {\n            printLine(\"INVALID\");\n        }\n    }\n}\n",
+      "hints": [
+        "Arrays start at index zero. Count the valid indices for three elements.",
+        "The length is 3, but the final valid index is 2.",
+        "Require index < arrayLength(values), retaining the nonnegative check."
+      ],
+      "cases": [
+        { "name": "last element", "input": "2\n", "expected": "30" },
+        { "name": "length is out of range", "input": "3\n", "expected": "INVALID" },
+        { "name": "negative index", "input": "-1\n", "expected": "INVALID" }
+      ],
+      "transfer": "Explain how bounds failures surface in Java arrays and how an explicit guard changes the user-facing result."
+    },
+    {
+      "id": "05-loop",
+      "title": "Include every required loop iteration",
+      "goal": "For an input from 0 through 10, print the sum of integers from 1 through the input, inclusive.",
+      "starter": "class Main {\n    static kaam main() {\n        num limit = toNum(readLine());\n        num total = 0;\n        for (num value = 1; value < limit; value = value + 1) {\n            total = total + value;\n        }\n        printLine(total);\n    }\n}\n",
+      "hints": [
+        "Trace the value and total columns for input 1 before using a larger input.",
+        "The current loop stops before adding limit.",
+        "Use an inclusive upper-bound comparison in the loop condition."
+      ],
+      "cases": [
+        { "name": "empty sum", "input": "0\n", "expected": "0" },
+        { "name": "one iteration", "input": "1\n", "expected": "1" },
+        { "name": "five iterations", "input": "5\n", "expected": "15" }
+      ],
+      "transfer": "Port the loop to TypeScript and write down a loop invariant about total."
+    },
+    {
+      "id": "06-functions",
+      "title": "Separate a reusable calculation from input handling",
+      "goal": "Read an amount and a fixed fee, then print their sum using the total function.",
+      "starter": "class Main {\n    static num total(num amount, num fee) {\n        return amount * fee;\n    }\n    static kaam main() {\n        num amount = toNum(readLine());\n        num fee = toNum(readLine());\n        printLine(Main.total(amount, fee));\n    }\n}\n",
+      "hints": [
+        "The input-handling method delegates the calculation. Fix the calculation where it is defined.",
+        "A fixed fee is added once, not multiplied by the amount.",
+        "Return amount + fee from total."
+      ],
+      "cases": [
+        { "name": "ordinary fee", "input": "100\n5\n", "expected": "105" },
+        { "name": "no fee", "input": "100\n0\n", "expected": "100" },
+        { "name": "fee only", "input": "0\n7\n", "expected": "7" }
+      ],
+      "transfer": "Create a pure Java function with the same signature and demonstrate a test that does not read stdin."
+    },
+    {
+      "id": "07-strings",
+      "title": "Normalize input deliberately",
+      "goal": "Read a line, remove surrounding spaces, and print it in uppercase.",
+      "starter": "class Main {\n    static kaam main() {\n        sab value = readLine();\n        printLine(value.toUpperCase());\n    }\n}\n",
+      "hints": [
+        "Capitalization and whitespace removal are separate transformations.",
+        "Observe the leading/trailing spaces for input ' hello '.",
+        "Call value.trim().toUpperCase()."
+      ],
+      "cases": [
+        { "name": "surrounding spaces", "input": " hello \n", "expected": "HELLO" },
+        { "name": "already normalized", "input": "WORLD\n", "expected": "WORLD" },
+        { "name": "empty after trimming", "input": "   \n", "expected": "" }
+      ],
+      "transfer": "Port normalization to JavaScript and explain why validation should still happen after normalization."
+    },
+    {
+      "id": "08-errors",
+      "title": "Handle conversion failure explicitly",
+      "goal": "Read a line. Print its integer value if conversion succeeds; print INVALID if conversion throws.",
+      "starter": "class Main {\n    static kaam main() {\n        num value = toNum(readLine());\n        printLine(value);\n    }\n}\n",
+      "hints": [
+        "The conversion can fail before printLine runs. Choose where the error boundary belongs.",
+        "Use try around the conversion and success output, then catch the failure.",
+        "A catch (e) block can print INVALID; do not print the success value after a failed conversion."
+      ],
+      "cases": [
+        { "name": "valid integer", "input": "123\n", "expected": "123" },
+        { "name": "invalid text", "input": "not-a-number\n", "expected": "INVALID" },
+        { "name": "negative integer", "input": "-4\n", "expected": "-4" }
+      ],
+      "transfer": "Implement the same error boundary in Java and explain what failures should not be hidden."
+    },
+    {
+      "id": "09-state",
+      "title": "Update state instead of replacing it",
+      "goal": "Read an initial balance and a deposit. Print the new balance after depositing into a Counter instance.",
+      "starter": "class Counter {\n    num balance;\n    kaam init(num initial) { this.balance = initial; }\n    kaam deposit(num amount) { this.balance = amount; }\n    num value() { return this.balance; }\n}\nclass Main {\n    static kaam main() {\n        num initial = toNum(readLine());\n        num amount = toNum(readLine());\n        Counter counter = new Counter(initial);\n        counter.deposit(amount);\n        printLine(counter.value());\n    }\n}\n",
+      "hints": [
+        "The constructor establishes the starting balance. Deposit should preserve it.",
+        "For initial 10 and deposit 5, replacement yields 5 but accumulation yields 15.",
+        "Assign this.balance + amount back to this.balance."
+      ],
+      "cases": [
+        { "name": "existing balance", "input": "10\n5\n", "expected": "15" },
+        { "name": "initially empty", "input": "0\n3\n", "expected": "3" },
+        { "name": "zero deposit", "input": "7\n0\n", "expected": "7" }
+      ],
+      "transfer": "Port the class to Java and distinguish object state from local variables and static fields."
+    },
+    {
+      "id": "10-approval",
+      "title": "Compose a small business rule",
+      "goal": "Read amount, budget, requester and approver on four lines. Approve only a positive affordable amount with a different approver. Print APPROVE or REJECT.",
+      "starter": "class Main {\n    static kaam main() {\n        num amount = toNum(readLine());\n        num budget = toNum(readLine());\n        sab requester = readLine();\n        sab approver = readLine();\n        if (amount > 0 && amount <= budget) {\n            printLine(\"APPROVE\");\n        } else {\n            printLine(\"REJECT\");\n        }\n    }\n}\n",
+      "hints": [
+        "A numerical budget check does not establish who is authorized to approve.",
+        "The missing rule is separation of requester and approver identities.",
+        "Add requester != approver to the conjunction; keep both numerical checks."
+      ],
+      "cases": [
+        { "name": "different approver", "input": "250\n500\nalice\nbob\n", "expected": "APPROVE" },
+        { "name": "self approval", "input": "250\n500\nalice\nalice\n", "expected": "REJECT" },
+        { "name": "over budget", "input": "600\n500\nalice\nbob\n", "expected": "REJECT" }
+      ],
+      "transfer": "Implement the rule in Java or TypeScript using the same cases. Explain why real authorization must use trusted identities from the host, not arbitrary input text."
+    }
+  ]
+}
