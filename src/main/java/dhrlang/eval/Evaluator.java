@@ -151,6 +151,70 @@ public class Evaluator implements ASTVisitor<Object> {
         if (isTruthy(cond)) return ternaryExpr.getThenBranch().accept(this);
         return ternaryExpr.getElseBranch().accept(this);
     }
+
+    // ── v4.0.0: Import, Lambda, Enum, Match ──────────────────────────
+
+    @Override public Object visitImportStmt(ImportStmt importStmt) {
+        // Import resolution happens in Main.java pipeline before evaluation.
+        // At eval time, imported classes are already merged into the Program.
+        return null;
+    }
+
+    @Override public Object visitLambdaExpr(LambdaExpr lambdaExpr) {
+        // Create a Callable that captures the current environment (closure)
+        Environment closure = env;
+        return new Callable() {
+            @Override public int arity() { return lambdaExpr.getParameters().size(); }
+            @Override public Object call(Interpreter interp, java.util.List<Object> arguments) {
+                Environment lambdaEnv = new Environment(closure);
+                for (int i = 0; i < lambdaExpr.getParameters().size(); i++) {
+                    lambdaEnv.define(lambdaExpr.getParameters().get(i).getLexeme(), arguments.get(i));
+                }
+                Environment prev = env;
+                env = lambdaEnv;
+                try {
+                    lambdaExpr.getBody().accept(Evaluator.this);
+                    return null; // block body with no explicit return
+                } catch (ReturnValue rv) {
+                    return rv.getValue();
+                } finally {
+                    env = prev;
+                }
+            }
+        };
+    }
+
+    @Override public Object visitEnumDecl(EnumDecl enumDecl) {
+        // Register enum constants as static values in the environment
+        String enumName = enumDecl.getNameStr();
+        java.util.Map<String, Object> enumValues = new java.util.LinkedHashMap<>();
+        int ordinal = 0;
+        for (EnumDecl.EnumConstant c : enumDecl.getConstants()) {
+            String constName = c.getNameStr();
+            // Each enum constant is stored as its ordinal value (simple impl)
+            // Also accessible as EnumName.CONSTANT
+            enumValues.put(constName, (long) ordinal);
+            env.define(enumName + "." + constName, (long) ordinal);
+            ordinal++;
+        }
+        env.define(enumName, enumValues);
+        return null;
+    }
+
+    @Override public Object visitMatchExpr(MatchExpr matchExpr) {
+        Object subject = matchExpr.getSubject().accept(this);
+        for (MatchExpr.MatchArm arm : matchExpr.getArms()) {
+            if (arm.isDefault()) {
+                return arm.getBody().accept(this);
+            }
+            Object pattern = arm.getPattern().accept(this);
+            if (java.util.Objects.equals(subject, pattern)) {
+                return arm.getBody().accept(this);
+            }
+        }
+        // No match and no default — return null
+        return null;
+    }
     @Override public Object visitVariableExpr(VariableExpr variableExpr) {
         String name = variableExpr.getName().getLexeme();
         try { return env.get(name); }

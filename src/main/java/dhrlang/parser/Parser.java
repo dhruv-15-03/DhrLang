@@ -42,16 +42,25 @@ public class Parser {
     public Program parse() {
         List<ClassDecl> classes = new ArrayList<>();
         List<InterfaceDecl> interfaces = new ArrayList<>();
+        List<ImportStmt> imports = new ArrayList<>();
+        List<EnumDecl> enums = new ArrayList<>();
 
         try {
+            // Parse import statements first (must be at top of file)
+            while (check(TokenType.IMPORT)) {
+                imports.add(parseImportStmt());
+            }
+
             while (!isAtEnd()) {
                 if (check(TokenType.INTERFACE)) {
                     interfaces.add(parseInterfaceDecl());
+                } else if (check(TokenType.ENUM)) {
+                    enums.add(parseEnumDecl());
                 } else {
                     classes.add(parseClassDecl());
                 }
             }
-            return new Program(classes, interfaces);
+            return new Program(classes, interfaces, imports, enums);
         } catch (ParseException e) {
             throw e;
         }
@@ -878,7 +887,17 @@ public class Parser {
             thisExpr.setSourceLocation(thisToken.getLocation());
             return thisExpr;
         }
+        // v4.0.0: match expression
+        if (match(TokenType.MATCH)) {
+            return parseMatchExpr();
+        }
+        // v4.0.0: lambda expression — (params) => body
+        // Also handles grouped expressions (expr)
         if (match(TokenType.LPAREN)) {
+            // Try to detect lambda: look for ) => pattern
+            if (isLambdaStart()) {
+                return parseLambdaExpr();
+            }
             Expression expr = parseExpression();
             consume(TokenType.RPAREN, "Expected ')' after expression.");
             return expr;
@@ -1199,6 +1218,162 @@ public class Parser {
         Statement stmt = parseDoWhile();
         if (stmt instanceof WhileStmt ws) { ws.setLabel(label); }
         return stmt;
+    }
+
+    // ── v4.0.0: Import parsing ───────────────────────────────────────
+
+    private ImportStmt parseImportStmt() {
+        Token importToken = advance(); // consume 'import'
+        if (match(TokenType.STRING)) {
+            // import "path/to/file.dhr"
+            String path = previous().getLexeme();
+            // Strip surrounding quotes
+            if (path.startsWith("\"") && path.endsWith("\"")) path = path.substring(1, path.length() - 1);
+            consume(TokenType.SEMICOLON, "Expected ';' after import path.");
+            ImportStmt stmt = new ImportStmt(path);
+            stmt.setSourceLocation(importToken.getLocation());
+            return stmt;
+        }
+        if (match(TokenType.LBRACE)) {
+            // import { Name1, Name2 } from "path"
+            List<String> names = new ArrayList<>();
+            do {
+                names.add(consume(TokenType.IDENTIFIER, "Expected name in import list.").getLexeme());
+            } while (match(TokenType.COMMA));
+            consume(TokenType.RBRACE, "Expected '}' after import names.");
+            // 'from' is not a keyword — match it as an identifier with lexeme "from"
+            if (!check(TokenType.IDENTIFIER) || !"from".equals(peek().getLexeme())) {
+                throw error(peek(), "Expected 'from' after import names.");
+            }
+            advance(); // consume the 'from' identifier
+            consume(TokenType.STRING, "Expected string path after 'from'.");
+            String path = previous().getLexeme();
+            if (path.startsWith("\"") && path.endsWith("\"")) path = path.substring(1, path.length() - 1);
+            consume(TokenType.SEMICOLON, "Expected ';' after import statement.");
+            ImportStmt stmt = new ImportStmt(path, names);
+            stmt.setSourceLocation(importToken.getLocation());
+            return stmt;
+        }
+        throw error(peek(), "Expected string path or '{ names }' after 'import'.");
+    }
+
+    // ── v4.0.0: Enum parsing ─────────────────────────────────────────
+
+    private EnumDecl parseEnumDecl() {
+        advance(); // consume 'enum'
+        Token name = consume(TokenType.IDENTIFIER, "Expected enum name.");
+        consume(TokenType.LBRACE, "Expected '{' after enum name.");
+        List<EnumDecl.EnumConstant> constants = new ArrayList<>();
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            Token constName = consume(TokenType.IDENTIFIER, "Expected enum constant name.");
+            List<Expression> args = null;
+            if (match(TokenType.LPAREN)) {
+                args = new ArrayList<>();
+                if (!check(TokenType.RPAREN)) {
+                    do { args.add(parseExpression()); } while (match(TokenType.COMMA));
+                }
+                consume(TokenType.RPAREN, "Expected ')' after enum constant arguments.");
+            }
+            constants.add(new EnumDecl.EnumConstant(constName, args));
+            match(TokenType.COMMA); // optional trailing comma
+        }
+        consume(TokenType.RBRACE, "Expected '}' after enum body.");
+        EnumDecl decl = new EnumDecl(name, constants);
+        decl.setSourceLocation(name.getLocation());
+        return decl;
+    }
+
+    // ── v4.0.0: Match expression parsing ─────────────────────────────
+
+    // ── v4.0.0: Lambda detection & parsing ───────────────────────────
+
+    /**
+     * Look ahead to determine if the current position (after LPAREN consumed)
+     * is the start of a lambda: () =>, (x) =>, (x, y) =>
+     */
+    private boolean isLambdaStart() {
+        int saved = current;
+        try {
+            // Skip over identifiers and commas until we hit RPAREN
+            while (!isAtEnd()) {
+                if (check(TokenType.RPAREN)) {
+                    // Check if ) is followed by =>
+                    if (current + 1 < tokens.size()
+                            && tokens.get(current + 1).getType() == TokenType.ARROW) {
+                        return true;
+                    }
+                    return false;
+                }
+                if (check(TokenType.IDENTIFIER) || check(TokenType.COMMA)) {
+                    advance();
+                } else {
+                    return false; // not a simple param list
+                }
+            }
+            return false;
+        } finally {
+            current = saved; // always restore
+        }
+    }
+
+    /**
+     * Parse a lambda expression. Called after '(' is consumed and isLambdaStart() returned true.
+     * Syntax: (params) => expression  or  (params) => { block }
+     */
+    private Expression parseLambdaExpr() {
+        Token startToken = previous(); // the '(' token
+        List<Token> params = new ArrayList<>();
+        List<String> paramTypes = new ArrayList<>();
+        if (!check(TokenType.RPAREN)) {
+            do {
+                Token param = consume(TokenType.IDENTIFIER, "Expected parameter name in lambda.");
+                params.add(param);
+                paramTypes.add(null); // untyped params
+            } while (match(TokenType.COMMA));
+        }
+        consume(TokenType.RPAREN, "Expected ')' after lambda parameters.");
+        consume(TokenType.ARROW, "Expected '=>' after lambda parameters.");
+
+        Statement body;
+        if (check(TokenType.LBRACE)) {
+            body = parseStatement(); // block body
+        } else {
+            // expression body → wrap in return
+            Expression expr = parseExpression();
+            ReturnStmt ret = new ReturnStmt(expr);
+            ret.setSourceLocation(expr.getSourceLocation());
+            body = ret;
+        }
+        LambdaExpr lambda = new LambdaExpr(params, paramTypes, body);
+        lambda.setSourceLocation(startToken.getLocation());
+        return lambda;
+    }
+
+    private Expression parseMatchExpr() {
+        Token matchToken = previous(); // 'match' already consumed
+        consume(TokenType.LPAREN, "Expected '(' after 'match'.");
+        Expression subject = parseExpression();
+        consume(TokenType.RPAREN, "Expected ')' after match subject.");
+        consume(TokenType.LBRACE, "Expected '{' after match subject.");
+        List<MatchExpr.MatchArm> arms = new ArrayList<>();
+        while (!check(TokenType.RBRACE) && !isAtEnd()) {
+            if (match(TokenType.DEFAULT)) {
+                consume(TokenType.ARROW, "Expected '=>' after 'default'.");
+                Expression body = parseExpression();
+                arms.add(new MatchExpr.MatchArm(null, body, true));
+            } else {
+                consume(TokenType.CASE, "Expected 'case' in match arm.");
+                Expression pattern = parseExpression();
+                consume(TokenType.ARROW, "Expected '=>' after match pattern.");
+                Expression body = parseExpression();
+                arms.add(new MatchExpr.MatchArm(pattern, body, false));
+            }
+            match(TokenType.COMMA); // optional comma between arms
+        }
+        consume(TokenType.RBRACE, "Expected '}' after match body.");
+        MatchExpr expr = new MatchExpr(subject, arms);
+        expr.setSourceLocation(matchToken.getLocation());
+        return expr;
     }
 
     

@@ -77,6 +77,9 @@ public class Lexer {
         keywords.put("@immutable", TokenType.IMMUTABLE);
         keywords.put("@invariant", TokenType.INVARIANT);
         keywords.put("as", TokenType.AS);
+        keywords.put("import", TokenType.IMPORT);
+        keywords.put("enum", TokenType.ENUM);
+        keywords.put("match", TokenType.MATCH);
         
         // Blockchain Types
         keywords.put("Address", TokenType.ADDRESS);
@@ -160,7 +163,11 @@ public class Lexer {
                 }
                 break;
 
-            case '=': addToken(match('=') ? TokenType.EQUALITY : TokenType.ASSIGN); break;
+            case '=':
+                if (match('=')) addToken(TokenType.EQUALITY);
+                else if (match('>')) addToken(TokenType.ARROW);
+                else addToken(TokenType.ASSIGN);
+                break;
             case '!': addToken(match('=') ? TokenType.NEQ : TokenType.NOT); break;
             case '<':
                 if (match('<')) {

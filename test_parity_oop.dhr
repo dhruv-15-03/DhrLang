@@ -8,6 +8,9 @@ class Animal {
     }
 }
 class Dog extends Animal {
+    kaam init(sab n) {
+        super.init(n);
+    }
     sab speak() {
         return "Woof";
     }
@@ -16,6 +19,8 @@ class Main {
     static kaam main() {
         Dog d = new Dog("Rex");
         printLine(d.name);
+        num discarded = 99;
+        num folded = 7 + 7;
         printLine(d.speak());
     }
 }

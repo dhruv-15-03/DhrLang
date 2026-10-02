@@ -120,6 +120,11 @@ public enum TokenType {
     QUESTION,       // ?      (ternary / wildcard in generics)
     COLON,          // :      (ternary)
     AS,             // as     (type cast operator)
+    IMPORT,         // import (module import)
+    FROM,           // from   (selective import)
+    ENUM,           // enum   (enum declaration)
+    MATCH,          // match  (pattern matching)
+    ARROW,          // =>     (lambda / match arm)
 
 
     // ===============================

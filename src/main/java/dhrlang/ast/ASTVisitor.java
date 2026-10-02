@@ -41,6 +41,12 @@ public interface ASTVisitor<R> {
     R visitStaticAssignExpr(StaticAssignExpr staticAssignExpr);
     R visitTernaryExpr(TernaryExpr ternaryExpr);
     
+    // v4.0.0: Module system, lambdas, enums, pattern matching
+    R visitImportStmt(ImportStmt importStmt);
+    R visitLambdaExpr(LambdaExpr lambdaExpr);
+    R visitEnumDecl(EnumDecl enumDecl);
+    R visitMatchExpr(MatchExpr matchExpr);
+
     // Generic type system
     R visitGenericType(GenericType genericType);
     R visitTypeParameter(TypeParameter typeParameter);

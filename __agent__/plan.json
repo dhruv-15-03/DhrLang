@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "title": "Inspect repository structure and project instructions",
+      "status": "done"
+    },
+    {
+      "title": "Review core source, configuration, and tests",
+      "status": "in-progress"
+    },
+    {
+      "title": "Run available checks and summarize project status",
+      "status": "pending"
+    }
+  ],
+  "updated_at": "2026-10-02T04:27:50.077Z",
+  "session_id": "01a0fad8-f342-74a3-977a-6118136d42dd"
+}

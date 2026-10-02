@@ -28,6 +28,10 @@ public class Main {
             try { dhrlang.lsp.DhrLangLspServer.startLsp(); } catch (Exception e) { System.exit(1); }
             return;
         }
+        if (options.replMode) {
+            dhrlang.repl.DhrLangRepl.startRepl();
+            return;
+        }
 
         // Handle "contract" subcommand: wallet/networks don't need a .dhr file
         if (options.contractMode) {
@@ -193,6 +197,7 @@ public class Main {
         boolean debugEvm;        // --debug-evm: step through EVM bytecode
         boolean sarifMode;       // --sarif: output SARIF format (for --audit)
         boolean lspMode;         // --lsp: start Language Server Protocol server
+        boolean replMode;        // --repl: start interactive REPL
         String outputDir;        // --output=<dir>: output directory for artifacts
         // --- Contract subcommand ---
         boolean contractMode;    // contract <subcommand>: blockchain operations
@@ -247,6 +252,8 @@ public class Main {
                     opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
+                case "--repl":
+                    opts.replMode = true; break;
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
@@ -293,6 +300,15 @@ public class Main {
         try { program = parser.parse(); } catch (ParseException ignored) {}
         pt.parseMs = msSince(s);
         if(errorReporter.hasErrors()){ pt.totalMs = msSince(tStart); return pt; }
+
+        // Resolve imports (v4.0.0)
+        if (program != null && !program.getImports().isEmpty() && opts.filePath != null) {
+            java.nio.file.Path basePath = java.nio.file.Path.of(opts.filePath).getParent();
+            if (basePath == null) basePath = java.nio.file.Path.of(".");
+            dhrlang.module.ImportResolver resolver = new dhrlang.module.ImportResolver(basePath, errorReporter);
+            program = resolver.resolveImports(program);
+            if (errorReporter.hasErrors()) { pt.totalMs = msSince(tStart); return pt; }
+        }
 
         s = System.nanoTime();
         TypeChecker typeChecker = new TypeChecker(errorReporter);

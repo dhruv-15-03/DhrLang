@@ -1,5 +1,7 @@
 package dhrlang.diagnostics;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dhrlang.error.ErrorReporter;
 import dhrlang.lexer.Lexer;
 import dhrlang.lexer.Token;
@@ -55,5 +57,21 @@ public class JsonDiagnosticsTests {
         // Current implementation places generic hint from UNDECLARED_IDENTIFIER, not suggestion string in JSON
         assertTrue(r.json.contains("Undefined variable 'cout'"));
         assertTrue(r.json.contains("hint"));
+    }
+
+    @Test void windowsLineEndingsProduceValidJson() throws Exception {
+        String src = String.join("\r\n",
+                "class Main {",
+                "    static kaam main() {",
+                "        num broken = \"not a number\";",
+                "    }",
+                "}");
+
+        var result = runJson(src);
+        JsonNode json = new ObjectMapper().readTree(result.json);
+
+        assertTrue(result.hadErrors);
+        assertEquals("TYPE_MISMATCH", json.path("errors").get(0).path("code").asText());
+        assertFalse(result.json.contains("\r"));
     }
 }

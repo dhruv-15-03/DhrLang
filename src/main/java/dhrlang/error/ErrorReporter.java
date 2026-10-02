@@ -265,7 +265,27 @@ public class ErrorReporter {
     }
     private String escape(String s){
         if(s==null) return ""; // null-safe
-        return s.replace("\\","\\\\").replace("\"","\\\"").replace("\n","\\n");
+        StringBuilder escaped = new StringBuilder(s.length());
+        for(int i=0;i<s.length();i++){
+            char ch = s.charAt(i);
+            switch(ch){
+                case '\\' -> escaped.append("\\\\");
+                case '"' -> escaped.append("\\\"");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if(ch < 0x20){
+                        escaped.append(String.format("\\u%04x", (int) ch));
+                    } else {
+                        escaped.append(ch);
+                    }
+                }
+            }
+        }
+        return escaped.toString();
     }
 
     public List<DhrError> getErrors() {
