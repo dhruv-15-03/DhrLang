@@ -166,7 +166,8 @@ from the compiler's build.
 Still pending, and **not implemented by either local mock**:
 
 - Authorized tenant/API-specific read-only SAP integration and its mapping,
-  pagination and failure tests.
+  pagination and failure tests. The [S2 readiness contract](design/sap-read-only-integration.md)
+  lists the non-secret target inputs and separate offline/live acceptance gates.
 - Durable storage, real authentication and independent domain/isolation review;
   controlled writes require a separate approval and reconciliation design.
 - The measured learner pilot and transfer gates in [LEARNING.md](LEARNING.md).
