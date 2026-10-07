@@ -66,7 +66,9 @@ Modern language tooling for the DhrLang language: syntax highlighting, snippets,
 
 ## ðŸš§ Packaging / Updating the VSIX
 
-Requires JDK 17 and Node.js 22+. From the repository root, run
+Requires JDK 17 and Node.js 22.12 or newer for the pinned Mocha 12 test toolchain.
+This development requirement does not change the extension's VS Code API floor.
+From the repository root, run
 `.\gradlew.bat stageCompiler` (or `./gradlew stageCompiler` on Linux/macOS).
 Then, in `vscode-extension`, run `npm ci`, `npm run test:packaging`, and
 `npm run package`, stopping if any command fails.

@@ -64,9 +64,22 @@ or authorize production claims for the remaining components.
 
 Before approval, retain the exact source SHA, artifact/VSIX hashes, dependency
 inventory, all required workflow outcomes, explicit skips, reviewer findings and
-supported-installation evidence. Two dependency alerts were reported during the
-last push; their current affected components, remediation and applicability need
-assessment rather than treating green CI as security clearance.
+supported-installation evidence. The readiness push `b2fd0d4` reported three
+dependency alerts (critical/high/moderate); the authenticated details API denied
+access, so those alert identities are not inferred from CI or local scans.
+Independent npm audit identified vulnerable extension test dependencies and CAP
+tooling dependencies. Pinning the extension's development-only Mocha to 12.0.3
+removed its vulnerable dependency chains; a fresh locked install and audit
+reported zero advisories for that lockfile. This does not establish closure of
+the inaccessible GitHub alerts or clear the separate CAP tooling lockfile.
+In the pinned CAP 10.1.0 tooling, `proxy-addr` is affected
+by [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
+and `braces` by [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+During this readiness assessment, proxy-addr 2.0.8 was published, but the latest
+braces 3.0.3 remained affected. Do not force a CAP major-toolchain downgrade or
+override bundled dependencies without checking compatibility and the actual CAP
+API/packaged tests. Assess remediation and applicability before promotion rather
+than treating green CI as security clearance.
 
 ## Failure reporting and rollback
 
