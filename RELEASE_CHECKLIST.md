@@ -5,6 +5,13 @@ tag push or publication. Do not replace an existing release's artifacts.
 
 ## 1. Prepare and review
 
+- For the learner-first major release, review the
+  [candidate support contract](design/release-support-contract.md) and
+  [independent qualification gates](design/learner-preview-gates.md).
+  Record the approved component scope and actual evidence; green CI alone does
+  not qualify live SAP, AI tutoring, learner outcomes or runtime isolation.
+  Resolve or explicitly assess applicable dependency alerts before promotion.
+
 - Align `build.gradle`, `SPEC.md`, `CHANGELOG.md`, the extension package version
   and its lockfile. Use a new version; do not republish 4.0.2 with different bytes.
 - Record supported and experimental features accurately in the changelog.
@@ -82,6 +89,10 @@ workflow tests and builds artifacts but must not publish a second release.
 The application ZIP contains its dependency JARs and launchers. The standalone
 JAR and the portable Linux/Windows archives must contain the fat compiler.
 `checksums.txt` uses artifact basenames so it can be checked after downloading.
+The portable archives also include the linked readiness/support documents,
+optional offline evidence tool/tests and the tracked CAP example sources.
+The CAP example requires its own pinned toolchain; it is not a production
+integration bundled into the standalone compiler.
 
 ## 4. Publish the same VSIX to the Marketplace
 

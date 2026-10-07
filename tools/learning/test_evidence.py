@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -239,6 +240,26 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(2, result.returncode)
             self.assertIn("Duplicate JSON key", result.stderr)
             self.assertNotIn("SECRET", result.stderr + result.stdout)
+
+    def test_portable_release_layout_runs_without_repository_or_java(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tools = root / "tools" / "learning"
+            tools.mkdir(parents=True)
+            shutil.copyfile(Path(__file__).with_name("evidence.py"), tools / "evidence.py")
+            catalog = root / "src" / "main" / "resources" / "dhrlang" / "learn" / "exercises.json"
+            catalog.parent.mkdir(parents=True)
+            shutil.copyfile(evidence.CATALOG, catalog)
+            (root / "attempt.json").write_text(json.dumps(self.report), encoding="utf-8")
+            (root / "answer.dhr").write_bytes(self.source.encode("utf-8"))
+            result = subprocess.run(
+                [sys.executable, str(tools / "evidence.py"), "--report", str(root / "attempt.json"),
+                 "--submission", str(root / "answer.dhr"), "--compiler-sha256", "a" * 64,
+                 "--output", str(root / "handoff.json")],
+                cwd=directory, capture_output=True, text=True, timeout=5, check=False)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("OFFLINE_TUTOR_HANDOFF", evidence.read_json(root / "handoff.json")["mode"])
+            self.assertFalse((root / ".git").exists())
 
 
 if __name__ == "__main__":

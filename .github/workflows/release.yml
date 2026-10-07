@@ -46,6 +46,16 @@ jobs:
           
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
+
+      - name: Setup Python for the optional offline evidence tool
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify offline evidence tooling
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m unittest discover -s tools/learning -p 'test_*.py' -v
         
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -105,12 +115,20 @@ jobs:
 
       - name: Prepare documentation and examples
         run: |
+          set -o pipefail
           cp README.md LICENSE CHANGELOG.md GETTING_STARTED.md INSTALL.md TUTORIALS.md EXAMPLES.md \
-            HOST_EXECUTION.md PROJECTS.md LEARNING.md ENTERPRISE_LAB.md host-request.schema.json host-response.schema.json project.schema.json build/release/
+            HOST_EXECUTION.md PROJECTS.md LEARNING.md ENTERPRISE_LAB.md RELEASE_CHECKLIST.md host-request.schema.json host-response.schema.json project.schema.json build/release/
           mkdir -p build/release/examples
           cp -R input/. build/release/examples/
           mkdir -p build/release/design
-          cp design/compatibility-profiles.md build/release/design/
+          cp design/compatibility-profiles.md design/learner-preview-gates.md \
+            design/sap-read-only-integration.md design/release-support-contract.md build/release/design/
+          mkdir -p build/release/tools/learning
+          cp tools/learning/evidence.py tools/learning/test_evidence.py build/release/tools/learning/
+          mkdir -p build/release/src/main/resources/dhrlang/learn
+          cp src/main/resources/dhrlang/learn/exercises.json build/release/src/main/resources/dhrlang/learn/
+          # Archive only tracked CAP sources, never local caches or credential files.
+          git archive HEAD examples/cap-java-mock | tar -x -C build/release
           {
             echo "# DhrLang v${{ steps.get_version.outputs.VERSION }}"
             echo ""

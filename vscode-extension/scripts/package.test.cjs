@@ -83,6 +83,27 @@ describe('Release package integrity', () => {
             }
         });
 
+        it('includes the linked learner release documents and offline handoff inputs', async () => {
+            const release = await workflow('release.yml');
+            const prepare = allSteps(release).find(step => step.name === 'Prepare documentation and examples');
+            assert.ok(prepare);
+            for (const file of [
+                'RELEASE_CHECKLIST.md', 'design/compatibility-profiles.md',
+                'design/learner-preview-gates.md', 'design/sap-read-only-integration.md',
+                'design/release-support-contract.md', 'tools/learning/evidence.py',
+                'tools/learning/test_evidence.py', 'src/main/resources/dhrlang/learn/exercises.json'
+            ]) {
+                assert.ok(prepare.run.includes(file), `Missing portable release input: ${file}`);
+                await fs.access(path.resolve(__dirname, '..', '..', file));
+            }
+            assert.ok(prepare.run.includes('git archive HEAD examples/cap-java-mock | tar -x -C build/release'));
+            assert.ok(prepare.run.includes('set -o pipefail'), 'CAP archive failures must stop release preparation');
+            assert.ok(!prepare.run.includes('cp -R examples/cap-java-mock'),
+                'Do not copy CAP credential files or ignored caches into releases');
+            assert.ok(allSteps(release).some(step =>
+                step.run?.includes("python -m unittest discover -s tools/learning -p 'test_*.py' -v")));
+        });
+
         it('publishes the canonical VSIX without rebuilding and creates its release afterwards', async () => {
             const steps = (await workflow('vscode-extension.yml')).jobs['publish-extension'].steps;
             const verification = steps.findIndex(step => step.run?.includes('npm run verify:package'));
