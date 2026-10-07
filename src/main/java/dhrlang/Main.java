@@ -293,10 +293,8 @@ public class Main {
                     opts.sarifMode = true; break;
                 case "--lsp":
                     opts.lspMode = true; break;
-<<<<<<< HEAD
                 case "--repl":
                     opts.replMode = true; break;
-=======
                 case "--stdio":
                     // No-op: DhrLang's --lsp mode always communicates over
                     // stdio already. Some LSP client libraries append
@@ -305,7 +303,6 @@ public class Main {
                     // than failing with "Unknown option" and killing the
                     // server before it can start.
                     break;
->>>>>>> 423e91d4567442bea367c345e5df29a4a05243ad
                 default:
                     // First non-flag is treated as file path
                     if (!a.startsWith("-")) {
