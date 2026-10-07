@@ -50,6 +50,13 @@ network destination or disclose credentials.
 
 ### Dispatch and privacy acceptance
 
+The [offline redacted handoff exporter](../LEARNING.md#optional-redacted-tutor-handoff-offline-preparation)
+now validates explicit saved reports against the local catalog and current
+submission hash. It exports references and bounded metadata, not raw learner
+payloads, and calls no provider or execution tool. Its client-policy fields are
+recommendations, not enforcement. This is Stage 6 preparation only; the client
+integration and held-out evaluation below remain pending.
+
 - Allow only explicit diagnostic/check/trace operations over learner-selected
   local submissions. Enforce the allowlist at dispatch, not just in a prompt.
 - Reuse bounded host execution; no arbitrary executable, source interpolation,

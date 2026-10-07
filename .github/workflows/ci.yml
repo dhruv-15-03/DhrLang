@@ -15,6 +15,19 @@ permissions:
   actions: read
 
 jobs:
+  learner-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify offline evidence handoff boundaries
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -m unittest discover -s tools/learning -p 'test_*.py' -v
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -63,7 +76,7 @@ jobs:
         if-no-files-found: error
 
   build:
-    needs: test
+    needs: [test, learner-evidence]
     runs-on: ubuntu-latest
     
     steps:

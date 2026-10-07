@@ -94,6 +94,48 @@ results. Passing the visible cases does not establish general correctness or
 independent mastery. Predict a new case, explain the fix, and complete the
 transfer task without an AI assistant.
 
+## Optional redacted tutor handoff (offline preparation)
+
+The standard-library Python 3.12 tool prepares evidence for a user-selected
+client; it does **not** implement an AI provider, dispatch tools, execute the
+submission or send anything over the network. Python is needed only for this
+optional exporter, not the compiler or ordinary learning commands.
+
+After saving an attempt, from the repository root in PowerShell:
+
+```powershell
+$compilerHash = (Get-FileHash build\compiler\DhrLang.jar -Algorithm SHA256).Hash.ToLowerInvariant()
+py -3.12 tools\learning\evidence.py --report attempt-01.json --submission answer.dhr --compiler-sha256 $compilerHash --level 1 --output tutor-01.json
+py -3.12 -m unittest discover -s tools\learning -p 'test_*.py' -v
+```
+
+On macOS/Linux use `python3` and the platform's path separators. The exporter
+checks the saved report's exact schema, catalog case identities/inputs/expected
+outputs, status/pass/count consistency and submission SHA-256. It refuses to
+overwrite its output; invalid evidence or file failures return exit 2. Report
+reads are limited to 2 MiB and 64 nesting levels; submission limits match the
+learner commands. No progress/pass record is modified.
+
+The new JSON contains failed-case references, statuses, output-match flags,
+stderr-presence flags and diagnostic positions. It omits source, raw inputs,
+outputs, diagnostic messages/codes and report messages. Compiler version/hash,
+source hash, exercise identity and result counts remain visible; treat them as
+potentially sensitive metadata and inspect the bundle before sharing it.
+The recorded compiler hash is supplied metadata, not authenticated evidence of
+which artifact produced an editable historical report.
+
+Levels 1-3 select existing lesson hints only for successful executions with an
+output mismatch and no stderr. Compilation/runtime/infrastructure failures do
+not receive an unrelated lesson hint. A hint does not establish the root cause,
+and an all-pass report does not prove mastery. No trace is fabricated.
+
+Client-policy fields recommend one model call, 512 output tokens, ten seconds
+and no tools/external writes. These are **not enforced provider budgets**:
+there is no provider in this exporter. A future client must enforce limits,
+consent, tool allowlists and cancellation itself, and recheck any proposed edit
+through `learn check`. The exporter tests (including synthetic malformed
+reports) are not the required 50 independent held-out learner programs.
+
 ## Bounded source-linked traces
 
 Trace one numbered practice case:
