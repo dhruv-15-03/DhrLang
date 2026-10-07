@@ -168,3 +168,8 @@ remain pending:
   claim. Passing local tests, a doctor check or a pilot is not that review.
 
 No participation, learning advantage or production certification is asserted here.
+
+The [learner-preview Stage 6-7 readiness protocol](design/learner-preview-gates.md)
+defines the remaining grounded-assistance evaluation and human qualification
+evidence. Its stage numbering is separate from the older bytecode/blockchain
+roadmap phases; it does not claim that an AI client or qualification is shipped.
