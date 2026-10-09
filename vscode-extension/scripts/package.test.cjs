@@ -91,7 +91,9 @@ describe('Release package integrity', () => {
                 'RELEASE_CHECKLIST.md', 'design/compatibility-profiles.md',
                 'design/learner-preview-gates.md', 'design/sap-read-only-integration.md',
                 'design/release-support-contract.md', 'tools/learning/evidence.py',
-                'tools/learning/test_evidence.py', 'src/main/resources/dhrlang/learn/exercises.json'
+                'tools/learning/test_evidence.py', 'src/main/resources/dhrlang/learn/exercises.json',
+                'design/qualification-runbook.md', 'tools/learning/qualification.py',
+                'tools/learning/test_qualification.py'
             ]) {
                 assert.ok(prepare.run.includes(file), `Missing portable release input: ${file}`);
                 await fs.access(path.resolve(__dirname, '..', '..', file));

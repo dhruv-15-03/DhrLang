@@ -124,8 +124,10 @@ Suggested per-participant record fields are identifier, experience, setup/OS/
 Java/artifact, help, first-correct-run seconds or failure, capstone completed,
 transfer attempted, AI disabled, transfer outcome and dropout/friction notes.
 Store only consented, access-controlled records. A threshold spreadsheet or
-script may assist arithmetic later; it cannot authenticate the underlying data
-or certify reviewer independence.
+script may assist arithmetic; it cannot authenticate the underlying data
+or certify reviewer independence. The [qualification runbook](qualification-runbook.md)
+provides collection steps and the offline `tools/learning/qualification.py`
+aggregate calculator. Numerical success is not release authorization.
 
 ## Supported-release promotion
 

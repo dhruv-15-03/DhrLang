@@ -65,13 +65,13 @@ or authorize production claims for the remaining components.
 Before approval, retain the exact source SHA, artifact/VSIX hashes, dependency
 inventory, all required workflow outcomes, explicit skips, reviewer findings and
 supported-installation evidence. The readiness push `b2fd0d4` reported three
-dependency alerts (critical/high/moderate); the authenticated details API denied
-access, so those alert identities are not inferred from CI or local scans.
+dependency alerts (critical/high/moderate); the authenticated details API initially denied
+access, so that assessment did not infer alert identities from CI or local scans.
 Independent npm audit identified vulnerable extension test dependencies and CAP
 tooling dependencies. Pinning the extension's development-only Mocha to 12.0.3
 removed its vulnerable dependency chains; a fresh locked install and audit
 reported zero advisories for that lockfile. This does not establish closure of
-the inaccessible GitHub alerts or clear the separate CAP tooling lockfile.
+the GitHub alerts or clear the separate CAP tooling lockfile.
 In the pinned CAP 10.1.0 tooling, `proxy-addr` is affected
 by [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h),
 and `braces` by [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
@@ -80,6 +80,20 @@ braces 3.0.3 remained affected. Do not force a CAP major-toolchain downgrade or
 override bundled dependencies without checking compatibility and the actual CAP
 API/packaged tests. Assess remediation and applicability before promotion rather
 than treating green CI as security clearance.
+
+The 9 October authorized refresh succeeded and reported one open Dependabot
+alert: number 10, proxy-addr in `examples/cap-java-mock/package-lock.json`. A targeted
+`@sap/cds-dk` npm override to 2.0.8 was tested locally: npm reported an
+up-to-date install but the actual bundled dependency remained 2.0.7. The
+ineffective override was removed; no CAP lockfile/runtime change is claimed.
+The independent npm audit additionally reports braces and newly listed
+handlebars advisories (including
+[GHSA-8r5x-fm3f-whwj](https://github.com/advisories/GHSA-8r5x-fm3f-whwj)).
+The registry publishes handlebars 4.7.10, but its presence does not prove the
+bundled CAP dependency graph has been upgraded.
+GitHub's open count and npm's affected-package count are different evidence,
+not interchangeable. CAP tooling remains a release assessment/remediation gate;
+no clean audit, alert closure or supported-major approval is asserted.
 
 ## Failure reporting and rollback
 

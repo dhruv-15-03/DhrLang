@@ -122,9 +122,11 @@ jobs:
           cp -R input/. build/release/examples/
           mkdir -p build/release/design
           cp design/compatibility-profiles.md design/learner-preview-gates.md \
-            design/sap-read-only-integration.md design/release-support-contract.md build/release/design/
+            design/sap-read-only-integration.md design/release-support-contract.md \
+            design/qualification-runbook.md build/release/design/
           mkdir -p build/release/tools/learning
-          cp tools/learning/evidence.py tools/learning/test_evidence.py build/release/tools/learning/
+          cp tools/learning/evidence.py tools/learning/test_evidence.py \
+            tools/learning/qualification.py tools/learning/test_qualification.py build/release/tools/learning/
           mkdir -p build/release/src/main/resources/dhrlang/learn
           cp src/main/resources/dhrlang/learn/exercises.json build/release/src/main/resources/dhrlang/learn/
           # Archive only tracked CAP sources, never local caches or credential files.

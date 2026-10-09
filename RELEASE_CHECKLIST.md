@@ -11,6 +11,8 @@ tag push or publication. Do not replace an existing release's artifacts.
   Record the approved component scope and actual evidence; green CI alone does
   not qualify live SAP, AI tutoring, learner outcomes or runtime isolation.
   Resolve or explicitly assess applicable dependency alerts before promotion.
+  Use the [qualification runbook](design/qualification-runbook.md) for the actual
+  independent pilot and review receipts; its calculator only checks arithmetic.
 
 - Align `build.gradle`, `SPEC.md`, `CHANGELOG.md`, the extension package version
   and its lockfile. Use a new version; do not republish 4.0.2 with different bytes.
@@ -23,7 +25,7 @@ tag push or publication. Do not replace an existing release's artifacts.
 
 ## 2. Build and verify locally
 
-Requires JDK 17 and Node.js 22+ for the locked VSIX packaging tools. Users of the
+Requires JDK 17 and Node.js 22.12+ for the locked VSIX packaging/test tools. Users of the
 extension need Java 17+, not Node.js or the packaging toolchain.
 
 From the repository root in PowerShell:
@@ -90,7 +92,8 @@ The application ZIP contains its dependency JARs and launchers. The standalone
 JAR and the portable Linux/Windows archives must contain the fat compiler.
 `checksums.txt` uses artifact basenames so it can be checked after downloading.
 The portable archives also include the linked readiness/support documents,
-optional offline evidence tool/tests and the tracked CAP example sources.
+optional offline evidence and pilot-arithmetic tools/tests, the qualification
+runbook and the tracked CAP example sources.
 The CAP example requires its own pinned toolchain; it is not a production
 integration bundled into the standalone compiler.
 
