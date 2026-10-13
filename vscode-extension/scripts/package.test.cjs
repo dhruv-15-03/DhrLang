@@ -68,6 +68,27 @@ describe('Release package integrity', () => {
             assert.ok(allSteps(release).some(step => step.run?.includes('verifyCompilerArtifact -PcompilerJar=build/downloaded/DhrLang.jar')));
         });
 
+        it('retains the exact learner candidate only after packaging and LSP checks succeed', async () => {
+            const steps = (await workflow('ci.yml')).jobs['vscode-lsp-integration'].steps;
+            const packaging = steps.findIndex(step => step.run?.includes('npm run package'));
+            const integration = steps.findIndex(step => step.run?.includes('xvfb-run -a npm test'));
+            const verification = steps.findIndex(step => step.run?.includes('npm run verify:package'));
+            const upload = steps.findIndex(step =>
+                step.with?.name === 'dhrlang-learner-candidate-${{ github.run_attempt }}');
+            assert.ok(packaging >= 0 && integration > packaging &&
+                verification > integration && upload > verification,
+                'Retain candidate bytes only after the actual packaging/LSP checks');
+            const step = steps[upload];
+            assert.ok(step.uses?.startsWith('actions/upload-artifact@'));
+            assert.ok(!step.if || step.if === 'success()', 'Failed candidates must not be uploaded');
+            assert.equal(step.with['if-no-files-found'], 'error');
+            assert.deepEqual(step.with.path.trim().split(/\r?\n/), [
+                'build/release/DhrLang.jar',
+                'build/release/dhrlang-vscode-*.vsix',
+                'build/release/release-manifest.json'
+            ]);
+        });
+
         it('configures Java and Node on the correct setup actions', async () => {
             for (const file of ['ci.yml', 'release.yml', 'vscode-extension.yml']) {
                 for (const step of allSteps(await workflow(file))) {

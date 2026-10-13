@@ -19,6 +19,40 @@ task/help comparability and any deviations. The baseline has no invented pass
 threshold here; its purpose is a documented comparison, not an automatic claim
 that DhrLang teaches better.
 
+### Retain the exact technical candidate
+
+Successful CI retains `dhrlang-learner-candidate-<attempt>` after packaging verification
+and the headless VS Code development-host LSP tests, with a final source/hash
+and embedded-compiler recheck before upload. It contains only the
+standalone compiler, canonical VSIX and existing source/hash manifest, not raw
+learner records. The tests do not establish installation on every supported
+platform or independent qualification.
+
+From a matching source checkout with the locked packaging dependencies installed,
+select a completed successful **main push** CI run and its exact source SHA:
+
+```powershell
+gh run view <ci-run-id> --repo dhruv-15-03/DhrLang --json attempt,headSha,headBranch,event,status,conclusion,url
+gh run download <ci-run-id> --repo dhruv-15-03/DhrLang --name dhrlang-learner-candidate-<attempt> --dir C:\pilot\candidate
+$env:RELEASE_COMMIT = '<exact-source-sha-from-the-successful-run>'
+node vscode-extension\scripts\package.cjs verify C:\pilot\candidate
+```
+
+Use the selected run attempt's artifact name; later attempts must not overwrite
+the earlier candidate bytes. Confirm the run's source is the selected protocol
+candidate; the verifier rejects a different source SHA, version, checksum or
+embedded compiler. Record the run
+URL, manifest and hashes, and retain the original bytes outside Git before the
+CI artifact expires. Pull-request runs can test a synthetic merge SHA rather
+than the reported branch-head SHA; do not substitute those for this main-push
+freeze procedure. Do not rebuild the artifacts later and transfer pilot results to
+the new bytes. Development candidates may still identify as 4.0.2; their source
+revision/hashes distinguish them from already-published 4.0.2 binaries. Do not
+publish or overwrite those binaries to freeze a pilot candidate.
+
+This freezes technical inputs only. Component/platform scope, support ownership,
+baseline/tasks/help rules and consent still need approval before recruitment.
+
 ## 2. Recruit and obtain consent
 
 Recruit at least 20 independent DhrLang learners and a comparison group.

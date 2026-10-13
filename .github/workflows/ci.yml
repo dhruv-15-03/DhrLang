@@ -226,6 +226,20 @@ jobs:
         DHRLANG_LSP_DEBUG_STDERR: '1'
       run: xvfb-run -a npm test
 
+    - name: Verify retained candidate after LSP checks
+      working-directory: vscode-extension
+      run: npm run verify:package
+
+    - name: Preserve verified learner candidate
+      uses: actions/upload-artifact@v7
+      with:
+        name: dhrlang-learner-candidate-${{ github.run_attempt }}
+        path: |
+          build/release/DhrLang.jar
+          build/release/dhrlang-vscode-*.vsix
+          build/release/release-manifest.json
+        if-no-files-found: error
+
   # Aggregate & publish test report as a separate job (fixes permission issues)
   test-report:
     name: Publish Test Report

@@ -14,6 +14,11 @@ tag push or publication. Do not replace an existing release's artifacts.
   Use the [qualification runbook](design/qualification-runbook.md) for the actual
   independent pilot and review receipts; its calculator only checks arithmetic.
 
+- Freeze pilot binaries from a successful exact-source CI run's
+  `dhrlang-learner-candidate-<attempt>` artifact, using the existing source/hash and
+  embedded-compiler verifier described in the runbook. Retain its original JAR,
+  VSIX and manifest outside Git before artifact expiry. This is an unreleased
+  candidate, not publication, platform qualification or release approval.
 - Align `build.gradle`, `SPEC.md`, `CHANGELOG.md`, the extension package version
   and its lockfile. Use a new version; do not republish 4.0.2 with different bytes.
 - Record supported and experimental features accurately in the changelog.
