@@ -88,16 +88,21 @@
             <id>cds.dependencies</id>
             <goals><goal>npm</goal></goals>
             <configuration>
-              <arguments>ci --ignore-scripts --no-audit --no-fund</arguments>
+              <commands>
+                <command>ci --ignore-scripts --no-audit --no-fund</command>
+                <command>audit --package-lock-only --ignore-scripts</command>
+                <command>run test:model</command>
+              </commands>
               <environmentVariables><NODE_OPTIONS>--max-old-space-size=256</NODE_OPTIONS></environmentVariables>
             </configuration>
           </execution>
           <execution><id>cds.resolve</id><goals><goal>resolve</goal></goals></execution>
           <execution>
             <id>cds.model</id>
-            <goals><goal>cds</goal></goals>
+            <phase>generate-sources</phase>
+            <goals><goal>npm</goal></goals>
             <configuration>
-              <commands><command>build --for java</command></commands>
+              <arguments>run build:model</arguments>
               <environmentVariables><NODE_OPTIONS>--max-old-space-size=256</NODE_OPTIONS></environmentVariables>
             </configuration>
           </execution>

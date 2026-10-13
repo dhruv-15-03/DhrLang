@@ -6,7 +6,12 @@
   "engines": {
     "node": "22.x"
   },
+  "scripts": {
+    "build:model": "node scripts/build-model.cjs",
+    "test:model": "node --test --test-concurrency=1 scripts/build-model.test.cjs"
+  },
   "devDependencies": {
-    "@sap/cds-dk": "10.1.0"
+    "@sap/cds": "10.1.0",
+    "@sap/cds-compiler": "7.1.0"
   }
 }

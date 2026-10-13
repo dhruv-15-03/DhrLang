@@ -20,7 +20,8 @@ It is an unreleased source-build example, absent from published v4.0.2 binaries.
 | Spring Boot | 4.1.1, as referenced by the published CAP 5.1.1 framework POM |
 | Maven | 3.9.14 through the checksum-pinned wrapper |
 | Local Node | 22.16.0 through the CDS Maven plugin |
-| CDS development kit | 10.1.0, exact package version and lockfile |
+| CDS model/runtime API | 10.1.0, exact unbundled package version and lockfile |
+| CDS compiler | 7.1.0, exact package version and lockfile |
 | Maven/test/server starting heaps | 256 MiB, sequential tests; bounded DhrLang workers use their existing limits |
 
 This selection follows [SAP's Java prerequisites](https://cap.cloud.sap/docs/java/getting-started),
@@ -52,12 +53,46 @@ The script:
    rerun S0 tests merely as setup.
 2. Installs the thin API with the `local-source` classifier into this example's
    local Maven repository. An old published 4.0.2 artifact is not a substitute.
-3. Runs the pinned CDS generation, CAP framework tests and repackaged-JAR tests.
+3. Restores and audits the locked Node dependencies, runs the model regressions
+   and pinned CDS/Java generation, then runs CAP framework and repackaged-JAR tests.
 
 On Linux/macOS, PowerShell 7 (`pwsh`) can run the same script after making
 `gradlew` and `examples/cap-java-mock/mvnw` executable. CI exercises that route.
 The script restores the environment variables and working directory it changes.
 It does not publish a Maven artifact, create a release or change global tools.
+
+### Narrow model build, not the full development kit
+
+This example does not install `@sap/cds-dk`. Its bundle contained vulnerable
+tooling dependencies that root npm overrides did not replace. The unbundled
+model API and compiler retain the exact versions used by the original Java
+build; the Java framework and Maven pins are unchanged.
+
+`scripts/build-model.cjs` uses SAP's model-loading, Java transformation and
+CSN/OData v4 serialization APIs for `srv/purchase-service.cds` and the runtime
+outbox model. The CDS Maven plugin still generates the Java interfaces from
+the resulting CSN. The model step is specific to this lab, not a replacement
+for general development-kit scaffolding, watch, HANA deployment or additional
+feature/localization builds.
+
+Four Node regressions retain the original CSN and metadata SHA-256, authorization
+and revision annotations, compilation failures and stale-output cleanup.
+Canonical project paths keep source identities stable on Windows short-name
+paths. A model error stops Maven rather than leaving an old generated model
+eligible for a successful build. The Maven dependency step also fails on npm
+audit findings; it does not suppress or downgrade them.
+
+After the locked dependencies are installed, the model-only checks can run
+without starting a JVM or CAP server:
+
+```powershell
+$env:NODE_OPTIONS = '--max-old-space-size=128'
+npm.cmd --prefix .\examples\cap-java-mock run test:model
+npm.cmd --prefix .\examples\cap-java-mock run build:model
+```
+
+These checks do not replace the framework and executable-JAR checks in
+`verify.ps1`, and neither kind of test qualifies a live SAP integration.
 
 The handler uses the existing `PurchaseWorkflow`, reference policy and bounded
 `PurchaseDecisionRunner`, not a rewritten approximation. Startup checks the API
